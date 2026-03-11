@@ -48,26 +48,35 @@ app.use("/", slipRoutes);
 
 // Halaman scan QR
 app.get("/", async (req, res) => {
-  const number = req.session.number;
-
-  if (number) {
-    // Cek apakah nomor valid di DB
-    try {
-      const [rows] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-      if (rows.length) return res.redirect("/dashboard");
-      req.session.number = null; // jika nomor tidak valid, reset session
-    } catch (err) {
-      console.error(err);
-      req.session.number = null;
+  if (req.session.number) {
+    // cek apakah user masih ada di DB
+    const [users] = await db.query("SELECT * FROM users WHERE nomor_wa=?", [req.session.number]);
+    if (!users.length) {
+      req.session.destroy(() => {
+        res.clearCookie("connect.sid");
+        return res.sendFile(path.join(process.cwd(), "public/scan.html"));
+      });
+      return;
     }
+    return res.redirect("/dashboard");
   }
-
   res.sendFile(path.join(process.cwd(), "public/scan.html"));
 });
 
 // Dashboard
 app.get("/dashboard", async (req, res) => {
   if (!req.session.number) return res.redirect("/");
+
+  // cek apakah nomor WA masih ada di DB
+  const [users] = await db.query("SELECT * FROM users WHERE nomor_wa=?", [req.session.number]);
+  if (!users.length) {
+    req.session.destroy(() => {
+      res.clearCookie("connect.sid");
+      return res.redirect("/");
+    });
+    return;
+  }
+
   const number = req.session.number;
 
   // Auto reconnect bot jika belum terhubung
