@@ -165,66 +165,50 @@
       const status = document.getElementById("status");
       const loading = document.getElementById("loading");
 
-      const ws = new WebSocket(`ws://${location.host}`);
-
-      ws.onopen = () => {
-        status.innerText = "Menunggu Sesi...";
-      };
-
-      ws.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.qr) {
-          loading.style.display = "none";
-          qrCanvas.style.display = "block";
-
-          QRCode.toCanvas(
-            qrCanvas,
-            data.qr,
-            {
-              width: 250,
-              margin: 2,
-              color: {
-                dark: "#0f172a",
-                light: "#ffffff",
-              },
-            },
-            (err) => {
-              if (err) console.error(err);
-            },
-          );
-
-          status.innerText = "Silakan Scan Sekarang";
-        }
-
-        if (data.status === "connected") {
-          status.classList.add("connected");
-          status.innerHTML = '<i class="fas fa-check-circle"></i> Otorisasi Berhasil!';
-
-          try {
-            const res = await fetch("/set-number", {
+      function connectWS() {
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        const ws = new WebSocket(`${protocol}//${location.host}`);
+      
+        ws.onopen = () => {
+          status.innerText = "Menunggu QR...";
+        };
+      
+        ws.onmessage = async (event) => {
+          const data = JSON.parse(event.data);
+      
+          if (data.qr) {
+            loading.style.display = "none";
+            qrCanvas.style.display = "block";
+      
+            QRCode.toCanvas(qrCanvas, data.qr, { width: 250 });
+            status.innerText = "Silakan Scan Sekarang";
+          }
+      
+          if (data.status === "connected") {
+            status.classList.add("connected");
+            status.innerText = "Login Berhasil";
+      
+            await fetch("/set-number", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ number: data.number }),
             });
-
-            const result = await res.json();
-            if (result.success) {
-              setTimeout(() => {
-                window.location.href = "/dashboard";
-              }, 1000);
-            }
-          } catch (err) {
-            status.innerText = "Gagal sinkronisasi sesi";
+      
+            setTimeout(() => {
+              window.location.href = "/dashboard";
+            }, 1000);
           }
-        }
+        };
+      
+        ws.onclose = () => {
+          status.innerText = "Menghubungkan ulang...";
+          setTimeout(connectWS, 2000);
+        };
+      }
+      
+      connectWS();
 
-        if (data.status === "disconnected") {
-          status.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Sesi Berakhir, Refresh...';
-          qrCanvas.style.display = "none";
-          loading.style.display = "block";
-        }
-      };
+      
     </script>
   </body>
 </html>
