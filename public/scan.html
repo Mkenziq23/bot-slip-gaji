@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistem Login Payroll</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+    <style>
+      :root {
+        /* Warna bisa disesuaikan dengan brand perusahaan */
+        --brand-color: #2563eb;
+        --brand-dark: #1e40af;
+        --bg-gradient: linear-gradient(135deg, #1e40af 0%, #1e293b 100%);
+        --text-main: #2c3e50;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: #f0f2f5;
+        background-image: var(--bg-gradient);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      .qr-card {
+        background: #ffffff;
+        padding: 40px;
+        border-radius: 24px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        text-align: center;
+        width: 100%;
+        max-width: 400px;
+        position: relative;
+        z-index: 10;
+        transition: transform 0.3s ease;
+      }
+
+      .qr-card:hover {
+        transform: translateY(-5px);
+      }
+
+      /* Logo Perusahaan */
+      .brand-logo {
+        width: 80px; /* Atur ukuran logo */
+        height: 80px;
+        object-fit: contain;
+        margin-bottom: 15px;
+      }
+
+      h2 {
+        color: var(--text-main);
+        margin: 0 0 10px 0;
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+      }
+
+      p.instruction {
+        color: #64748b;
+        margin-bottom: 30px;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .qr-wrapper {
+        background: #f8fafc;
+        padding: 20px;
+        border-radius: 16px;
+        border: 2px dashed #e2e8f0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 260px;
+        margin-bottom: 25px;
+        position: relative;
+      }
+
+      canvas#qr {
+        display: none;
+        max-width: 100% !important;
+        height: auto !important;
+        border-radius: 8px;
+      }
+
+      .spinner {
+        width: 45px;
+        height: 45px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid var(--brand-color);
+        border-radius: 50%;
+        animation: spin 1s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      #status {
+        display: inline-block;
+        padding: 10px 24px;
+        border-radius: 50px;
+        font-size: 13px;
+        font-weight: 600;
+        background: #f1f5f9;
+        color: #64748b;
+        transition: all 0.3s ease;
+      }
+
+      #status.connected {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      /* Dekorasi Latar Belakang */
+      .bg-circles {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+        overflow: hidden;
+      }
+
+      .circle {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 50%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="bg-circles">
+      <div class="circle" style="width: 400px; height: 400px; top: -150px; left: -100px"></div>
+      <div class="circle" style="width: 300px; height: 300px; bottom: -100px; right: -50px"></div>
+    </div>
+
+    <div class="qr-card">
+      <!-- <img src="assets/logo.jpeg" alt="Payroll Logo" class="brand-logo" onerror="this.src = 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png'" />
+      <h2>Payroll System</h2> -->
+      <p class="instruction">Otorisasi akses melalui WhatsApp.<br />Scan QR Code untuk melanjutkan login.</p>
+
+      <div class="qr-wrapper">
+        <div id="loading" class="spinner"></div>
+        <canvas id="qr"></canvas>
+      </div>
+
+      <div id="status">Menghubungkan ke Server...</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+
+    <script>
+      const qrCanvas = document.getElementById("qr");
+      const status = document.getElementById("status");
+      const loading = document.getElementById("loading");
+
+      const ws = new WebSocket(`ws://${location.host}`);
+
+      ws.onopen = () => {
+        status.innerText = "Menunggu Sesi...";
+      };
+
+      ws.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.qr) {
+          loading.style.display = "none";
+          qrCanvas.style.display = "block";
+
+          QRCode.toCanvas(
+            qrCanvas,
+            data.qr,
+            {
+              width: 250,
+              margin: 2,
+              color: {
+                dark: "#0f172a",
+                light: "#ffffff",
+              },
+            },
+            (err) => {
+              if (err) console.error(err);
+            },
+          );
+
+          status.innerText = "Silakan Scan Sekarang";
+        }
+
+        if (data.status === "connected") {
+          status.classList.add("connected");
+          status.innerHTML = '<i class="fas fa-check-circle"></i> Otorisasi Berhasil!';
+
+          try {
+            const res = await fetch("/set-number", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ number: data.number }),
+            });
+
+            const result = await res.json();
+            if (result.success) {
+              setTimeout(() => {
+                window.location.href = "/dashboard";
+              }, 1000);
+            }
+          } catch (err) {
+            status.innerText = "Gagal sinkronisasi sesi";
+          }
+        }
+
+        if (data.status === "disconnected") {
+          status.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Sesi Berakhir, Refresh...';
+          qrCanvas.style.display = "none";
+          loading.style.display = "block";
+        }
+      };
+    </script>
+  </body>
+</html>

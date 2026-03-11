@@ -1,0 +1,7 @@
+node_modules/
+session/
+sessions-browser/
+uploads/
+slips/
+.history/
+.env

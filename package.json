@@ -1,0 +1,19 @@
+{
+  "name": "bot-slip-gaji",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.21",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "fs-extra": "^11.3.4",
+    "multer": "^2.1.1",
+    "mysql2": "^3.19.1",
+    "node-cron": "^4.2.1",
+    "pdfkit": "^0.14.0",
+    "qrcode-terminal": "^0.12.0",
+    "session-file-store": "^1.5.0",
+    "xlsx": "^0.18.5"
+  }
+}
