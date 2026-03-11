@@ -187,16 +187,23 @@
           if (data.status === "connected") {
             status.classList.add("connected");
             status.innerText = "Login Berhasil";
-      
-            await fetch("/set-number", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ number: data.number }),
-            });
-      
-            setTimeout(() => {
-              window.location.href = "/dashboard";
-            }, 1000);
+          
+            try {
+              const res = await fetch("/set-number", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ number: data.number }),
+              });
+              const result = await res.json();
+              if (result.success) {
+                setTimeout(() => window.location.href = "/dashboard", 500);
+              } else {
+                status.innerText = "Gagal menyimpan session";
+              }
+            } catch (err) {
+              console.error(err);
+              status.innerText = "Gagal terhubung ke server";
+            }
           }
         };
       
