@@ -25,7 +25,6 @@ const sessionMiddleware = session({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
-app.use(express.static(path.join(process.cwd(), "public")));
 
 // ============================
 // Database Helper
@@ -99,6 +98,9 @@ app.get("/dashboard", async (req, res) => {
 
   res.sendFile(path.join(process.cwd(), "public/index.html"));
 });
+
+app.use(express.static(path.join(process.cwd(), "public")));
+
 
 // Simpan nomor WA ke session setelah scan QR
 app.post("/set-number", async (req, res) => {
