@@ -2,7 +2,10 @@
   "name": "bot-slip-gaji",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
+  "main": "server/app.js",
+  "scripts": {
+    "start": "node server/app.js"
+  },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.21",
     "express": "^5.2.1",
