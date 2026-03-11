@@ -13,7 +13,9 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 const SessionFileStore = FileStore(session);
 
+// ============================
 // Middleware session
+// ============================
 const sessionMiddleware = session({
   store: new SessionFileStore({ path: "./sessions-browser" }),
   secret: "slipgajiwa",
@@ -27,9 +29,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
 app.use(express.static(path.join(process.cwd(), "public")));
 
-// =============================
+// ============================
 // DATABASE HELPER
-// =============================
+// ============================
 async function getOrCreateUser(number) {
   const [rows] = await db.query("SELECT * FROM users WHERE nomor_wa=?", [number]);
   if (rows.length === 0) {
@@ -39,17 +41,32 @@ async function getOrCreateUser(number) {
   return rows[0];
 }
 
-// =============================
+// ============================
 // ROUTES
-// =============================
+// ============================
 app.use("/", slipRoutes);
 
-app.get("/", (req, res) => {
-  if (req.session.number) return res.redirect("/dashboard");
+// Halaman scan QR
+app.get("/", async (req, res) => {
+  const number = req.session.number;
+
+  if (number) {
+    // Cek apakah nomor valid di DB
+    try {
+      const [rows] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+      if (rows.length) return res.redirect("/dashboard");
+      req.session.number = null; // jika nomor tidak valid, reset session
+    } catch (err) {
+      console.error(err);
+      req.session.number = null;
+    }
+  }
+
   res.sendFile(path.join(process.cwd(), "public/scan.html"));
 });
 
-app.get("/dashboard", (req, res) => {
+// Dashboard
+app.get("/dashboard", async (req, res) => {
   if (!req.session.number) return res.redirect("/");
   const number = req.session.number;
 
@@ -62,14 +79,25 @@ app.get("/dashboard", (req, res) => {
   res.sendFile(path.join(process.cwd(), "public/index.html"));
 });
 
-app.post("/set-number", (req, res) => {
+// Simpan nomor WA ke session setelah scan QR
+app.post("/set-number", async (req, res) => {
   const { number } = req.body;
   if (!number) return res.status(400).json({ success: false });
 
-  req.session.number = number;
-  req.session.save(() => res.json({ success: true }));
+  try {
+    // Pastikan user ada di DB (buat jika belum ada)
+    const user = await getOrCreateUser(number);
+
+    req.session.number = number;
+    req.session.user_id = user.id;
+    req.session.save(() => res.json({ success: true, user_id: user.id }));
+  } catch (err) {
+    console.error("SET NUMBER ERROR:", err);
+    res.status(500).json({ success: false });
+  }
 });
 
+// Logout
 app.get("/logout", async (req, res) => {
   const number = req.session.number;
   if (number) await logoutBot(number);
@@ -80,23 +108,20 @@ app.get("/logout", async (req, res) => {
   });
 });
 
-// =============================
+// ============================
 // WEBSOCKET BOT
-// =============================
+// ============================
 let userSessions = {};
 
 wss.on("connection", async (ws, req) => {
-  const cookieHeader = req.headers.cookie || "";
-  const sessionId = cookieHeader.split("connect.sid=s%3A")[1]?.split(".")[0];
-
   const tempId = `temp_${Date.now()}`;
-  userSessions[tempId] = { wsClients: [ws] };
+  userSessions[tempId] = { wsClients: [ws], sessionIds: [] };
 
   ws.on("close", () => delete userSessions[tempId]);
 
   await startBot({
     onQR: (number, qr) => {
-      userSessions[tempId]?.wsClients?.forEach(client => {
+      userSessions[tempId]?.wsClients.forEach(client => {
         if (client.readyState === 1) client.send(JSON.stringify({ qr }));
       });
     },
@@ -112,14 +137,8 @@ wss.on("connection", async (ws, req) => {
         delete userSessions[tempId];
       }
 
-      // Set Express session melalui wsClient
-      const client = userSessions[number].wsClients[0];
-      if (client && client.upgradeReq) {
-        client.upgradeReq.session.number = number;
-        client.upgradeReq.session.save();
-      }
-
       // Simpan sessionId untuk force logout
+      const sessionId = req.headers.cookie?.split("connect.sid=s%3A")[1]?.split(".")[0];
       if (sessionId && !userSessions[number].sessionIds.includes(sessionId)) {
         userSessions[number].sessionIds.push(sessionId);
       }
