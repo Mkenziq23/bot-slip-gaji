@@ -1,7 +1,7 @@
+// server/app.js
 import express from "express";
 import path from "path";
 import session from "express-session";
-import FileStore from "session-file-store";
 import http from "http";
 import { WebSocketServer } from "ws";
 import slipRoutes from "./routes/slipRoutes.js";
@@ -11,13 +11,11 @@ import db from "./db.js";
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
-const SessionFileStore = FileStore(session);
 
 // ============================
-// Middleware session
+// Middleware
 // ============================
 const sessionMiddleware = session({
-  store: new SessionFileStore({ path: "./sessions-browser" }),
   secret: "slipgajiwa",
   resave: false,
   saveUninitialized: false,
@@ -30,7 +28,7 @@ app.use(sessionMiddleware);
 app.use(express.static(path.join(process.cwd(), "public")));
 
 // ============================
-// DATABASE HELPER
+// Database Helper
 // ============================
 async function getOrCreateUser(number) {
   const [rows] = await db.query("SELECT * FROM users WHERE nomor_wa=?", [number]);
@@ -42,14 +40,29 @@ async function getOrCreateUser(number) {
 }
 
 // ============================
-// ROUTES
+// Global session validation
+// ============================
+app.use(async (req, res, next) => {
+  if (req.session.number) {
+    const [users] = await db.query("SELECT * FROM users WHERE nomor_wa=?", [req.session.number]);
+    if (!users.length) {
+      // Jika session nomor tidak ada di DB → logout
+      req.session.destroy(() => {
+        res.clearCookie("connect.sid");
+      });
+    }
+  }
+  next();
+});
+
+// ============================
+// Routes
 // ============================
 app.use("/", slipRoutes);
 
 // Halaman scan QR
 app.get("/", async (req, res) => {
   if (req.session.number) {
-    // cek apakah user masih ada di DB
     const [users] = await db.query("SELECT * FROM users WHERE nomor_wa=?", [req.session.number]);
     if (!users.length) {
       req.session.destroy(() => {
@@ -67,7 +80,6 @@ app.get("/", async (req, res) => {
 app.get("/dashboard", async (req, res) => {
   if (!req.session.number) return res.redirect("/");
 
-  // cek apakah nomor WA masih ada di DB
   const [users] = await db.query("SELECT * FROM users WHERE nomor_wa=?", [req.session.number]);
   if (!users.length) {
     req.session.destroy(() => {
@@ -94,9 +106,7 @@ app.post("/set-number", async (req, res) => {
   if (!number) return res.status(400).json({ success: false });
 
   try {
-    // Pastikan user ada di DB (buat jika belum ada)
     const user = await getOrCreateUser(number);
-
     req.session.number = number;
     req.session.user_id = user.id;
     req.session.save(() => res.json({ success: true, user_id: user.id }));
@@ -146,7 +156,7 @@ wss.on("connection", async (ws, req) => {
         delete userSessions[tempId];
       }
 
-      // Simpan sessionId untuk force logout
+      // Ambil sessionId dari cookie request
       const sessionId = req.headers.cookie?.split("connect.sid=s%3A")[1]?.split(".")[0];
       if (sessionId && !userSessions[number].sessionIds.includes(sessionId)) {
         userSessions[number].sessionIds.push(sessionId);
@@ -178,5 +188,8 @@ wss.on("connection", async (ws, req) => {
   });
 });
 
+// ============================
+// START SERVER
+// ============================
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log("Server jalan di port " + PORT));
