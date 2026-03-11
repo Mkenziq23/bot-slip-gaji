@@ -48,17 +48,24 @@ export async function startBot({ number, onQR, onConnected, onLogout } = {}) {
     if (connection === "open") {
       let waNumber = sock.user?.id.split(":")[0].split("@")[0];
       console.log(`[BOT] Terhubung: ${waNumber}`);
-
+    
       isStarting[waNumber] = false;
       sockets[waNumber] = sock;
-
-      // Jika ini adalah hasil scan dari tempId, bersihkan referensi temp-nya
+    
+      // Jika ini hasil scan dari tempId, bersihkan referensi temp-nya
       if (isTemp || targetNumber.startsWith("temp_")) {
         delete isStarting[targetNumber];
         delete sockets[targetNumber];
       }
-
-      if (onConnected) onConnected(waNumber);
+    
+      // pastikan nomor masuk DB
+      if (onConnected) {
+        try {
+          await onConnected(waNumber); // di app.js callback -> getOrCreateUser
+        } catch (err) {
+          console.error("Gagal simpan user:", err);
+        }
+      }
     }
 
     // 3. Koneksi Terputus (Close)
