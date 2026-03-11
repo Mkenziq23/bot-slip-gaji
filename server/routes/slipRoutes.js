@@ -232,4 +232,13 @@ router.post("/start-send", async (req, res) => {
   }
 });
 
+/*
+========================
+GET PROGRESS
+========================
+*/
+router.get("/progress", (req, res) => {
+  res.json(progress);
+});
+
 export default router;

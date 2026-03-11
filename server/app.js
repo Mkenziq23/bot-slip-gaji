@@ -7,7 +7,6 @@ import { WebSocketServer } from "ws";
 import slipRoutes from "./routes/slipRoutes.js";
 import { startBot, getSocketByNumber, logoutBot } from "../bot/index.js";
 import db from "./db.js";
-import { progress } from "./progress.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -62,6 +61,8 @@ app.get("/dashboard", (req, res) => {
   }
   res.sendFile(path.join(process.cwd(), "public/index.html"));
 });
+
+app.use(express.static(path.join(process.cwd(), "public")));
 
 app.post("/set-number", (req, res) => {
   const { number } = req.body;
