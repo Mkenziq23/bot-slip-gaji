@@ -13,21 +13,19 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 const SessionFileStore = FileStore(session);
 
-// Gunakan middleware session agar bisa diakses di route
+// Middleware session
 const sessionMiddleware = session({
   store: new SessionFileStore({ path: "./sessions-browser" }),
   secret: "slipgajiwa",
   resave: false,
   saveUninitialized: false,
-  cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-    httpOnly: true,
-  },
+  cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true },
 });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
+app.use(express.static(path.join(process.cwd(), "public")));
 
 // =============================
 // DATABASE HELPER
@@ -52,56 +50,53 @@ app.get("/", (req, res) => {
 });
 
 app.get("/dashboard", (req, res) => {
+  if (!req.session.number) return res.redirect("/");
   const number = req.session.number;
-  if (!number) return res.redirect("/");
 
+  // Auto reconnect bot jika belum terhubung
   if (!getSocketByNumber(number)) {
     console.log(`[SERVER] Auto-reconnecting session for: ${number}`);
     startBot({ number });
   }
+
   res.sendFile(path.join(process.cwd(), "public/index.html"));
 });
-
-app.use(express.static(path.join(process.cwd(), "public")));
 
 app.post("/set-number", (req, res) => {
   const { number } = req.body;
   if (!number) return res.status(400).json({ success: false });
+
   req.session.number = number;
-  res.json({ success: true });
+  req.session.save(() => res.json({ success: true }));
 });
 
 app.get("/logout", async (req, res) => {
   const number = req.session.number;
   if (number) await logoutBot(number);
 
-  req.session.destroy((err) => {
+  req.session.destroy(() => {
     res.clearCookie("connect.sid");
     res.redirect("/");
   });
 });
 
 // =============================
-// WEBSOCKET & SESSION MAPPING
+// WEBSOCKET BOT
 // =============================
-// Struktur userSessions: { [number]: { wsClients: [], sessionIds: [] } }
 let userSessions = {};
 
 wss.on("connection", async (ws, req) => {
-  // Ambil session ID dari cookie untuk pemetaan force logout
   const cookieHeader = req.headers.cookie || "";
   const sessionId = cookieHeader.split("connect.sid=s%3A")[1]?.split(".")[0];
 
   const tempId = `temp_${Date.now()}`;
   userSessions[tempId] = { wsClients: [ws] };
 
-  ws.on("close", () => {
-    delete userSessions[tempId];
-  });
+  ws.on("close", () => delete userSessions[tempId]);
 
   await startBot({
     onQR: (number, qr) => {
-      userSessions[tempId]?.wsClients?.forEach((client) => {
+      userSessions[tempId]?.wsClients?.forEach(client => {
         if (client.readyState === 1) client.send(JSON.stringify({ qr }));
       });
     },
@@ -109,22 +104,28 @@ wss.on("connection", async (ws, req) => {
     onConnected: async (number) => {
       const user = await getOrCreateUser(number);
 
-      if (!userSessions[number]) {
-        userSessions[number] = { wsClients: [], sessionIds: [] };
-      }
+      if (!userSessions[number]) userSessions[number] = { wsClients: [], sessionIds: [] };
 
-      // Migrasi dari temp ke real number session
+      // Migrasi ws dari temp ke number
       if (userSessions[tempId]) {
         userSessions[number].wsClients.push(...userSessions[tempId].wsClients);
         delete userSessions[tempId];
       }
 
-      // Simpan sessionId agar bisa di-destroy saat logout dari HP
+      // Set Express session melalui wsClient
+      const client = userSessions[number].wsClients[0];
+      if (client && client.upgradeReq) {
+        client.upgradeReq.session.number = number;
+        client.upgradeReq.session.save();
+      }
+
+      // Simpan sessionId untuk force logout
       if (sessionId && !userSessions[number].sessionIds.includes(sessionId)) {
         userSessions[number].sessionIds.push(sessionId);
       }
 
-      userSessions[number].wsClients.forEach((client) => {
+      // Kirim status connected ke browser
+      userSessions[number].wsClients.forEach(client => {
         if (client.readyState === 1) {
           client.send(JSON.stringify({ status: "connected", number, user_id: user.id }));
         }
@@ -135,28 +136,19 @@ wss.on("connection", async (ws, req) => {
       console.log(`[WS] Force Logout detected for: ${number}`);
 
       if (userSessions[number]) {
-        // 1. Beritahu browser via WebSocket untuk redirect ke login
-        userSessions[number].wsClients.forEach((client) => {
-          if (client.readyState === 1) {
-            client.send(JSON.stringify({ status: "force_logout" }));
-          }
+        userSessions[number].wsClients.forEach(client => {
+          if (client.readyState === 1) client.send(JSON.stringify({ status: "force_logout" }));
         });
 
-        // 2. Hapus file session di server agar cookie di browser tidak valid lagi
-        userSessions[number].sessionIds.forEach((id) => {
-          sessionMiddleware.store.destroy(id, (err) => {
-            if (err) console.error("Gagal hapus session file:", err);
-          });
+        userSessions[number].sessionIds.forEach(id => {
+          sessionMiddleware.store.destroy(id, err => { if (err) console.error(err); });
         });
 
         delete userSessions[number];
       }
-    },
+    }
   });
 });
 
 const PORT = process.env.PORT || 3000;
-
-server.listen(PORT, () => {
-  console.log("Server jalan di port " + PORT);
-});
+server.listen(PORT, () => console.log("Server jalan di port " + PORT));
