@@ -50,6 +50,14 @@ body {
   gap: 10px;
 }
 
+.main-menu {
+  margin-bottom: 10px;
+}
+
+.sub-menu {
+  margin-bottom: 24px;
+}
+
 /* Layout */
 .container {
   max-width: 1400px;
@@ -241,6 +249,28 @@ tr:hover {
 
 /* Modal */
 #dataModal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+#bonusModal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+#thrModal {
   display: none;
   position: fixed;
   inset: 0;

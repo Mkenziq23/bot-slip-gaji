@@ -4,7 +4,7 @@ import path from "path";
 import session from "express-session";
 import http from "http";
 import { WebSocketServer } from "ws";
-import slipRoutes from "./routes/slipRoutes.js";
+import slipRoutes from "./routes/slipGajiRoutes.js";
 import { startBot, getSocketByNumber, logoutBot } from "../bot/index.js";
 import db from "./db.js";
 
@@ -101,7 +101,6 @@ app.get("/dashboard", async (req, res) => {
 
 app.use(express.static(path.join(process.cwd(), "public")));
 
-
 // Simpan nomor WA ke session setelah scan QR
 app.post("/set-number", async (req, res) => {
   const { number } = req.body;
@@ -142,7 +141,7 @@ wss.on("connection", async (ws, req) => {
 
   await startBot({
     onQR: (number, qr) => {
-      userSessions[tempId]?.wsClients.forEach(client => {
+      userSessions[tempId]?.wsClients.forEach((client) => {
         if (client.readyState === 1) client.send(JSON.stringify({ qr }));
       });
     },
@@ -165,7 +164,7 @@ wss.on("connection", async (ws, req) => {
       }
 
       // Kirim status connected ke browser
-      userSessions[number].wsClients.forEach(client => {
+      userSessions[number].wsClients.forEach((client) => {
         if (client.readyState === 1) {
           client.send(JSON.stringify({ status: "connected", number, user_id: user.id }));
         }
@@ -176,17 +175,19 @@ wss.on("connection", async (ws, req) => {
       console.log(`[WS] Force Logout detected for: ${number}`);
 
       if (userSessions[number]) {
-        userSessions[number].wsClients.forEach(client => {
+        userSessions[number].wsClients.forEach((client) => {
           if (client.readyState === 1) client.send(JSON.stringify({ status: "force_logout" }));
         });
 
-        userSessions[number].sessionIds.forEach(id => {
-          sessionMiddleware.store.destroy(id, err => { if (err) console.error(err); });
+        userSessions[number].sessionIds.forEach((id) => {
+          sessionMiddleware.store.destroy(id, (err) => {
+            if (err) console.error(err);
+          });
         });
 
         delete userSessions[number];
       }
-    }
+    },
   });
 });
 

@@ -7,15 +7,15 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
     <style>
       :root {
-        /* Warna bisa disesuaikan dengan brand perusahaan */
         --brand-color: #2563eb;
         --brand-dark: #1e40af;
+        --success-color: #16a34a;
         --bg-gradient: linear-gradient(135deg, #1e40af 0%, #1e293b 100%);
         --text-main: #2c3e50;
       }
 
       body {
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         background: #f0f2f5;
         background-image: var(--bg-gradient);
         display: flex;
@@ -43,20 +43,11 @@
         transform: translateY(-5px);
       }
 
-      /* Logo Perusahaan */
-      .brand-logo {
-        width: 80px; /* Atur ukuran logo */
-        height: 80px;
-        object-fit: contain;
-        margin-bottom: 15px;
-      }
-
       h2 {
         color: var(--text-main);
         margin: 0 0 10px 0;
-        font-size: 26px;
+        font-size: 24px;
         font-weight: 700;
-        letter-spacing: -0.5px;
       }
 
       p.instruction {
@@ -86,6 +77,7 @@
         border-radius: 8px;
       }
 
+      /* Spinner Loading */
       .spinner {
         width: 45px;
         height: 45px;
@@ -104,23 +96,63 @@
         }
       }
 
+      /* Status Container */
       #status {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
         padding: 10px 24px;
         border-radius: 50px;
         font-size: 13px;
         font-weight: 600;
         background: #f1f5f9;
         color: #64748b;
-        transition: all 0.3s ease;
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       }
 
+      /* Icon Centang (Hidden by default) */
+      .checkmark-icon {
+        display: none;
+        width: 20px;
+        height: 20px;
+        color: var(--success-color);
+        stroke-dasharray: 100;
+        stroke-dashoffset: 100;
+      }
+
+      /* State: Connected / Berhasil */
       #status.connected {
         background: #dcfce7;
         color: #166534;
+        padding-left: 18px;
       }
 
-      /* Dekorasi Latar Belakang */
+      #status.connected .checkmark-icon {
+        display: block;
+        animation:
+          scaleIn 0.3s forwards,
+          drawCheck 0.5s 0.2s forwards;
+      }
+
+      @keyframes scaleIn {
+        from {
+          transform: scale(0);
+          opacity: 0;
+        }
+        to {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      @keyframes drawCheck {
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+
+      /* Background Decoration */
       .bg-circles {
         position: absolute;
         top: 0;
@@ -146,8 +178,9 @@
     </div>
 
     <div class="qr-card">
-      <!-- <img src="assets/logo.jpeg" alt="Payroll Logo" class="brand-logo" onerror="this.src = 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png'" />
-      <h2>Payroll System</h2> -->
+      <div id="brand-area">
+        <h2>Payroll System</h2>
+      </div>
       <p class="instruction">Otorisasi akses melalui WhatsApp.<br />Scan QR Code untuk melanjutkan login.</p>
 
       <div class="qr-wrapper">
@@ -155,67 +188,88 @@
         <canvas id="qr"></canvas>
       </div>
 
-      <div id="status">Menghubungkan ke Server...</div>
+      <div id="status">
+        <svg class="checkmark-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span id="status-text">Menghubungkan ke Server...</span>
+      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
     <script>
       const qrCanvas = document.getElementById("qr");
-      const status = document.getElementById("status");
+      const statusBox = document.getElementById("status");
+      const statusText = document.getElementById("status-text");
       const loading = document.getElementById("loading");
 
       function connectWS() {
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
         const ws = new WebSocket(`${protocol}//${location.host}`);
-      
+
         ws.onopen = () => {
-          status.innerText = "Menunggu QR...";
+          statusText.innerText = "Menunggu QR...";
         };
-      
+
         ws.onmessage = async (event) => {
           const data = JSON.parse(event.data);
-      
+
+          // Jika menerima data QR
           if (data.qr) {
             loading.style.display = "none";
             qrCanvas.style.display = "block";
-      
-            QRCode.toCanvas(qrCanvas, data.qr, { width: 250 });
-            status.innerText = "Silakan Scan Sekarang";
+            QRCode.toCanvas(qrCanvas, data.qr, {
+              width: 250,
+              margin: 2,
+              color: {
+                dark: "#1e293b",
+                light: "#f8fafc",
+              },
+            });
+            statusText.innerText = "Silakan Scan Sekarang";
           }
-      
+
+          // Jika Login Berhasil (Connected)
           if (data.status === "connected") {
-            status.classList.add("connected");
-            status.innerText = "Login Berhasil";
-          
+            statusBox.classList.add("connected");
+            statusText.innerText = "Login Berhasil";
+
+            // Sembunyikan QR saat berhasil
+            qrCanvas.style.opacity = "0.3";
+
             try {
               const res = await fetch("/set-number", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ number: data.number }),
               });
+
               const result = await res.json();
               if (result.success) {
-                setTimeout(() => window.location.href = "/dashboard", 500);
+                // Delay sebentar agar user sempat melihat animasi centang
+                setTimeout(() => (window.location.href = "/dashboard"), 1200);
               } else {
-                status.innerText = "Gagal menyimpan session";
+                statusText.innerText = "Gagal menyimpan session";
+                statusBox.classList.remove("connected");
               }
             } catch (err) {
               console.error(err);
-              status.innerText = "Gagal terhubung ke server";
+              statusText.innerText = "Gagal terhubung ke server";
             }
           }
         };
-      
+
         ws.onclose = () => {
-          status.innerText = "Menghubungkan ulang...";
+          statusBox.classList.remove("connected");
+          statusText.innerText = "Menghubungkan ulang...";
+          loading.style.display = "block";
+          qrCanvas.style.display = "none";
           setTimeout(connectWS, 2000);
         };
       }
-      
-      connectWS();
 
-      
+      connectWS();
     </script>
   </body>
 </html>
