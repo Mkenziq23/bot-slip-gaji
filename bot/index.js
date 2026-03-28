@@ -1,98 +1,170 @@
 import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } from "@whiskeysockets/baileys";
+
 import fs from "fs";
-import path from "path";
 
 let sockets = {};
 let isStarting = {};
 
-/**
- * Memulai bot WhatsApp
- */
+/*
+========================================
+SAFE DELETE SESSION FOLDER (ANTI CRASH)
+========================================
+*/
+async function safeDeleteSession(sessionDir) {
+  try {
+    if (fs.existsSync(sessionDir)) {
+      await fs.promises.rm(sessionDir, {
+        recursive: true,
+        force: true,
+      });
+
+      console.log("[BOT] Session dihapus:", sessionDir);
+    }
+  } catch (err) {
+    console.warn("[BOT] Gagal hapus session:", sessionDir);
+  }
+}
+
+/*
+========================================
+START BOT
+========================================
+*/
 export async function startBot({ number, onQR, onConnected, onLogout } = {}) {
-  // Jika tidak ada nomor, gunakan ID sementara untuk sesi scan baru
   const isTemp = !number;
+
   const targetNumber = number || `temp_${Date.now()}`;
 
   if (isStarting[targetNumber]) return;
+
   isStarting[targetNumber] = true;
 
   const sessionDir = `./session/${targetNumber}`;
+
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
     auth: state,
     printQRInTerminal: false,
+
     connectTimeoutMs: 60000,
     defaultQueryTimeoutMs: 0,
     keepAliveIntervalMs: 10000,
-    // Tambahkan logger agar tidak terlalu berisik di console jika tidak perlu
-    // logger: P({ level: 'silent' }),
   });
 
-  // Simpan instance ke objek global
   sockets[targetNumber] = sock;
 
   sock.ev.on("creds.update", saveCreds);
 
+  /*
+========================================
+CONNECTION UPDATE HANDLER
+========================================
+*/
   sock.ev.on("connection.update", async (update) => {
     const { connection, qr, lastDisconnect } = update;
 
-    // 1. Handle QR Code
+    /*
+============================
+QR GENERATED
+============================
+*/
     if (qr && onQR) {
       onQR(targetNumber, qr);
     }
 
-    // 2. Koneksi Berhasil (Open)
+    /*
+============================
+CONNECTED SUCCESS
+============================
+*/
     if (connection === "open") {
-      let waNumber = sock.user?.id.split(":")[0].split("@")[0];
-      console.log(`[BOT] Terhubung: ${waNumber}`);
+      try {
+        const waNumber = sock.user?.id?.split(":")[0]?.split("@")[0];
 
-      isStarting[waNumber] = false;
-      sockets[waNumber] = sock;
+        console.log(`[BOT] Terhubung: ${waNumber}`);
 
-      // Jika ini hasil scan dari tempId, bersihkan referensi temp-nya
-      if (isTemp || targetNumber.startsWith("temp_")) {
-        delete isStarting[targetNumber];
-        delete sockets[targetNumber];
-      }
+        sockets[waNumber] = sock;
 
-      // pastikan nomor masuk DB
-      if (onConnected) {
-        try {
-          await onConnected(waNumber); // di app.js callback -> getOrCreateUser
-        } catch (err) {
-          console.error("Gagal simpan user:", err);
+        isStarting[waNumber] = false;
+
+        /*
+CLEAN TEMP SESSION REF
+*/
+        if (isTemp || targetNumber.startsWith("temp_")) {
+          delete sockets[targetNumber];
+          delete isStarting[targetNumber];
         }
+
+        /*
+CALLBACK CONNECTED
+*/
+        if (onConnected) {
+          await onConnected(waNumber);
+        }
+      } catch (err) {
+        console.error("[BOT] ERROR onConnected:", err.message);
       }
     }
 
-    // 3. Koneksi Terputus (Close)
+    /*
+============================
+DISCONNECTED
+============================
+*/
     if (connection === "close") {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+      try {
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
 
-      isStarting[targetNumber] = false;
-      console.log(`[BOT] Terputus: ${targetNumber}. Reason: ${statusCode}`);
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut;
 
-      if (isLoggedOut) {
-        console.log(`[BOT] Logout terdeteksi (User keluar dari HP).`);
+        console.log(`[BOT] Terputus: ${targetNumber} | reason: ${statusCode}`);
 
-        // Jalankan callback logout untuk membersihkan session browser di app.js
-        if (onLogout) onLogout(targetNumber);
+        isStarting[targetNumber] = false;
 
-        // Hapus data socket dan folder sesi
-        delete sockets[targetNumber];
-        if (fs.existsSync(sessionDir)) {
-          fs.rmSync(sessionDir, { recursive: true, force: true });
+        /*
+============================
+LOGGED OUT FROM PHONE
+============================
+*/
+        if (isLoggedOut) {
+          console.log("[BOT] Logout terdeteksi dari HP");
+
+          if (onLogout) {
+            try {
+              onLogout(targetNumber);
+            } catch (err) {
+              console.warn("[BOT] onLogout error:", err.message);
+            }
+          }
+
+          delete sockets[targetNumber];
+
+          await safeDeleteSession(sessionDir);
+
+          return;
         }
-      } else {
-        // Reconnect otomatis jika bukan karena logout (misal: gangguan internet)
-        console.log(`[BOT] Mencoba menyambung ulang dalam 5 detik...`);
+
+        /*
+============================
+AUTO RECONNECT
+============================
+*/
+        console.log("[BOT] Reconnect dalam 5 detik...");
+
         setTimeout(() => {
-          startBot({ number: targetNumber, onQR, onConnected, onLogout });
+          startBot({
+            number: targetNumber,
+            onQR,
+            onConnected,
+            onLogout,
+          });
         }, 5000);
+      } catch (err) {
+        console.error("[BOT] ERROR connection.close:", err.message);
       }
     }
   });
@@ -100,34 +172,36 @@ export async function startBot({ number, onQR, onConnected, onLogout } = {}) {
   return sock;
 }
 
-/**
- * Mendapatkan instance socket berdasarkan nomor WA
- */
+/*
+========================================
+GET SOCKET BY NUMBER
+========================================
+*/
 export function getSocketByNumber(number) {
   return sockets[number] || null;
 }
 
-/**
- * Logout Bot secara paksa (Sistem & HP)
- */
+/*
+========================================
+FORCE LOGOUT BOT
+========================================
+*/
 export async function logoutBot(number) {
   const sock = sockets[number];
+
   const sessionDir = `./session/${number}`;
 
-  if (sock) {
-    try {
-      // Perintah logout ke server WhatsApp (memutuskan tautan perangkat di HP)
+  try {
+    if (sock) {
       await sock.logout();
-    } catch (err) {
-      console.error(`[BOT] Error saat logout: ${err.message}`);
-      sock.end(); // Tutup paksa jika gagal logout bersih
     }
+  } catch (err) {
+    console.warn("[BOT] Logout WA gagal:", err.message);
   }
 
   delete sockets[number];
+
   isStarting[number] = false;
 
-  if (fs.existsSync(sessionDir)) {
-    fs.rmSync(sessionDir, { recursive: true, force: true });
-  }
+  await safeDeleteSession(sessionDir);
 }

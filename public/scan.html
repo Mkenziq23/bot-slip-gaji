@@ -204,21 +204,40 @@
       const statusText = document.getElementById("status-text");
       const loading = document.getElementById("loading");
 
+      let ws;
+
       function connectWS() {
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        const ws = new WebSocket(`${protocol}//${location.host}`);
+        ws = new WebSocket(`${protocol}//${location.host}`);
 
+        /*
+    ============================
+    WS CONNECTED
+    ============================
+    */
         ws.onopen = () => {
+          console.log("WS connected");
           statusText.innerText = "Menunggu QR...";
         };
 
+        /*
+    ============================
+    RECEIVE MESSAGE
+    ============================
+    */
         ws.onmessage = async (event) => {
           const data = JSON.parse(event.data);
 
-          // Jika menerima data QR
+          /*
+      ============================
+      QR RECEIVED
+      ============================
+      */
           if (data.qr) {
             loading.style.display = "none";
+
             qrCanvas.style.display = "block";
+
             QRCode.toCanvas(qrCanvas, data.qr, {
               width: 250,
               margin: 2,
@@ -227,48 +246,128 @@
                 light: "#f8fafc",
               },
             });
+
             statusText.innerText = "Silakan Scan Sekarang";
           }
 
-          // Jika Login Berhasil (Connected)
+          /*
+      ============================
+      LOGIN SUCCESS
+      ============================
+      */
           if (data.status === "connected") {
             statusBox.classList.add("connected");
+
             statusText.innerText = "Login Berhasil";
 
-            // Sembunyikan QR saat berhasil
             qrCanvas.style.opacity = "0.3";
 
             try {
               const res = await fetch("/set-number", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ number: data.number }),
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  number: data.number,
+                }),
               });
 
               const result = await res.json();
+
               if (result.success) {
-                // Delay sebentar agar user sempat melihat animasi centang
-                setTimeout(() => (window.location.href = "/dashboard"), 1200);
+                setTimeout(() => {
+                  window.location.href = "/dashboard";
+                }, 1200);
               } else {
                 statusText.innerText = "Gagal menyimpan session";
+
                 statusBox.classList.remove("connected");
               }
             } catch (err) {
               console.error(err);
+
               statusText.innerText = "Gagal terhubung ke server";
             }
           }
+
+          /*
+      ============================
+      USER NOT REGISTERED
+      ============================
+      */
+          if (data.status === "not_registered") {
+            console.log("User belum terdaftar");
+
+            statusBox.classList.remove("connected");
+
+            statusText.innerText = "Nomor belum terdaftar";
+
+            qrCanvas.style.opacity = "0.3";
+
+            setTimeout(() => {
+              window.location.href = "/404.html";
+            }, 1500);
+          }
+
+          /*
+      ============================
+      FORCE LOGOUT
+      ============================
+      */
+          if (data.status === "force_logout") {
+            console.log("Force logout dari server");
+
+            statusBox.classList.remove("connected");
+
+            statusText.innerText = "Session berakhir, silakan login ulang";
+
+            qrCanvas.style.display = "none";
+
+            loading.style.display = "block";
+
+            setTimeout(connectWS, 2000);
+          }
         };
 
+        /*
+    ============================
+    WS DISCONNECTED
+    ============================
+    */
         ws.onclose = () => {
+          console.log("WS disconnected");
+
           statusBox.classList.remove("connected");
+
           statusText.innerText = "Menghubungkan ulang...";
+
           loading.style.display = "block";
+
           qrCanvas.style.display = "none";
+
           setTimeout(connectWS, 2000);
+        };
+
+        /*
+    ============================
+    WS ERROR
+    ============================
+    */
+        ws.onerror = () => {
+          console.log("WS error");
+
+          statusText.innerText = "Koneksi bermasalah, mencoba ulang...";
+
+          ws.close();
         };
       }
 
+      /*
+  ============================
+  START CONNECTION
+  ============================
+  */
       connectWS();
     </script>
   </body>

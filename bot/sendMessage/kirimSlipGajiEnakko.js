@@ -1,6 +1,6 @@
 import fs from "fs";
-import generateSlip from "./slipGeneratorGaji.js";
-import { getSocketByNumber } from "./index.js";
+import generateSlip from "../generator/slipGeneratorGaji.js";
+import { getSocketByNumber } from "../index.js";
 
 export default async function kirimSlipEnakko(karyawan, senderNumber) {
   const socket = getSocketByNumber(senderNumber);

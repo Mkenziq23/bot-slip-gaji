@@ -4,13 +4,21 @@
   "type": "module",
   "main": "server/app.js",
   "scripts": {
-    "start": "node server/app.js"
+    "start": "node server/app.js",
+    "dev": "NODE_ENV=development nodemon server/app.js",
+    "prod": "NODE_ENV=production node server/app.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.21",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
     "express-session": "^1.19.0",
+    "express-validator": "^7.3.1",
     "fs-extra": "^11.3.4",
+    "helmet": "^8.1.0",
     "multer": "^2.1.1",
     "mysql2": "^3.19.1",
     "node-cron": "^4.2.1",

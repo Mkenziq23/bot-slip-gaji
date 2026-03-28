@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>404 - Halaman Tidak Ditemukan</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <style>
+      :root {
+        --primary-color: #4f46e5;
+        --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        --glass-bg: rgba(255, 255, 255, 0.03);
+        --text-main: #f8fafc;
+      }
+
+      body {
+        font-family: "Plus Jakarta Sans", sans-serif;
+        background: var(--bg-gradient);
+        height: 100vh;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: var(--text-main);
+        overflow: hidden;
+      }
+
+      /* Dekorasi Lingkaran */
+      .shape {
+        position: absolute;
+        filter: blur(100px);
+        z-index: 1;
+        border-radius: 50%;
+        opacity: 0.5;
+      }
+      .shape-1 {
+        width: 400px;
+        height: 400px;
+        background: var(--primary-color);
+        top: -100px;
+        left: -100px;
+      }
+      .shape-2 {
+        width: 300px;
+        height: 300px;
+        background: #7c3aed;
+        bottom: -50px;
+        right: -50px;
+      }
+
+      .container {
+        position: relative;
+        z-index: 10;
+        text-align: center;
+        padding: 40px;
+        max-width: 500px;
+      }
+
+      .error-code {
+        font-size: 150px;
+        font-weight: 800;
+        margin: 0;
+        line-height: 1;
+        background: linear-gradient(to bottom, #fff, #64748b);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        drop-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+      }
+
+      h1 {
+        font-size: 24px;
+        margin: 20px 0 10px;
+        color: #fff;
+      }
+
+      p {
+        color: #94a3b8;
+        font-size: 16px;
+        line-height: 1.6;
+        margin-bottom: 30px;
+      }
+
+      .btn-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--primary-color);
+        color: white;
+        text-decoration: none;
+        padding: 14px 28px;
+        border-radius: 14px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.4);
+      }
+
+      .btn-back:hover {
+        transform: translateY(-3px);
+        background: #4338ca;
+        box-shadow: 0 15px 20px -3px rgba(79, 70, 229, 0.5);
+      }
+
+      .icon-box {
+        font-size: 60px;
+        margin-bottom: -20px;
+        color: #64748b;
+        animation: float 3s ease-in-out infinite;
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-20px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shape shape-1"></div>
+    <div class="shape shape-2"></div>
+
+    <div class="container">
+      <div class="icon-box">
+        <i class="fas fa-ghost"></i>
+      </div>
+      <div class="error-code">404</div>
+      <h1>Halaman Tidak Ditemukan</h1>
+      <p>Maaf, Anda tidak memiliki akses ke halaman ini atau URL yang Anda tuju tidak tersedia.</p>
+
+      <a href="javascript:history.back()" class="btn-back"> <i class="fas fa-arrow-left"></i> Kembali ke Sebelumnya </a>
+    </div>
+  </body>
+</html>
