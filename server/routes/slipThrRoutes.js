@@ -2,7 +2,7 @@ import express from "express";
 import db from "../db.js";
 import kirimThrHisana from "../../bot/sendMessage/kirimThrHisana.js";
 import kirimThrEnakko from "../../bot/sendMessage/kirimThrEnakko.js";
-
+import { kirimPembatalanThrHisana, kirimPembatalanThrEnakko } from "../../bot/cancelMessage/cancelSlipThr.js";
 const router = express.Router();
 
 // Progress tracking untuk THR
@@ -314,14 +314,19 @@ router.post("/send-thr", async (req, res) => {
     let tableName = company === "hisana" ? "thr_hisana" : "thr_enakko";
 
     const placeholders = selected.map(() => "?").join(",");
-    const [thrList] = await db.query(`SELECT * FROM ${tableName} WHERE id IN (${placeholders}) AND user_id = ? AND status = 'belum_dikirim'`, [...selected, userId]);
+    // Include both 'belum_dikirim' AND 'dibatalkan' status for resending
+    const [thrList] = await db.query(`SELECT * FROM ${tableName} WHERE id IN (${placeholders}) AND user_id = ? AND (status = 'belum_dikirim' OR status = 'dibatalkan')`, [...selected, userId]);
 
-    console.log(`📊 Found ${thrList.length} THR to send`);
+    console.log(`📊 Found ${thrList.length} THR to send (belum_dikirim + dibatalkan)`);
 
     if (thrList.length === 0) {
-      return res.status(400).json({ success: false, message: "Tidak ada data THR yang belum terkirim" });
+      return res.status(400).json({
+        success: false,
+        message: "Tidak ada data THR yang dapat dikirim. Pastikan THR yang dipilih berstatus 'Belum Dikirim' atau 'Dibatalkan'.",
+      });
     }
 
+    // Setup progress tracking
     thrProgress = {
       running: true,
       total: thrList.length,
@@ -330,11 +335,45 @@ router.post("/send-thr", async (req, res) => {
       results: [],
     };
 
-    sendThrBatch(thrList, company, number);
+    // Send response immediately
+    res.json({ success: true, message: "Pengiriman THR dimulai", total: thrList.length });
 
-    res.json({ success: true, message: "Pengiriman THR dimulai" });
+    // Process sending in background
+    (async () => {
+      for (const thr of thrList) {
+        try {
+          let result;
+          if (company === "hisana") {
+            result = await kirimThrHisana(thr, number);
+          } else {
+            result = await kirimThrEnakko(thr, number);
+          }
+
+          if (result) {
+            // Update status to 'terkirim' after successful send
+            await db.query(`UPDATE ${tableName} SET status = 'terkirim' WHERE id = ?`, [thr.id]);
+            thrProgress.sent++;
+            thrProgress.results.push({ id: thr.id, success: true, name: thr.nama });
+            console.log(`✅ THR sent to ${thr.nama} (${thr.nohp})`);
+          } else {
+            thrProgress.failed++;
+            thrProgress.results.push({ id: thr.id, success: false, name: thr.nama, error: "Gagal mengirim" });
+            console.log(`❌ Failed to send THR to ${thr.nama}`);
+          }
+        } catch (err) {
+          console.error(`❌ Failed to send THR to ${thr.nama}:`, err.message);
+          thrProgress.failed++;
+          thrProgress.results.push({ id: thr.id, success: false, name: thr.nama, error: err.message });
+        }
+        // Delay between sends to avoid rate limiting
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      thrProgress.running = false;
+      console.log(`🎉 THR sending completed: ${thrProgress.sent} success, ${thrProgress.failed} failed`);
+    })();
   } catch (err) {
     console.error("Error sending THR:", err);
+    thrProgress.running = false;
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -395,6 +434,167 @@ router.post("/reset-thr-progress", async (req, res) => {
     res.json({ success: true, message: "THR progress reset successfully" });
   } catch (err) {
     console.error("Error resetting THR progress:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ============================
+// CANCEL THR WHATSAPP
+// ============================
+router.post("/cancel-thr", async (req, res) => {
+  try {
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
+
+    const selected = req.body.selected || [];
+    const company = req.body.company || "hisana";
+    const cancellationNote = req.body.cancellation_note || "Pembatalan oleh user";
+
+    if (!Array.isArray(selected) || selected.length === 0) {
+      return res.status(400).json({ success: false, message: "Pilih THR yang akan dibatalkan" });
+    }
+
+    if (!["hisana", "enakko"].includes(company)) {
+      return res.status(400).json({ success: false, message: "Company tidak valid" });
+    }
+
+    const tableName = company === "hisana" ? "thr_hisana" : "thr_enakko";
+
+    const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+
+    const userId = users[0].id;
+    const senderNumber = users[0].nomor_wa;
+
+    // Validasi ID
+    const validIds = selected.filter((id) => !isNaN(parseInt(id))).map((id) => parseInt(id));
+    if (validIds.length === 0) {
+      return res.status(400).json({ success: false, message: "ID tidak valid" });
+    }
+
+    // Ambil data THR yang akan dibatalkan
+    const placeholders = validIds.map(() => "?").join(",");
+    const [rows] = await db.query(`SELECT * FROM ${tableName} WHERE id IN (${placeholders}) AND user_id = ? AND status = 'terkirim'`, [...validIds, userId]);
+
+    if (!rows.length) {
+      return res.status(400).json({ success: false, message: "Tidak ada THR terkirim yang dipilih" });
+    }
+
+    let cancelledCount = 0;
+    let failedCount = 0;
+    let messageSentCount = 0;
+    let messageFailedCount = 0;
+    const errors = [];
+
+    // Proses pembatalan secara sinkron (menunggu selesai)
+    for (const thr of rows) {
+      try {
+        // 1. Update status menjadi dibatalkan di database
+        const updateQuery = `
+          UPDATE ${tableName} 
+          SET status = 'dibatalkan', 
+              cancelled_at = NOW(), 
+              cancellation_note = ?,
+              cancelled_by = ?
+          WHERE id = ? AND user_id = ?
+        `;
+
+        const [updateResult] = await db.query(updateQuery, [cancellationNote, userId, thr.id, userId]);
+
+        if (updateResult.affectedRows > 0) {
+          cancelledCount++;
+          console.log(`✅ THR ID ${thr.id} (${thr.nama}) status updated to 'dibatalkan'`);
+
+          // 2. Kirim pesan pembatalan ke karyawan (opsional, jangan biarkan gagal membatalkan proses utama)
+          try {
+            // Import fungsi pengiriman pesan
+            const { kirimPembatalanThrHisana, kirimPembatalanThrEnakko } = await import("../../bot/cancelMessage/cancelSlipThr.js");
+
+            if (company === "hisana") {
+              await kirimPembatalanThrHisana(thr, senderNumber, cancellationNote);
+            } else {
+              await kirimPembatalanThrEnakko(thr, senderNumber, cancellationNote);
+            }
+            messageSentCount++;
+          } catch (sendError) {
+            console.error(`Gagal kirim pesan ke ${thr.nama}:`, sendError.message);
+            messageFailedCount++;
+            // Tidak perlu menganggap ini sebagai kegagalan pembatalan
+          }
+        } else {
+          failedCount++;
+          errors.push(`ID ${thr.id} (${thr.nama}): Tidak ada perubahan`);
+        }
+
+        // Delay 1 detik antar pengiriman pesan
+        await new Promise((r) => setTimeout(r, 1000));
+      } catch (err) {
+        console.error(`Gagal membatalkan THR ID ${thr.id}:`, err.message);
+        failedCount++;
+        errors.push(`ID ${thr.id} (${thr.nama}): ${err.message}`);
+      }
+    }
+
+    let message = `Berhasil membatalkan ${cancelledCount} THR.`;
+    if (failedCount > 0) {
+      message += `\n${failedCount} THR gagal dibatalkan.`;
+    }
+    if (messageSentCount > 0) {
+      message += `\nNotifikasi WhatsApp terkirim ke ${messageSentCount} karyawan.`;
+    }
+    if (messageFailedCount > 0) {
+      message += `\n${messageFailedCount} notifikasi gagal terkirim.`;
+    }
+
+    console.log(`
+      === LAPORAN PEMBATALAN THR ===
+      Total diproses: ${rows.length}
+      Berhasil dibatalkan: ${cancelledCount}
+      Gagal dibatalkan: ${failedCount}
+      Pesan terkirim: ${messageSentCount}
+      Pesan gagal: ${messageFailedCount}
+    `);
+
+    res.json({
+      success: true,
+      message: message,
+      cancelledCount: cancelledCount,
+      failedCount: failedCount,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (err) {
+    console.error("[CANCEL THR ERROR]:", err);
+    res.status(500).json({ success: false, message: "Terjadi kesalahan server: " + err.message });
+  }
+});
+
+// ============================
+// GET CANCEL THR PROGRESS
+// ============================
+router.get("/cancel-thr-progress", async (req, res) => {
+  res.json(cancelThrProgress);
+});
+
+// ============================
+// RESET CANCEL THR PROGRESS
+// ============================
+router.post("/reset-cancel-thr-progress", async (req, res) => {
+  try {
+    cancelThrProgress = {
+      running: false,
+      total: 0,
+      sent: 0,
+      failed: 0,
+      results: [],
+    };
+    console.log("🔄 Cancel THR progress has been reset");
+    res.json({ success: true, message: "Cancel THR progress reset successfully" });
+  } catch (err) {
+    console.error("Error resetting cancel THR progress:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });

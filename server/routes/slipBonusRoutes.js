@@ -4,6 +4,7 @@ import db from "../db.js";
 import { body, validationResult } from "express-validator";
 import kirimBonusHisana from "../../bot/sendMessage/kirimBonusHisana.js";
 import kirimBonusEnakko from "../../bot/sendMessage/kirimBonusEnakko.js";
+import { kirimPembatalanBonusHisana, kirimPembatalanBonusEnakko } from "../../bot/cancelMessage/cancelSlipBonus.js";
 
 const router = express.Router();
 
@@ -321,8 +322,10 @@ router.delete("/bonus/:id", async (req, res) => {
 // ========================
 router.post("/send-bonus", async (req, res) => {
   try {
-    const number = checkLogin(req, res);
-    if (!number) return;
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
 
     const selected = req.body.selected || [];
     const company = req.body.company || "hisana";
@@ -355,10 +358,14 @@ router.post("/send-bonus", async (req, res) => {
     }
 
     const placeholders = validIds.map(() => "?").join(",");
-    const [rows] = await db.query(`SELECT * FROM ${tableName} WHERE id IN (${placeholders}) AND user_id = ? AND status = 'belum_dikirim'`, [...validIds, userId]);
+    // Include both 'belum_dikirim' AND 'dibatalkan' status for resending
+    const [rows] = await db.query(`SELECT * FROM ${tableName} WHERE id IN (${placeholders}) AND user_id = ? AND (status = 'belum_dikirim' OR status = 'dibatalkan')`, [...validIds, userId]);
 
     if (!rows.length) {
-      return res.status(400).json({ success: false, message: "Tidak ada bonus terpilih yang belum dikirim" });
+      return res.status(400).json({
+        success: false,
+        message: "Tidak ada bonus yang dapat dikirim. Pastikan bonus yang dipilih berstatus 'Belum Dikirim' atau 'Dibatalkan'.",
+      });
     }
 
     // Setup bonus progress tracking
@@ -371,7 +378,8 @@ router.post("/send-bonus", async (req, res) => {
       endTime: null,
     };
 
-    res.json({ success: true, message: "Pengiriman bonus dimulai" });
+    // IMPORTANT: Send response BEFORE processing
+    res.json({ success: true, message: "Pengiriman bonus dimulai", total: rows.length });
 
     // Proses pengiriman secara asynchronous
     (async () => {
@@ -383,21 +391,134 @@ router.post("/send-bonus", async (req, res) => {
             await kirimBonusEnakko(bonus, number);
           }
 
+          // Update status to "terkirim" after successful send
           await db.query(`UPDATE ${tableName} SET status = 'terkirim' WHERE id = ? AND user_id = ?`, [bonus.id, userId]);
           bonusProgress.sent++;
+          console.log(`✅ Bonus terkirim: ${bonus.nama} (${bonus.no_induk})`);
         } catch (err) {
-          console.error(`Gagal kirim bonus ke ${bonus.nama} (${bonus.no_induk}):`, err.message);
+          console.error(`❌ Gagal kirim bonus ke ${bonus.nama} (${bonus.no_induk}):`, err.message);
           bonusProgress.failed++;
         }
         await new Promise((r) => setTimeout(r, 2000));
       }
       bonusProgress.running = false;
       bonusProgress.endTime = new Date();
+      console.log(`🎉 Pengiriman bonus selesai: ${bonusProgress.sent} berhasil, ${bonusProgress.failed} gagal`);
     })();
   } catch (err) {
     console.error("[SEND BONUS ERROR]:", err);
     bonusProgress.running = false;
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+    res.status(500).json({ success: false, message: "Terjadi kesalahan server: " + err.message });
+  }
+});
+
+// ========================
+// CANCEL BONUS WHATSAPP
+// ========================
+router.post("/cancel-bonus", async (req, res) => {
+  try {
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
+
+    const selected = req.body.selected || [];
+    const company = req.body.company || "hisana";
+    const cancellationNote = req.body.cancellation_note || "Pembatalan oleh user";
+
+    if (!Array.isArray(selected) || selected.length === 0) {
+      return res.status(400).json({ success: false, message: "Pilih bonus yang akan dibatalkan" });
+    }
+
+    if (!["hisana", "enakko"].includes(company)) {
+      return res.status(400).json({ success: false, message: "Company tidak valid" });
+    }
+
+    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
+
+    const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+
+    const userId = users[0].id;
+    const senderNumber = users[0].nomor_wa;
+
+    // Validasi ID
+    const validIds = selected.filter((id) => !isNaN(parseInt(id))).map((id) => parseInt(id));
+    if (validIds.length === 0) {
+      return res.status(400).json({ success: false, message: "ID tidak valid" });
+    }
+
+    // Ambil data bonus yang akan dibatalkan
+    const placeholders = validIds.map(() => "?").join(",");
+    const [rows] = await db.query(`SELECT * FROM ${tableName} WHERE id IN (${placeholders}) AND user_id = ? AND status = 'terkirim'`, [...validIds, userId]);
+
+    if (!rows.length) {
+      return res.status(400).json({ success: false, message: "Tidak ada bonus terkirim yang dipilih" });
+    }
+
+    // Kirim response segera
+    res.json({ success: true, message: "Pembatalan bonus dimulai" });
+
+    // Proses pembatalan secara asynchronous
+    (async () => {
+      let cancelledCount = 0;
+      let failedCount = 0;
+      let messageSentCount = 0;
+      let messageFailedCount = 0;
+
+      for (const bonus of rows) {
+        try {
+          // 1. Update status menjadi dibatalkan di database
+          const updateQuery = `
+            UPDATE ${tableName} 
+            SET status = 'dibatalkan', 
+                cancelled_at = NOW(), 
+                cancellation_note = ?,
+                cancelled_by = ?
+            WHERE id = ? AND user_id = ?
+          `;
+
+          await db.query(updateQuery, [cancellationNote, userId, bonus.id, userId]);
+          cancelledCount++;
+
+          // 2. Kirim pesan pembatalan ke karyawan
+          try {
+            if (company === "hisana") {
+              await kirimPembatalanBonusHisana(bonus, senderNumber, cancellationNote);
+            } else {
+              await kirimPembatalanBonusEnakko(bonus, senderNumber, cancellationNote);
+            }
+            messageSentCount++;
+          } catch (sendError) {
+            console.error(`Gagal kirim pesan ke ${bonus.nama}:`, sendError.message);
+            messageFailedCount++;
+          }
+
+          // Delay 2 detik antar pengiriman untuk menghindari rate limit
+          await new Promise((r) => setTimeout(r, 2000));
+        } catch (err) {
+          console.error(`Gagal membatalkan bonus ID ${bonus.id}:`, err.message);
+          failedCount++;
+        }
+      }
+
+      console.log(`
+        === LAPORAN PEMBATALAN BONUS ===
+        Total diproses: ${rows.length}
+        Berhasil dibatalkan: ${cancelledCount}
+        Gagal dibatalkan: ${failedCount}
+        Pesan terkirim: ${messageSentCount}
+        Pesan gagal: ${messageFailedCount}
+      `);
+    })();
+  } catch (err) {
+    console.error("[CANCEL BONUS ERROR]:", err);
+    // Jika response belum dikirim
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+    }
   }
 });
 

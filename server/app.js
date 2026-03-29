@@ -101,16 +101,15 @@ app.get("/", async (req, res) => {
 // ============================
 // DASHBOARD
 // ============================
-
 app.get("/dashboard", async (req, res) => {
-  // admin biasa tidak boleh dashboard
+  // admin biasa tidak boleh dashboard (mereka hanya bisa manage-users)
   if (req.session.admin?.role === "admin") {
     return res.status(404).sendFile(path.join(process.cwd(), "public/404.html"));
   }
 
-  // superadmin boleh
+  // superadmin redirect ke manage-users
   if (req.session.admin?.role === "superadmin") {
-    return res.sendFile(path.join(process.cwd(), "public/index.html"));
+    return res.redirect("/manage-users");
   }
 
   // login via QR
@@ -123,10 +122,8 @@ app.get("/dashboard", async (req, res) => {
   if (!user) {
     req.session.destroy(() => {
       res.clearCookie("connect.sid");
-
       return res.redirect("/");
     });
-
     return;
   }
 
@@ -138,7 +135,6 @@ app.get("/dashboard", async (req, res) => {
 
   res.sendFile(path.join(process.cwd(), "public/index.html"));
 });
-
 // ============================
 // MANAGE USERS PAGE
 // ============================

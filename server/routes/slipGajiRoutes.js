@@ -5,6 +5,7 @@ import { uploadExcel } from "../uploadExcel.js";
 import kirimSlip from "../../bot/sendMessage/kirimSlipGajiHisana.js";
 import kirimSlipEnakko from "../../bot/sendMessage/kirimSlipGajiEnakko.js";
 import { progress } from "../progress.js";
+import { kirimPembatalanSlipHisana, kirimPembatalanSlipEnakko } from "../../bot/cancelMessage/cancelSlipGaji.js";
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
@@ -478,6 +479,184 @@ router.post("/start-send", async (req, res) => {
     console.error("START SEND ERROR:", err);
     progress.running = false;
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ========================
+// BATAL KIRIM SLIP (UNDO SEND)
+// ========================
+router.post("/undo-send", async (req, res) => {
+  try {
+    const number = checkLogin(req, res);
+    if (!number) return;
+
+    const { selected, company, cancellation_note } = req.body;
+    const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+
+    if (!selected || selected.length === 0) {
+      return res.status(400).json({ success: false, message: "Tidak ada data yang dipilih" });
+    }
+
+    const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+    const userId = users[0].id;
+    const senderNumber = users[0].nomor_wa;
+
+    // Ambil data yang akan dibatalkan (hanya yang statusnya terkirim)
+    const placeholders = selected.map(() => "?").join(",");
+    const [rows] = await db.query(
+      `SELECT * FROM ${tableName} 
+       WHERE id IN (${placeholders}) 
+       AND user_id = ? 
+       AND status_slip = 'terkirim'`,
+      [...selected, userId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Tidak ada data dengan status terkirim yang dipilih",
+      });
+    }
+
+    // Kirim pesan pembatalan ke nomor WhatsApp
+    const cancelMessages = [];
+    for (const slip of rows) {
+      try {
+        let result;
+        if (company === "hisana") {
+          result = await kirimPembatalanSlipHisana(slip, senderNumber, cancellation_note);
+        } else {
+          result = await kirimPembatalanSlipEnakko(slip, senderNumber, cancellation_note);
+        }
+
+        cancelMessages.push({
+          id: slip.id,
+          no_induk: slip.no_induk,
+          nama: slip.nama || slip.nama_karyawan,
+          success: result.success,
+          message: result.message,
+        });
+
+        // Delay 1 detik antar pengiriman
+        await new Promise((r) => setTimeout(r, 1000));
+      } catch (err) {
+        console.error(`Error sending cancel notification to ${slip.no_induk}:`, err);
+        cancelMessages.push({
+          id: slip.id,
+          no_induk: slip.no_induk,
+          nama: slip.nama || slip.nama_karyawan,
+          success: false,
+          message: err.message,
+        });
+      }
+    }
+
+    // Update status menjadi "dibatalkan" di database
+    const updateQuery = `
+      UPDATE ${tableName} 
+      SET status_slip = 'dibatalkan', 
+          cancelled_at = NOW(),
+          cancellation_note = ?,
+          cancelled_by = ?
+      WHERE id IN (${placeholders}) 
+      AND user_id = ?
+    `;
+
+    const finalCancellationNote = cancellation_note || `Pembatalan kirim slip gaji pada ${new Date().toLocaleString("id-ID")}`;
+    const [updateResult] = await db.query(updateQuery, [finalCancellationNote, userId, ...selected, userId]);
+
+    // Hitung statistik
+    const successCount = cancelMessages.filter((m) => m.success).length;
+    const failedCount = cancelMessages.filter((m) => !m.success).length;
+
+    res.json({
+      success: true,
+      message: `Berhasil membatalkan ${updateResult.affectedRows} slip gaji. Notifikasi: ${successCount} berhasil, ${failedCount} gagal.`,
+      details: cancelMessages,
+      successCount,
+      failedCount,
+      updatedCount: updateResult.affectedRows,
+    });
+  } catch (err) {
+    console.error("[UNDO SEND ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ========================
+// CHECK UNDO STATUS (apakah data bisa dibatalkan)
+// ========================
+router.get("/check-undo-status", async (req, res) => {
+  try {
+    const number = checkLogin(req, res);
+    if (!number) return;
+
+    const company = req.query.company || "hisana";
+    const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+    const userId = users[0].id;
+
+    // Hitung jumlah data dengan status terkirim
+    const [result] = await db.query(
+      `SELECT COUNT(*) as count FROM ${tableName} 
+       WHERE user_id = ? AND status_slip = 'terkirim'`,
+      [userId],
+    );
+
+    res.json({
+      success: true,
+      hasSentData: result[0].count > 0,
+      sentCount: result[0].count,
+    });
+  } catch (err) {
+    console.error("[CHECK UNDO STATUS ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ========================
+// GET DATA DENGAN STATUS TERTENTU
+// ========================
+router.get("/my-slip/status/:status", async (req, res) => {
+  try {
+    const number = checkLogin(req, res);
+    if (!number) return;
+
+    const company = req.query.company || "hisana";
+    const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+    const status = req.params.status;
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.json([]);
+    }
+    const userId = users[0].id;
+
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    const [rows] = await db.query(
+      `SELECT * FROM ${tableName} 
+       WHERE user_id = ? 
+       AND MONTH(created_at) = ? 
+       AND YEAR(created_at) = ?
+       AND status_slip = ?
+       ORDER BY id DESC`,
+      [userId, currentMonth, currentYear, status],
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("[GET SLIP BY STATUS ERROR]:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 

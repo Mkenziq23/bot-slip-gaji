@@ -6,7 +6,7 @@ import db from "../db.js";
 const router = express.Router();
 
 /**
- * Middleware cek login admin
+ * Middleware cek login admin (semua role admin)
  */
 function requireAdmin(req, res, next) {
   if (!req.session.admin) {
@@ -20,7 +20,7 @@ function requireAdmin(req, res, next) {
  */
 function requireSuperAdmin(req, res, next) {
   if (!req.session.admin || req.session.admin.role !== "superadmin") {
-    return res.redirect("/admin-login");
+    return res.status(403).json({ error: "Superadmin only" });
   }
   next();
 }
@@ -72,46 +72,23 @@ router.post("/admin-login", async (req, res) => {
 
 /**
  * ==========================
- * Manage Users Page
+ * Manage Users Page (Admin dan Superadmin bisa akses)
  * ==========================
  */
 router.get("/manage-users", requireAdmin, async (req, res) => {
   res.sendFile(path.join(process.cwd(), "public/manage-users.html"));
 });
-router.get("/manage-users", requireSuperAdmin, async (req, res) => {
-  res.sendFile(path.join(process.cwd(), "public/manage-users.html"));
-});
 
-/**
- * ==========================
- * API Get Users
- * ==========================
- */
-router.get("/api/users", requireAdmin, async (req, res) => {
-  const [rows] = await db.query("SELECT * FROM users");
-  res.json(rows);
-});
-
-router.get("/api/admin/me", (req, res) => {
-  if (!req.session.admin) {
-    return res.json({
-      loggedIn: false,
-    });
-  }
-
-  res.json({
-    loggedIn: true,
-    role: req.session.admin.role,
-  });
-});
 /**
  * ==========================
  * Logout Admin
  * ==========================
  */
 router.get("/admin-logout", (req, res) => {
-  req.session.admin = null;
-  res.redirect("/admin-login");
+  req.session.destroy(() => {
+    res.clearCookie("connect.sid");
+    res.redirect("/admin-login");
+  });
 });
 
 export default router;

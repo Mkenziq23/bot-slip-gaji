@@ -115,13 +115,17 @@
             </table>
           </div>
 
+          <!-- Update action-bar section for slip gaji -->
           <div class="action-bar" style="margin-top: 20px">
             <div class="pagination">
               <button id="prevPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
               <span id="pageInfo" class="page-info"></span>
               <button id="nextPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
             </div>
-            <button id="sendSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim Slip Terpilih</button>
+            <div style="display: flex; gap: 10px">
+              <button id="sendSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim Slip Terpilih</button>
+              <button id="cancelSendSelected" class="btn-danger cancel-send-btn" style="display: none"><i class="fas fa-ban"></i> Batalkan Kirim Terpilih</button>
+            </div>
           </div>
 
           <!-- PROGRESS BAR UNTUK KIRIM SLIP -->
@@ -130,6 +134,14 @@
               <div id="bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 10px; transition: width 0.3s ease"></div>
             </div>
             <p id="status" class="progress-status">Siap mengirim slip.</p>
+          </div>
+
+          <!-- PROGRESS BAR UNTUK PEMBATALAN SLIP -->
+          <div class="progress-container" id="cancelSlipProgressContainer" style="display: none">
+            <div class="progress-bg">
+              <div id="cancelSlipProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #dc2626, #ef4444); border-radius: 10px; transition: width 0.3s ease"></div>
+            </div>
+            <p id="cancelSlipProgressStatus" class="progress-status">Siap membatalkan slip.</p>
           </div>
         </div>
       </div>
@@ -254,15 +266,27 @@
               <span id="bonusPageInfo" class="page-info"></span>
               <button id="nextBonusPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
             </div>
-            <button id="sendBonusSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim Bonus Terpilih</button>
+            <div style="display: flex; gap: 10px">
+              <button id="sendBonusSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim Bonus Terpilih</button>
+              <button id="cancelSendBonusSelected" class="btn-danger cancel-send-btn" style="display: none"><i class="fas fa-ban"></i> Batalkan Kirim Terpilih</button>
+            </div>
           </div>
 
           <!-- PROGRESS BAR UNTUK BONUS -->
+          <!-- PROGRESS BAR UNTUK BONUS -->
           <div class="progress-container" id="bonusProgressContainer" style="display: none">
             <div class="progress-bg">
-              <div id="bonusProgressBar"></div>
+              <div id="bonusProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 10px; transition: width 0.3s ease"></div>
             </div>
             <p id="bonusProgressStatus" class="progress-status">Siap mengirim bonus.</p>
+          </div>
+
+          <!-- PROGRESS BAR UNTUK PEMBATALAN BONUS -->
+          <div class="progress-container" id="cancelBonusProgressContainer" style="display: none">
+            <div class="progress-bg">
+              <div id="cancelBonusProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #dc2626, #ef4444); border-radius: 10px; transition: width 0.3s ease"></div>
+            </div>
+            <p id="cancelBonusProgressStatus" class="progress-status">Siap membatalkan bonus.</p>
           </div>
         </div>
       </div>
@@ -313,21 +337,33 @@
             </table>
           </div>
 
+          <!-- Update the action-bar section for THR -->
           <div class="action-bar" style="margin-top: 20px">
             <div class="pagination">
               <button id="prevThrPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
               <span id="thrPageInfo" class="page-info"></span>
               <button id="nextThrPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
             </div>
-            <button id="sendThrSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim THR Terpilih</button>
+            <div style="display: flex; gap: 10px">
+              <button id="sendThrSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim THR Terpilih</button>
+              <button id="cancelSendThrSelected" class="btn-danger cancel-send-btn" style="display: none"><i class="fas fa-ban"></i> Batalkan Kirim Terpilih</button>
+            </div>
           </div>
 
           <!-- PROGRESS BAR UNTUK THR -->
           <div class="progress-container" id="thrProgressContainer" style="display: none">
             <div class="progress-bg">
-              <div id="thrProgressBar"></div>
+              <div id="thrProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 10px; transition: width 0.3s ease"></div>
             </div>
             <p id="thrProgressStatus" class="progress-status">Siap mengirim THR.</p>
+          </div>
+
+          <!-- PROGRESS BAR UNTUK PEMBATALAN THR -->
+          <div class="progress-container" id="cancelThrProgressContainer" style="display: none">
+            <div class="progress-bg">
+              <div id="cancelThrProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #dc2626, #ef4444); border-radius: 10px; transition: width 0.3s ease"></div>
+            </div>
+            <p id="cancelThrProgressStatus" class="progress-status">Siap membatalkan THR.</p>
           </div>
         </div>
       </div>

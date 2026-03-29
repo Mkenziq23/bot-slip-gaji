@@ -177,6 +177,49 @@ body {
   transform: translateY(-1px);
 }
 
+/* Tambahkan di file style.css */
+.status-badge.cancelled {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.status-badge.cancelled i {
+  color: #b45309;
+}
+
+tr.status-cancelled {
+  background-color: #fef3c7 !important;
+  opacity: 0.8;
+}
+
+tr.status-cancelled:hover {
+  background-color: #fde68a !important;
+}
+
+/* Status styling */
+.status-sent {
+  background-color: #f0fdf4 !important;
+}
+
+.status-cancelled {
+  background-color: #fef3c7 !important;
+  opacity: 0.85;
+}
+
+.status-cancelled:hover {
+  background-color: #fde68a !important;
+}
+
+.status-badge.cancelled {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fed7aa;
+}
+
+.status-badge.cancelled i {
+  color: #b45309;
+}
+
 .add-data-btn {
   background: var(--primary);
   color: white;
