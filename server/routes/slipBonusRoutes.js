@@ -60,6 +60,8 @@ router.get("/bonus", async (req, res) => {
     if (!number) return;
 
     const company = req.query.company || "hisana";
+    const month = req.query.month;
+    const year = req.query.year;
     const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
 
     // Validasi company
@@ -74,22 +76,38 @@ router.get("/bonus", async (req, res) => {
 
     const userId = users[0].id;
 
-    // Get current date for filtering
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-
-    const [rows] = await db.query(
-      `
-      SELECT id, no_induk, nama, bulan, tahun, jumlah_bonus, nohp, status, created_at, is_duplicated 
+    // Build query dengan filter menggunakan kolom bulan dan tahun
+    let query = `
+      SELECT id, no_induk, nama, bulan, tahun, jumlah_bonus, nohp, status, 
+            created_at, is_duplicated, cancelled_at, cancellation_note, cancelled_by 
       FROM ${tableName} 
       WHERE user_id = ? 
-      AND MONTH(created_at) = ? 
-      AND YEAR(created_at) = ?
-      ORDER BY id DESC
-    `,
-      [userId, currentMonth, currentYear],
-    );
+    `;
+
+    const queryParams = [userId];
+
+    // Add month filter if provided and not "all"
+    if (month && month !== "all" && month !== "") {
+      query += ` AND bulan = ?`;
+      queryParams.push(parseInt(month));
+      console.log(`[BONUS] Adding month filter: ${month}`);
+    }
+
+    // Add year filter if provided and not "all"
+    if (year && year !== "all" && year !== "") {
+      query += ` AND tahun = ?`;
+      queryParams.push(parseInt(year));
+      console.log(`[BONUS] Adding year filter: ${year}`);
+    }
+
+    // Add order by
+    query += ` ORDER BY tahun DESC, bulan DESC, id DESC`;
+
+    console.log(`[BONUS] Query: ${query}, Params:`, queryParams);
+
+    const [rows] = await db.query(query, queryParams);
+
+    console.log(`[BONUS] Found ${rows.length} records for ${company} with month=${month}, year=${year}`);
 
     // Sanitize data sebelum dikirim
     const sanitizedRows = rows.map((row) => ({
@@ -101,6 +119,49 @@ router.get("/bonus", async (req, res) => {
     res.json(sanitizedRows);
   } catch (err) {
     console.error("[GET BONUS ERROR]:", err);
+    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+  }
+});
+
+// ========================
+// GET AVAILABLE BONUS YEARS
+// ========================
+router.get("/bonus-years", async (req, res) => {
+  try {
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
+
+    const company = req.query.company || "hisana";
+    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
+
+    if (!["hisana", "enakko"].includes(company)) {
+      return res.status(400).json({ success: false, message: "Company tidak valid" });
+    }
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+
+    const userId = users[0].id;
+
+    // Get distinct years from kolom tahun (bukan created_at)
+    const [rows] = await db.query(
+      `SELECT DISTINCT tahun FROM ${tableName} 
+       WHERE user_id = ? 
+       ORDER BY tahun DESC`,
+      [userId],
+    );
+
+    const years = rows.map((row) => row.tahun);
+
+    console.log(`[BONUS YEARS] Available years for ${company}:`, years);
+
+    res.json({ success: true, years });
+  } catch (err) {
+    console.error("[GET BONUS YEARS ERROR]:", err);
     res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
   }
 });
@@ -155,6 +216,23 @@ router.post("/bonus", validateBonus, async (req, res) => {
     } else {
       bulan = d.bulan;
       tahun = d.tahun;
+    }
+
+    // Check if no_induk already exists for this user in current month
+    const [existing] = await db.query(
+      `SELECT COUNT(*) as count FROM ${tableName} 
+       WHERE user_id = ? 
+       AND no_induk = ? 
+       AND bulan = ? 
+       AND tahun = ?`,
+      [userId, d.no_induk, bulan, tahun],
+    );
+
+    if (existing[0].count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Nomor induk ${d.no_induk} sudah memiliki data bonus untuk bulan ${bulan}/${tahun}. Silakan gunakan nomor induk yang berbeda atau edit data yang sudah ada.`,
+      });
     }
 
     // Sanitasi input
@@ -235,6 +313,24 @@ router.put("/bonus/:id", validateBonus, async (req, res) => {
     } else {
       bulan = d.bulan;
       tahun = d.tahun;
+    }
+
+    // Check if no_induk already exists for this user in current month (excluding current record)
+    const [existing] = await db.query(
+      `SELECT COUNT(*) as count FROM ${tableName} 
+       WHERE user_id = ? 
+       AND no_induk = ? 
+       AND bulan = ? 
+       AND tahun = ?
+       AND id != ?`,
+      [userId, d.no_induk, bulan, tahun, id],
+    );
+
+    if (existing[0].count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Nomor induk ${d.no_induk} sudah memiliki data bonus untuk bulan ${bulan}/${tahun}. Silakan gunakan nomor induk yang berbeda.`,
+      });
     }
 
     // Sanitasi input
@@ -530,30 +626,36 @@ router.get("/bonus-progress", (req, res) => {
 });
 
 // ========================
-// DUPLIKASI DATA BONUS DARI BULAN SEBELUMNYA
+// DUPLIKASI DATA BONUS DARI BULAN SEBELUMNYA (SEMUA STATUS)
 // ========================
 router.post("/duplicate-bonus-data", async (req, res) => {
   try {
     console.log("[DUPLICATE BONUS] Request received");
+    console.log("[DUPLICATE BONUS] Query params:", req.query);
+    console.log("[DUPLICATE BONUS] Session number:", req.session.number);
 
     const number = req.session.number;
     if (!number) {
+      console.log("[DUPLICATE BONUS] No session number found");
       return res.status(401).json({ success: false, message: "Belum login" });
     }
 
     const company = req.query.company || "hisana";
+    console.log(`[DUPLICATE BONUS] Company: ${company}`);
+
     const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
+    console.log(`[DUPLICATE BONUS] Table name: ${tableName}`);
 
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
-
+    // Get user ID
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
+      console.log("[DUPLICATE BONUS] User not found for number:", number);
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
     const userId = users[0].id;
+    console.log(`[DUPLICATE BONUS] User ID: ${userId}`);
 
+    // Get current date and previous month
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
@@ -567,26 +669,34 @@ router.post("/duplicate-bonus-data", async (req, res) => {
 
     console.log(`[DUPLICATE BONUS] Current: ${currentYear}-${currentMonth}, Previous: ${previousYear}-${previousMonth}`);
 
-    // Get all bonus data from previous month
+    // Get ALL bonus data from previous month (semua status)
     let previousData;
     try {
       const query = `
         SELECT * FROM ${tableName} 
         WHERE user_id = ? 
-        AND MONTH(created_at) = ? 
-        AND YEAR(created_at) = ?
+        AND bulan = ? 
+        AND tahun = ?
         ORDER BY id
       `;
       [previousData] = await db.query(query, [userId, previousMonth, previousYear]);
+      console.log(`[DUPLICATE BONUS] Found ${previousData.length} records from previous month`);
+
+      // Log breakdown status
+      const statusBreakdown = previousData.reduce((acc, item) => {
+        acc[item.status] = (acc[item.status] || 0) + 1;
+        return acc;
+      }, {});
+      console.log(`[DUPLICATE BONUS] Status breakdown:`, statusBreakdown);
     } catch (err) {
       console.error("[DUPLICATE BONUS] Error fetching previous data:", err);
-      return res.status(500).json({ success: false, message: "Error fetching data" });
+      return res.status(500).json({ success: false, message: "Error fetching data: " + err.message });
     }
 
     if (previousData.length === 0) {
       return res.status(400).json({
         success: false,
-        message: `Tidak ada data bonus dari bulan ${previousMonth}/${previousYear} untuk diduplikasi`,
+        message: `Tidak ada data bonus dari bulan ${previousMonth}/${previousYear} untuk diduplikasi. Pastikan data bonus bulan lalu sudah ada.`,
       });
     }
 
@@ -596,17 +706,23 @@ router.post("/duplicate-bonus-data", async (req, res) => {
       const query = `
         SELECT no_induk FROM ${tableName} 
         WHERE user_id = ? 
-        AND MONTH(created_at) = ? 
-        AND YEAR(created_at) = ?
+        AND bulan = ? 
+        AND tahun = ?
       `;
       [existingData] = await db.query(query, [userId, currentMonth, currentYear]);
+      console.log(`[DUPLICATE BONUS] Existing employees in current month: ${existingData.length}`);
     } catch (err) {
       console.error("[DUPLICATE BONUS] Error checking existing data:", err);
-      return res.status(500).json({ success: false, message: "Error checking existing data" });
+      return res.status(500).json({ success: false, message: "Error checking existing data: " + err.message });
     }
 
+    // Create set of existing employee IDs
     const existingEmployeeIds = new Set(existingData.map((item) => item.no_induk));
+    console.log(`[DUPLICATE BONUS] Existing employee IDs:`, Array.from(existingEmployeeIds));
+
+    // Filter data from previous month to only include employees NOT in current month
     const dataToDuplicate = previousData.filter((item) => !existingEmployeeIds.has(item.no_induk));
+    console.log(`[DUPLICATE BONUS] Found ${dataToDuplicate.length} new employees to duplicate (out of ${previousData.length} total)`);
 
     if (dataToDuplicate.length === 0) {
       return res.status(400).json({
@@ -615,50 +731,104 @@ router.post("/duplicate-bonus-data", async (req, res) => {
       });
     }
 
+    // Duplicate data menggunakan transaksi
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
     let duplicatedCount = 0;
     let skippedCount = previousData.length - dataToDuplicate.length;
     let errors = [];
+    let duplicatedIds = [];
 
-    for (const oldData of dataToDuplicate) {
-      try {
-        const { id, created_at, ...newData } = oldData;
+    try {
+      for (const oldData of dataToDuplicate) {
+        try {
+          // Create new data object
+          const newData = {
+            user_id: userId,
+            no_induk: oldData.no_induk,
+            nama: oldData.nama,
+            bulan: currentMonth,
+            tahun: currentYear,
+            jumlah_bonus: oldData.jumlah_bonus,
+            nohp: oldData.nohp,
+            status: "belum_dikirim", // Always reset to belum_dikirim
+            is_duplicated: 1,
+            duplicated_from_id: oldData.id,
+            duplicated_at: new Date(),
+            created_at: new Date(),
+          };
 
-        newData.bulan = currentMonth;
-        newData.tahun = currentYear;
-        newData.status = "belum_dikirim";
-        newData.is_duplicated = true;
-        newData.duplicated_from_id = id;
-        newData.duplicated_at = new Date();
+          // Build insert query
+          const fields = Object.keys(newData);
+          const values = Object.values(newData);
+          const placeholders = fields.map(() => "?").join(",");
 
-        const fields = Object.keys(newData);
-        const values = Object.values(newData);
-        const placeholders = fields.map(() => "?").join(",");
+          const insertQuery = `INSERT INTO ${tableName} (${fields.join(",")}) VALUES (${placeholders})`;
 
-        const insertQuery = `INSERT INTO ${tableName} (${fields.join(",")}) VALUES (${placeholders})`;
-        await db.query(insertQuery, values);
-        duplicatedCount++;
-      } catch (err) {
-        console.error(`[DUPLICATE BONUS] Error inserting record for ${oldData.no_induk}:`, err);
-        errors.push(`${oldData.no_induk}: ${err.message}`);
+          console.log(`[DUPLICATE BONUS] Duplicating employee: ${oldData.no_induk} (${oldData.nama}) from ID: ${oldData.id} (status asli: ${oldData.status})`);
+          const [result] = await connection.query(insertQuery, values);
+          duplicatedIds.push(result.insertId);
+          duplicatedCount++;
+        } catch (err) {
+          console.error(`[DUPLICATE BONUS] Error inserting record for ${oldData.no_induk}:`, err);
+          errors.push(`${oldData.no_induk}: ${err.message}`);
+        }
       }
-    }
 
-    let message = `Berhasil menduplikasi ${duplicatedCount} data bonus baru dari bulan ${previousMonth}/${previousYear}`;
-    if (skippedCount > 0) {
-      message += `\n\n${skippedCount} data bonus yang sudah ada di bulan ini tidak diduplikasi.`;
-    }
+      // Commit transaksi
+      await connection.commit();
+      console.log(`[DUPLICATE BONUS] Transaction committed successfully`);
 
-    res.json({
-      success: true,
-      message: message,
-      duplicatedCount: duplicatedCount,
-      skippedCount: skippedCount,
-      totalPrevious: previousData.length,
-      errors: errors.length > 0 ? errors : undefined,
-    });
+      // Prepare message HTML for SweetAlert
+      let messageHtml = `<div style="background:#f0fdf4;border-radius:12px;padding:15px">
+          <p><strong>✅ Berhasil menduplikasi data bonus dari bulan ${previousMonth}/${previousYear} ke bulan ${currentMonth}/${currentYear}.</strong></p>
+          <p style="margin-top: 10px;">
+            <i class="fas fa-check-circle" style="color:#16a34a"></i> <strong>${duplicatedCount}</strong> data bonus berhasil diduplikasi
+          </p>`;
+
+      if (skippedCount > 0) {
+        messageHtml += `<p style="margin-top: 5px;">
+          <i class="fas fa-info-circle" style="color:#f59e0b"></i> <strong>${skippedCount}</strong> data bonus dilewati (sudah ada di bulan ini)
+        </p>`;
+      }
+
+      if (errors.length > 0 && errors.length <= 5) {
+        messageHtml += `<div style="margin-top: 10px; padding: 10px; background: #fee2e2; border-radius: 8px;">
+          <p style="margin: 0 0 5px 0; font-weight: bold; color: #dc2626;">Data gagal diduplikasi:</p>
+          <ul style="margin: 0; padding-left: 20px; color: #dc2626;">`;
+        errors.forEach((error) => {
+          messageHtml += `<li>${error}</li>`;
+        });
+        messageHtml += `</ul></div>`;
+      }
+
+      messageHtml += `</div>`;
+
+      res.json({
+        success: true,
+        message: `Berhasil menduplikasi ${duplicatedCount} data bonus dari bulan ${previousMonth}/${previousYear} ke bulan ${currentMonth}/${currentYear}.`,
+        messageHtml: messageHtml,
+        duplicatedCount: duplicatedCount,
+        skippedCount: skippedCount,
+        totalPrevious: previousData.length,
+        duplicatedIds: duplicatedIds,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+    } catch (err) {
+      // Rollback jika ada error
+      await connection.rollback();
+      console.error("[DUPLICATE BONUS] Transaction error, rolling back:", err);
+      throw err;
+    } finally {
+      connection.release();
+    }
   } catch (err) {
     console.error("[DUPLICATE BONUS ERROR]:", err);
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+    res.status(500).json({
+      success: false,
+      message: err.message || "Terjadi kesalahan saat menduplikasi data bonus",
+    });
   }
 });
 
@@ -696,8 +866,8 @@ router.post("/cancel-duplicate-bonus", async (req, res) => {
       SELECT id, no_induk, nama, is_duplicated 
       FROM ${tableName} 
       WHERE user_id = ? 
-      AND MONTH(created_at) = ? 
-      AND YEAR(created_at) = ?
+      AND bulan = ? 
+      AND tahun = ?
     `;
     [currentData] = await db.query(getDataQuery, [userId, currentMonth, currentYear]);
 
@@ -771,17 +941,19 @@ router.get("/check-bonus-duplicate-status", async (req, res) => {
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    let result;
+    // GUNAKAN kolom bulan dan tahun, BUKAN MONTH(created_at) dan YEAR(created_at)
     const query = `
       SELECT COUNT(*) as count FROM ${tableName} 
       WHERE user_id = ? 
-      AND MONTH(created_at) = ? 
-      AND YEAR(created_at) = ?
+      AND bulan = ? 
+      AND tahun = ?
       AND is_duplicated = 1
     `;
-    [result] = await db.query(query, [userId, currentMonth, currentYear]);
+    const [result] = await db.query(query, [userId, currentMonth, currentYear]);
 
     const hasRecentDuplicate = result[0].count > 0;
+
+    console.log(`[CHECK BONUS STATUS] User ${userId}, Month ${currentMonth}/${currentYear}, Has duplicated data: ${hasRecentDuplicate}`);
 
     res.json({
       success: true,

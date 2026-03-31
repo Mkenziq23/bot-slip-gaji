@@ -22,7 +22,17 @@ export async function uploadExcel(req, res, number, company) {
     const worksheet = workbook.Sheets[sheetName];
     const rawData = xlsx.utils.sheet_to_json(worksheet, { defval: "" });
 
-    console.log(`[UPLOAD] ${rawData.length} baris ditemukan di Excel`);
+    console.log(`[UPLOAD] ${rawData.length} baris ditemukan di Excel untuk company: ${company}`);
+
+    // Get current date untuk filter bulan dan tahun
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    let insertedCount = 0;
+    let duplicateInMonthCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
 
     if (company === "hisana") {
       for (const row of rawData) {
@@ -45,87 +55,60 @@ export async function uploadExcel(req, res, number, company) {
           "NO HP": nohp,
         } = row;
 
-        // Cek apakah data sudah ada
-        const [existing] = await db.query("SELECT * FROM slip_gaji_hisana WHERE user_id=? AND no_induk=?", [userId, no_induk]);
-
-        if (existing.length) {
-          const e = existing[0];
-          // Bandingkan data, jika sama persis -> skip
-          if (
-            e.nama === nama &&
-            e.posisi === posisi &&
-            e.store === store &&
-            e.awal_masuk === awal_masuk &&
-            e.kerja == kerja &&
-            parseFloat(e.gaji) === parseFloat(gaji) &&
-            parseFloat(e.iuran_bpjs_ketenagakerjaan) === parseFloat(iuran_bpjs_ketenagakerjaan) &&
-            parseFloat(e.kerajinan) === parseFloat(kerajinan) &&
-            parseFloat(e.cuti) === parseFloat(cuti) &&
-            parseFloat(e.tunj_bpjs_pulsa) === parseFloat(tunj_bpjs_pulsa) &&
-            parseFloat(e.jumlah) === parseFloat(jumlah) &&
-            parseFloat(e.um) === parseFloat(um) &&
-            e.keterangan === keterangan &&
-            parseFloat(e.gaji_total) === parseFloat(gaji_total) &&
-            e.nohp === nohp
-          ) {
-            continue; // Data sama, skip
-          }
-
-          // Jika ada perubahan, update
-          await db.query(
-            `UPDATE slip_gaji_hisana SET 
-              nama=?, posisi=?, store=?, awal_masuk=?, kerja=?, gaji=?, 
-              iuran_bpjs_ketenagakerjaan=?, kerajinan=?, cuti=?, tunj_bpjs_pulsa=?, 
-              jumlah=?, um=?, keterangan=?, gaji_total=?, nohp=? 
-            WHERE id=?`,
-            [
-              nama,
-              posisi,
-              store,
-              awal_masuk,
-              kerja,
-              parseFloat(gaji) || 0,
-              parseFloat(iuran_bpjs_ketenagakerjaan) || 0,
-              parseFloat(kerajinan) || 0,
-              parseFloat(cuti) || 0,
-              parseFloat(tunj_bpjs_pulsa) || 0,
-              parseFloat(jumlah) || 0,
-              parseFloat(um) || 0,
-              keterangan,
-              parseFloat(gaji_total) || 0,
-              nohp,
-              e.id,
-            ],
-          );
-        } else {
-          // Insert jika belum ada
-          await db.query(
-            `INSERT INTO slip_gaji_hisana
-            (user_id, no_induk, nama, posisi, store, awal_masuk, kerja, gaji,
-             iuran_bpjs_ketenagakerjaan, kerajinan, cuti, tunj_bpjs_pulsa,
-             jumlah, um, keterangan, gaji_total, nohp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              userId,
-              no_induk,
-              nama,
-              posisi,
-              store,
-              awal_masuk,
-              kerja,
-              parseFloat(gaji) || 0,
-              parseFloat(iuran_bpjs_ketenagakerjaan) || 0,
-              parseFloat(kerajinan) || 0,
-              parseFloat(cuti) || 0,
-              parseFloat(tunj_bpjs_pulsa) || 0,
-              parseFloat(jumlah) || 0,
-              parseFloat(um) || 0,
-              keterangan,
-              parseFloat(gaji_total) || 0,
-              nohp,
-            ],
-          );
+        // Validasi data minimal
+        if (!no_induk || !nama) {
+          console.log(`[UPLOAD] Skip baris karena No Induk atau Nama kosong`);
+          skippedCount++;
+          continue;
         }
+
+        // CEK DATA DI BULAN YANG SAMA
+        const [existingInMonth] = await db.query(
+          `SELECT * FROM slip_gaji_hisana 
+           WHERE user_id = ? 
+           AND no_induk = ? 
+           AND MONTH(created_at) = ? 
+           AND YEAR(created_at) = ?`,
+          [userId, no_induk, currentMonth, currentYear],
+        );
+
+        if (existingInMonth.length > 0) {
+          console.log(`[UPLOAD] Data untuk no_induk ${no_induk} sudah ada di bulan ${currentMonth}/${currentYear}, dilewati`);
+          duplicateInMonthCount++;
+          continue;
+        }
+
+        // INSERT DATA BARU (tidak update, selalu insert baru untuk bulan ini)
+        await db.query(
+          `INSERT INTO slip_gaji_hisana
+          (user_id, no_induk, nama, posisi, store, awal_masuk, kerja, gaji,
+           iuran_bpjs_ketenagakerjaan, kerajinan, cuti, tunj_bpjs_pulsa,
+           jumlah, um, keterangan, gaji_total, nohp, status_slip, is_imported)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            no_induk,
+            nama,
+            posisi,
+            store,
+            awal_masuk || null,
+            kerja || 0,
+            parseFloat(gaji) || 0,
+            parseFloat(iuran_bpjs_ketenagakerjaan) || 0,
+            parseFloat(kerajinan) || 0,
+            parseFloat(cuti) || 0,
+            parseFloat(tunj_bpjs_pulsa) || 0,
+            parseFloat(jumlah) || 0,
+            parseFloat(um) || 0,
+            keterangan || "",
+            parseFloat(gaji_total) || 0,
+            nohp || "",
+            "belum_dikirim",
+            1, // is_imported = true
+          ],
+        );
+        insertedCount++;
+        console.log(`[UPLOAD] Insert data untuk no_induk ${no_induk} berhasil`);
       }
     } else if (company === "enakko") {
       for (const row of rawData) {
@@ -144,69 +127,101 @@ export async function uploadExcel(req, res, number, company) {
           "No HP": nohp,
         } = row;
 
-        const [existing] = await db.query("SELECT * FROM slip_gaji_enakko WHERE user_id=? AND no_induk=?", [userId, no_induk]);
-
-        if (existing.length) {
-          const e = existing[0];
-          if (
-            e.nama_karyawan === nama_karyawan &&
-            e.tanggal_masuk === tanggal_masuk &&
-            e.jabatan === jabatan &&
-            e.penempatan === penempatan &&
-            parseFloat(e.gaji_utuh) === parseFloat(gaji_utuh) &&
-            parseFloat(e.gaji_pokok) === parseFloat(gaji_pokok) &&
-            parseFloat(e.bpjs_kesehatan) === parseFloat(bpjs_kesehatan) &&
-            parseFloat(e.insentif) === parseFloat(insentif) &&
-            parseFloat(e.total_gaji) === parseFloat(total_gaji) &&
-            e.keterangan === keterangan &&
-            e.nohp === nohp
-          ) {
-            continue; // Sama persis, skip
-          }
-
-          await db.query(
-            `UPDATE slip_gaji_enakko SET
-              nama_karyawan=?, tanggal_masuk=?, jabatan=?, penempatan=?,
-              gaji_utuh=?, gaji_pokok=?, bpjs_kesehatan=?, insentif=?, total_gaji=?,
-              keterangan=?, nohp=?
-            WHERE id=?`,
-            [nama_karyawan, tanggal_masuk, jabatan, penempatan, parseFloat(gaji_utuh) || 0, parseFloat(gaji_pokok) || 0, parseFloat(bpjs_kesehatan) || 0, parseFloat(insentif) || 0, parseFloat(total_gaji) || 0, keterangan, nohp, e.id],
-          );
-        } else {
-          // Insert jika belum ada
-          await db.query(
-            `INSERT INTO slip_gaji_enakko
-            (user_id, no_induk, nama_karyawan, tanggal_masuk, jabatan, penempatan,
-             gaji_utuh, gaji_pokok, bpjs_kesehatan, insentif, total_gaji, keterangan, nohp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              userId,
-              no_induk,
-              nama_karyawan,
-              tanggal_masuk,
-              jabatan,
-              penempatan,
-              parseFloat(gaji_utuh) || 0,
-              parseFloat(gaji_pokok) || 0,
-              parseFloat(bpjs_kesehatan) || 0,
-              parseFloat(insentif) || 0,
-              parseFloat(total_gaji) || 0,
-              keterangan,
-              nohp,
-            ],
-          );
+        // Validasi data minimal
+        if (!no_induk || !nama_karyawan) {
+          console.log(`[UPLOAD] Skip baris karena No Induk atau Nama kosong`);
+          skippedCount++;
+          continue;
         }
+
+        // CEK DATA DI BULAN YANG SAMA
+        const [existingInMonth] = await db.query(
+          `SELECT * FROM slip_gaji_enakko 
+           WHERE user_id = ? 
+           AND no_induk = ? 
+           AND MONTH(created_at) = ? 
+           AND YEAR(created_at) = ?`,
+          [userId, no_induk, currentMonth, currentYear],
+        );
+
+        if (existingInMonth.length > 0) {
+          console.log(`[UPLOAD] Data untuk no_induk ${no_induk} sudah ada di bulan ${currentMonth}/${currentYear}, dilewati`);
+          duplicateInMonthCount++;
+          continue;
+        }
+
+        // INSERT DATA BARU
+        await db.query(
+          `INSERT INTO slip_gaji_enakko
+          (user_id, no_induk, nama_karyawan, tanggal_masuk, jabatan, penempatan,
+           gaji_utuh, gaji_pokok, bpjs_kesehatan, insentif, total_gaji, 
+           keterangan, nohp, status_slip, is_imported)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            no_induk,
+            nama_karyawan,
+            tanggal_masuk || null,
+            jabatan || "",
+            penempatan || "",
+            parseFloat(gaji_utuh) || 0,
+            parseFloat(gaji_pokok) || 0,
+            parseFloat(bpjs_kesehatan) || 0,
+            parseFloat(insentif) || 0,
+            parseFloat(total_gaji) || 0,
+            keterangan || "",
+            nohp || "",
+            "belum_dikirim",
+            1, // is_imported = true
+          ],
+        );
+        insertedCount++;
+        console.log(`[UPLOAD] Insert data untuk no_induk ${no_induk} berhasil`);
       }
     } else {
       return res.status(400).json({ success: false, message: "Company tidak dikenali" });
     }
 
     // Hapus file sementara
-    fs.unlinkSync(req.file.path);
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch (unlinkErr) {
+      console.error("[UPLOAD] Error deleting temp file:", unlinkErr);
+    }
 
-    res.json({ success: true, message: "Upload selesai, data baru ditambahkan atau diperbarui" });
+    // Buat pesan response yang informatif
+    let message = `Berhasil mengimport ${insertedCount} data baru untuk bulan ${currentMonth}/${currentYear}`;
+    if (duplicateInMonthCount > 0) {
+      message += `, ${duplicateInMonthCount} data dilewati karena sudah ada di bulan ini`;
+    }
+    if (skippedCount > 0) {
+      message += `, ${skippedCount} data dilewati karena tidak valid`;
+    }
+
+    console.log(`[UPLOAD] Selesai: ${message}`);
+
+    res.json({
+      success: true,
+      message: message,
+      stats: {
+        inserted: insertedCount,
+        duplicateInMonth: duplicateInMonthCount,
+        skipped: skippedCount,
+        total: rawData.length,
+      },
+    });
   } catch (err) {
     console.error("[UPLOAD EXCEL ERROR]:", err);
+
+    // Hapus file jika ada error
+    if (req.file && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (unlinkErr) {
+        console.error("[UPLOAD] Error deleting temp file after error:", unlinkErr);
+      }
+    }
+
     res.status(500).json({ success: false, message: err.message });
   }
 }

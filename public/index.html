@@ -61,7 +61,37 @@
             <div class="data-header-left">
               <h3><i class="fas fa-paper-plane"></i> Kirim Slip Gaji Karyawan - <span id="currentMonthYearKirim"></span></h3>
               <div class="data-actions">
-                <!-- Tidak ada tombol aksi di sini karena ini adalah halaman kirim -->
+                <!-- <button id="addDataBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah Data</button>
+                <button id="exportBtn" class="btn-outline export-btn"><i class="fas fa-file-export"></i> Export</button>
+                <button id="downloadTemplateBtn" class="btn-outline template-btn"><i class="fas fa-file-download"></i> Download Template</button>
+                <button id="duplicateDataBtn" class="btn-outline duplicate-data-btn"><i class="fas fa-copy"></i> Duplikasi Data Bulan Lalu</button>
+                <button id="cancelDuplicateBtn" class="btn-outline cancel-data-btn" style="display: none"><i class="fas fa-undo"></i> Batal Duplikasi</button> -->
+                <div class="filter-group">
+                  <div class="filter-wrapper">
+                    <label for="slipMonthSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Bulan: </label>
+                    <select id="slipMonthSelect" class="filter-select">
+                      <option value="all">Pilih Bulan Bulan</option>
+                      <option value="1">Januari</option>
+                      <option value="2">Februari</option>
+                      <option value="3">Maret</option>
+                      <option value="4">April</option>
+                      <option value="5">Mei</option>
+                      <option value="6">Juni</option>
+                      <option value="7">Juli</option>
+                      <option value="8">Agustus</option>
+                      <option value="9">September</option>
+                      <option value="10">Oktober</option>
+                      <option value="11">November</option>
+                      <option value="12">Desember</option>
+                    </select>
+                  </div>
+                  <div class="filter-wrapper">
+                    <label for="slipYearSelect" class="filter-label"> <i class="fas fa-calendar"></i> Tahun: </label>
+                    <select id="slipYearSelect" class="filter-select">
+                      <option value="all">Semua Tahun</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="data-header-right">
@@ -109,6 +139,7 @@
                   <th>Gaji Total</th>
                   <th>No HP</th>
                   <th>Status Slip</th>
+                  <th style="width: 150px">Alasan Pembatalan</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -219,6 +250,7 @@
         </div>
       </div>
 
+      <!-- Update the sectionBonus header -->
       <div id="sectionBonus" class="section">
         <div class="card">
           <div class="data-header">
@@ -228,6 +260,33 @@
                 <button id="addBonusBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah Bonus</button>
                 <button id="duplicateBonusBtn" class="btn-outline duplicate-data-btn"><i class="fas fa-copy"></i> Duplikasi Bonus Bulan Lalu</button>
                 <button id="cancelDuplicateBonusBtn" class="btn-outline cancel-data-btn" style="display: none"><i class="fas fa-undo"></i> Batal Duplikasi Bonus</button>
+                <!-- FILTER DROPDOWNS - Pindahkan ke sini, di sebelah kanan button duplikasi -->
+                <div class="filter-group">
+                  <div class="filter-wrapper">
+                    <label for="bonusMonthSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Bulan: </label>
+                    <select id="bonusMonthSelect" class="filter-select">
+                      <option value="all">Semua Bulan</option>
+                      <option value="1">Januari</option>
+                      <option value="2">Februari</option>
+                      <option value="3">Maret</option>
+                      <option value="4">April</option>
+                      <option value="5">Mei</option>
+                      <option value="6">Juni</option>
+                      <option value="7">Juli</option>
+                      <option value="8">Agustus</option>
+                      <option value="9">September</option>
+                      <option value="10">Oktober</option>
+                      <option value="11">November</option>
+                      <option value="12">Desember</option>
+                    </select>
+                  </div>
+                  <div class="filter-wrapper">
+                    <label for="bonusYearSelect" class="filter-label"> <i class="fas fa-calendar"></i> Tahun: </label>
+                    <select id="bonusYearSelect" class="filter-select">
+                      <option value="all">Semua Tahun</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="data-header-right">
@@ -239,6 +298,7 @@
             </div>
           </div>
 
+          <!-- Rest of the bonus section remains the same -->
           <div class="scrollable">
             <table id="tableBonus">
               <thead>
@@ -252,7 +312,8 @@
                   <th>Jumlah Bonus</th>
                   <th>No HP</th>
                   <th style="width: 100px">Status</th>
-                  <th style="width: 110px">Dibuat</th>
+                  <th style="width: 150px">Alasan Pembatalan</th>
+                  <th style="width: 110px">Tgl Dibuat</th>
                   <th style="width: 100px">Aksi</th>
                 </tr>
               </thead>
@@ -272,7 +333,6 @@
             </div>
           </div>
 
-          <!-- PROGRESS BAR UNTUK BONUS -->
           <!-- PROGRESS BAR UNTUK BONUS -->
           <div class="progress-container" id="bonusProgressContainer" style="display: none">
             <div class="progress-bg">
@@ -298,14 +358,14 @@
               <h3><i class="fas fa-gift"></i> Kirim Slip THR Karyawan - <span id="currentYearTHR"></span></h3>
               <div class="data-actions">
                 <button id="addThrBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah THR</button>
-                <div class="year-filter-wrapper">
-                  <label for="thrYearSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Tahun: </label>
-                  <select id="thrYearSelect" class="year-select">
-                    <option value="all">Semua Tahun</option>
-                  </select>
-                </div>
                 <button id="duplicateThrBtn" class="btn-outline duplicate-data-btn"><i class="fas fa-copy"></i> Duplikasi THR Tahun Lalu</button>
                 <button id="cancelDuplicateThrBtn" class="btn-outline cancel-data-btn" style="display: none"><i class="fas fa-undo"></i> Batal Duplikasi THR</button>
+                <div class="year-filter-wrapper">
+                  <label for="thrYearSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Tahun: </label>
+                  <select id="thrYearSelect" class="filter-select">
+                    <option value="all">Pilih Tahun</option>
+                  </select>
+                </div>
               </div>
             </div>
             <div class="data-header-right">
@@ -329,6 +389,7 @@
                   <th>Jumlah THR</th>
                   <th>No HP</th>
                   <th style="width: 100px">Status</th>
+                  <th style="width: 150px">Alasan Pembatalan</th>
                   <th style="width: 110px">Tgl Dibuat</th>
                   <th style="width: 100px">Aksi</th>
                 </tr>
@@ -403,24 +464,31 @@
           <input type="hidden" id="bonus_id" />
           <div class="formGrid">
             <div class="formGroup">
-              <label>No Induk</label>
-              <input type="text" id="bonus_no_induk" required />
-            </div>
-            <div class="formGroup">
-              <label>Nama</label>
-              <input type="text" id="bonus_nama" required />
+              <label>Pilih Karyawan *</label>
+              <div class="employee-search-container">
+                <input type="text" id="employeeSearch" placeholder="Cari berdasarkan No Induk atau Nama..." class="employee-search-input" autocomplete="off" />
+                <div id="employeeDropdown" class="employee-dropdown" style="display: none">
+                  <div class="dropdown-search">
+                    <input type="text" id="dropdownSearch" placeholder="Cari..." class="dropdown-search-input" />
+                  </div>
+                  <div id="employeeList" class="employee-list"></div>
+                </div>
+              </div>
+              <input type="hidden" id="bonus_no_induk" />
+              <input type="hidden" id="bonus_nama" />
             </div>
             <div class="formGroup">
               <label>Bulan dan Tahun</label>
               <input type="month" id="bonus_periode" required />
             </div>
             <div class="formGroup">
-              <label>Jumlah Bonus</label>
-              <input type="number" id="bonus_jumlah" required />
+              <label>Jumlah Bonus *</label>
+              <input type="text" id="bonus_jumlah" required placeholder="Masukkan nominal bonus" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" />
+              <small style="color: #64748b; display: block; margin-top: 4px"> <i class="fas fa-info-circle"></i> Masukkan nominal berapa saja (tanpa titik atau koma) </small>
             </div>
             <div class="formGroup">
               <label>No HP</label>
-              <input type="text" id="bonus_nohp" required />
+              <input type="text" id="bonus_nohp" required placeholder="Contoh: 628123456789" />
             </div>
           </div>
           <div style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 10px">
@@ -443,24 +511,31 @@
           <input type="hidden" id="thr_id" />
           <div class="formGrid">
             <div class="formGroup">
-              <label>No Induk</label>
-              <input type="text" id="thr_no_induk" required />
+              <label>Pilih Karyawan *</label>
+              <div class="employee-search-container">
+                <input type="text" id="thrEmployeeSearch" placeholder="Cari berdasarkan No Induk atau Nama..." class="employee-search-input" autocomplete="off" />
+                <div id="thrEmployeeDropdown" class="employee-dropdown" style="display: none">
+                  <div class="dropdown-search">
+                    <input type="text" id="thrDropdownSearch" placeholder="Cari..." class="dropdown-search-input" />
+                  </div>
+                  <div id="thrEmployeeList" class="employee-list"></div>
+                </div>
+              </div>
+              <input type="hidden" id="thr_no_induk" />
+              <input type="hidden" id="thr_nama" />
             </div>
             <div class="formGroup">
-              <label>Nama</label>
-              <input type="text" id="thr_nama" required />
+              <label>Tahun *</label>
+              <input type="number" id="thr_tahun" required min="2000" max="2100" step="1" />
             </div>
             <div class="formGroup">
-              <label>Tahun</label>
-              <input type="number" id="thr_tahun" required />
+              <label>Jumlah THR *</label>
+              <input type="text" id="thr_jumlah_thr" required placeholder="Masukkan nominal THR" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" />
+              <small style="color: #64748b; display: block; margin-top: 4px"> <i class="fas fa-info-circle"></i> Masukkan nominal berapa saja (tanpa titik atau koma) </small>
             </div>
             <div class="formGroup">
-              <label>Jumlah THR</label>
-              <input type="number" id="thr_jumlah_thr" required />
-            </div>
-            <div class="formGroup">
-              <label>No HP</label>
-              <input type="text" id="thr_nohp" required />
+              <label>No HP *</label>
+              <input type="text" id="thr_nohp" required placeholder="Contoh: 628123456789" />
             </div>
           </div>
           <div style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 10px">

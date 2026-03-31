@@ -38,11 +38,16 @@ export default async function kirimThrEnakko(thr, senderNumber) {
     // 4. Kirim PDF
     console.log(`📤 Sending THR to ${thr.nama} (${nomorTujuan})...`);
 
+    const sapaan = `Assalamu'alaikum / Salam Sejahtera Bapak/Ibu *${thr.nama}*,`;
+    const isiPesan = `Bersama pesan ini, kami sampaikan dokumen elektronik Slip Tunjangan Hari Raya (THR) Anda untuk Tahun ${thr.tahun}.`;
+    const doaPenutup = `Semoga bermanfaat bagi Anda dan keluarga. Mohon dapat diperiksa dan disimpan sebagaimana mestinya.\n\nTerima kasih atas dedikasi Anda.`;
+    const captionFinal = `${sapaan}\n\n${isiPesan}\n\n${doaPenutup}`;
+
     await socket.sendMessage(jid, {
       document: fs.readFileSync(fileThr),
       mimetype: "application/pdf",
       fileName: namaFile,
-      caption: `Assalamu'alaikum *${thr.nama}*, berikut slip THR (Tunjangan Hari Raya) Anda untuk tahun ${thr.tahun}. Mohon segera dikonfirmasi penerimaannya. Terima kasih.`,
+      caption: captionFinal,
     });
 
     console.log(`✅ THR Enakko terkirim ke ${thr.nama} (${thr.nohp}) - Rp ${thr.jumlah_thr}`);

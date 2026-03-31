@@ -449,6 +449,108 @@ button:hover {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+/* Filter group styling - Sama seperti THR */
+.filter-group {
+  display: inline-flex;
+  gap: 15px;
+  margin-left: 15px;
+  align-items: center;
+}
+
+.filter-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  padding: 5px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
+}
+
+.filter-wrapper:hover {
+  border-color: #3b82f6;
+  background: #ffffff;
+}
+
+.filter-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.filter-label i {
+  color: #3b82f6;
+  font-size: 0.8rem;
+}
+
+.filter-select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #1e293b;
+  outline: none;
+}
+
+.filter-select:hover {
+  border-color: #3b82f6;
+  background: #ffffff;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .data-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+  }
+
+  .data-header-left {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .data-actions {
+    flex-wrap: wrap;
+  }
+
+  .filter-group {
+    margin-left: 0;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+
+  .filter-wrapper {
+    flex: 1;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 768px) {
+  .filter-group {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .filter-wrapper {
+    width: 100%;
+  }
+}
 /* Year Filter */
 .year-filter-wrapper {
   display: flex;
@@ -479,22 +581,6 @@ button:hover {
 .filter-label i {
   color: var(--primary);
   font-size: 0.8rem;
-}
-
-.year-select {
-  border: none;
-  background: transparent;
-  padding: 8px 4px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--text-main);
-  cursor: pointer;
-  outline: none;
-  font-family: inherit;
-}
-
-.year-select:hover {
-  color: var(--primary);
 }
 
 /* Pagination */
@@ -770,6 +856,169 @@ input[type="checkbox"]:disabled {
   background-color: #f0f9ff;
   font-weight: bold;
   border: 1px solid var(--primary);
+}
+
+/* Employee Search Dropdown Styles */
+.employee-search-container {
+  position: relative;
+  width: 100%;
+}
+
+.employee-search-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.employee-search-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.employee-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 300px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.dropdown-search {
+  padding: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dropdown-search-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.dropdown-search-input:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.employee-list {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.employee-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.employee-item:hover {
+  background: #f8fafc;
+}
+
+.employee-item.selected {
+  background: #eff6ff;
+}
+
+.employee-no-induk {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 0.85rem;
+}
+
+.employee-name {
+  font-weight: 500;
+  color: #1e293b;
+  margin-top: 2px;
+}
+
+.employee-detail {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.employee-empty {
+  padding: 20px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+/* Currency Input Styling */
+.currency-input {
+  font-family: monospace;
+  font-size: 1rem;
+  letter-spacing: 0.5px;
+  text-align: right;
+  direction: ltr;
+}
+
+.currency-input:focus {
+  font-family: monospace;
+  letter-spacing: normal;
+  text-align: right;
+}
+
+.formGroup small {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.formGroup small i {
+  margin-right: 4px;
+}
+
+/* Untuk placeholder */
+.currency-input::placeholder {
+  text-align: right;
+  font-family: inherit;
+  color: #94a3b8;
+}
+
+/* Styling untuk kolom alasan pembatalan */
+.cancellation-note {
+  max-width: 200px;
+  word-wrap: break-word;
+  font-size: 0.8rem;
+  cursor: help;
+}
+
+.cancellation-note.has-note {
+  color: #dc2626;
+}
+
+.cancellation-note.has-note i {
+  color: #dc2626;
+  margin-right: 5px;
+}
+
+.cancellation-note.no-note {
+  color: #94a3b8;
+}
+
+.cancellation-note.no-note i {
+  color: #94a3b8;
+  margin-right: 5px;
+}
+
+/* Tooltip untuk alasan pembatalan */
+.cancellation-note[title] {
+  border-bottom: 1px dotted #dc2626;
+  cursor: help;
 }
 
 /* Animations */

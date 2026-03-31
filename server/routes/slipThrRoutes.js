@@ -184,6 +184,23 @@ router.post("/thr", async (req, res) => {
     let tableName = finalCompany === "hisana" ? "thr_hisana" : "thr_enakko";
     console.log("📊 Target table:", tableName);
 
+    // Check if no_induk already exists for this user in current year
+    const currentYear = new Date().getFullYear();
+    const [existing] = await db.query(
+      `SELECT COUNT(*) as count FROM ${tableName} 
+       WHERE user_id = ? 
+       AND no_induk = ? 
+       AND YEAR(created_at) = ?`,
+      [userId, no_induk, currentYear],
+    );
+
+    if (existing[0].count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Nomor induk ${no_induk} sudah memiliki data THR untuk tahun ${currentYear}. Silakan gunakan nomor induk yang berbeda atau edit data yang sudah ada.`,
+      });
+    }
+
     const [tables] = await db.query("SHOW TABLES LIKE ?", [tableName]);
     if (tables.length === 0) {
       console.log(`❌ Table ${tableName} does not exist!`);
@@ -239,6 +256,24 @@ router.put("/thr/:id", async (req, res) => {
 
     let tableName = finalCompany === "hisana" ? "thr_hisana" : "thr_enakko";
     console.log("Target table:", tableName);
+
+    // Check if no_induk already exists for this user in current year (excluding current record)
+    const currentYear = new Date().getFullYear();
+    const [existing] = await db.query(
+      `SELECT COUNT(*) as count FROM ${tableName} 
+       WHERE user_id = ? 
+       AND no_induk = ? 
+       AND YEAR(created_at) = ?
+       AND id != ?`,
+      [userId, no_induk, currentYear, id],
+    );
+
+    if (existing[0].count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Nomor induk ${no_induk} sudah digunakan oleh data THR lain untuk tahun ${currentYear}. Silakan gunakan nomor induk yang berbeda.`,
+      });
+    }
 
     const [result] = await db.query(`UPDATE ${tableName} SET no_induk = ?, nama = ?, tahun = ?, jumlah_thr = ?, nohp = ? WHERE id = ? AND user_id = ?`, [no_induk, nama, tahun, jumlah_thr, nohp, id, userId]);
 
@@ -452,6 +487,13 @@ router.post("/cancel-thr", async (req, res) => {
     const company = req.body.company || "hisana";
     const cancellationNote = req.body.cancellation_note || "Pembatalan oleh user";
 
+    console.log("========================================");
+    console.log("📝 CANCEL THR - Request received");
+    console.log("Company:", company);
+    console.log("Selected IDs:", selected);
+    console.log("Cancellation note:", cancellationNote);
+    console.log("========================================");
+
     if (!Array.isArray(selected) || selected.length === 0) {
       return res.status(400).json({ success: false, message: "Pilih THR yang akan dibatalkan" });
     }
@@ -461,6 +503,7 @@ router.post("/cancel-thr", async (req, res) => {
     }
 
     const tableName = company === "hisana" ? "thr_hisana" : "thr_enakko";
+    console.log("Target table:", tableName);
 
     const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
@@ -476,12 +519,17 @@ router.post("/cancel-thr", async (req, res) => {
       return res.status(400).json({ success: false, message: "ID tidak valid" });
     }
 
-    // Ambil data THR yang akan dibatalkan
+    // Ambil data THR yang akan dibatalkan (hanya yang status terkirim)
     const placeholders = validIds.map(() => "?").join(",");
     const [rows] = await db.query(`SELECT * FROM ${tableName} WHERE id IN (${placeholders}) AND user_id = ? AND status = 'terkirim'`, [...validIds, userId]);
 
-    if (!rows.length) {
-      return res.status(400).json({ success: false, message: "Tidak ada THR terkirim yang dipilih" });
+    console.log(`Found ${rows.length} THR to cancel`);
+
+    if (rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Tidak ada THR terkirim yang dipilih. Pastikan THR yang dipilih berstatus 'Terkirim'.",
+      });
     }
 
     let cancelledCount = 0;
@@ -490,9 +538,13 @@ router.post("/cancel-thr", async (req, res) => {
     let messageFailedCount = 0;
     const errors = [];
 
-    // Proses pembatalan secara sinkron (menunggu selesai)
+    // Proses pembatalan untuk setiap THR
     for (const thr of rows) {
       try {
+        console.log(`\n--- Processing THR ID ${thr.id} (${company}) ---`);
+        console.log(`Name: ${thr.nama}`);
+        console.log(`Phone: ${thr.nohp}`);
+
         // 1. Update status menjadi dibatalkan di database
         const updateQuery = `
           UPDATE ${tableName} 
@@ -500,63 +552,89 @@ router.post("/cancel-thr", async (req, res) => {
               cancelled_at = NOW(), 
               cancellation_note = ?,
               cancelled_by = ?
-          WHERE id = ? AND user_id = ?
+          WHERE id = ? AND user_id = ? AND status = 'terkirim'
         `;
 
         const [updateResult] = await db.query(updateQuery, [cancellationNote, userId, thr.id, userId]);
 
         if (updateResult.affectedRows > 0) {
           cancelledCount++;
-          console.log(`✅ THR ID ${thr.id} (${thr.nama}) status updated to 'dibatalkan'`);
+          console.log(`✅ Database updated for THR ID ${thr.id}`);
 
-          // 2. Kirim pesan pembatalan ke karyawan (opsional, jangan biarkan gagal membatalkan proses utama)
+          // 2. Kirim pesan pembatalan ke karyawan
           try {
-            // Import fungsi pengiriman pesan
-            const { kirimPembatalanThrHisana, kirimPembatalanThrEnakko } = await import("../../bot/cancelMessage/cancelSlipThr.js");
+            console.log(`📤 Sending cancellation message for ${company} to ${thr.nama}...`);
 
+            // Import fungsi pengiriman pesan
+            const cancelModule = await import("../../bot/cancelMessage/cancelSlipThr.js");
+
+            let sendResult = false;
             if (company === "hisana") {
-              await kirimPembatalanThrHisana(thr, senderNumber, cancellationNote);
+              if (typeof cancelModule.kirimPembatalanThrHisana === "function") {
+                sendResult = await cancelModule.kirimPembatalanThrHisana(thr, senderNumber, cancellationNote);
+                console.log(`Hisana send result: ${sendResult}`);
+              }
             } else {
-              await kirimPembatalanThrEnakko(thr, senderNumber, cancellationNote);
+              if (typeof cancelModule.kirimPembatalanThrEnakko === "function") {
+                sendResult = await cancelModule.kirimPembatalanThrEnakko(thr, senderNumber, cancellationNote);
+                console.log(`Enakko send result: ${sendResult}`);
+              }
             }
-            messageSentCount++;
+
+            if (sendResult === true) {
+              messageSentCount++;
+              console.log(`✅ Cancellation message sent to ${thr.nama}`);
+            } else {
+              messageFailedCount++;
+              console.log(`⚠️ Failed to send cancellation message to ${thr.nama}`);
+              errors.push(`ID ${thr.id} (${thr.nama}): Pesan notifikasi gagal terkirim`);
+            }
           } catch (sendError) {
-            console.error(`Gagal kirim pesan ke ${thr.nama}:`, sendError.message);
+            console.error(`❌ Error sending cancellation message to ${thr.nama}:`, sendError.message);
             messageFailedCount++;
-            // Tidak perlu menganggap ini sebagai kegagalan pembatalan
+            errors.push(`ID ${thr.id} (${thr.nama}): ${sendError.message}`);
+            // Jangan anggap ini sebagai kegagalan pembatalan karena database sudah diupdate
           }
         } else {
           failedCount++;
-          errors.push(`ID ${thr.id} (${thr.nama}): Tidak ada perubahan`);
+          errors.push(`ID ${thr.id} (${thr.nama}): Tidak ada perubahan (mungkin sudah dibatalkan sebelumnya)`);
+          console.log(`⚠️ No rows affected for THR ID ${thr.id}`);
         }
 
         // Delay 1 detik antar pengiriman pesan
         await new Promise((r) => setTimeout(r, 1000));
       } catch (err) {
-        console.error(`Gagal membatalkan THR ID ${thr.id}:`, err.message);
+        console.error(`❌ Failed to cancel THR ID ${thr.id}:`, err.message);
         failedCount++;
         errors.push(`ID ${thr.id} (${thr.nama}): ${err.message}`);
       }
     }
 
-    let message = `Berhasil membatalkan ${cancelledCount} THR.`;
+    // Build response message yang konsisten
+    const companyName = company === "hisana" ? "Hisana" : "Enakko";
+    let message = `Berhasil membatalkan ${cancelledCount} THR ${companyName}.`;
+
     if (failedCount > 0) {
       message += `\n${failedCount} THR gagal dibatalkan.`;
     }
+
     if (messageSentCount > 0) {
-      message += `\nNotifikasi WhatsApp terkirim ke ${messageSentCount} karyawan.`;
+      message += `\n✓ Notifikasi WhatsApp terkirim ke ${messageSentCount} karyawan.`;
     }
+
     if (messageFailedCount > 0) {
-      message += `\n${messageFailedCount} notifikasi gagal terkirim.`;
+      message += `\n⚠️ ${messageFailedCount} notifikasi gagal terkirim (database sudah diupdate).`;
     }
 
     console.log(`
-      === LAPORAN PEMBATALAN THR ===
+      ========================================
+      === LAPORAN PEMBATALAN THR (${companyName.toUpperCase()}) ===
       Total diproses: ${rows.length}
       Berhasil dibatalkan: ${cancelledCount}
       Gagal dibatalkan: ${failedCount}
       Pesan terkirim: ${messageSentCount}
       Pesan gagal: ${messageFailedCount}
+      ========================================
     `);
 
     res.json({
@@ -564,10 +642,13 @@ router.post("/cancel-thr", async (req, res) => {
       message: message,
       cancelledCount: cancelledCount,
       failedCount: failedCount,
+      messageSentCount: messageSentCount,
+      messageFailedCount: messageFailedCount,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (err) {
     console.error("[CANCEL THR ERROR]:", err);
+    console.error("Error stack:", err.stack);
     res.status(500).json({ success: false, message: "Terjadi kesalahan server: " + err.message });
   }
 });
@@ -600,7 +681,7 @@ router.post("/reset-cancel-thr-progress", async (req, res) => {
 });
 
 // ============================
-// DUPLICATE THR FROM PREVIOUS YEAR
+// DUPLICATE THR FROM PREVIOUS YEAR (SEMUA STATUS)
 // ============================
 router.post("/duplicate-thr", async (req, res) => {
   try {
@@ -613,7 +694,11 @@ router.post("/duplicate-thr", async (req, res) => {
     const currentYear = new Date().getFullYear();
     const previousYear = currentYear - 1;
 
-    console.log(`📋 Duplicating THR from ${previousYear} to ${currentYear} for ${company}`);
+    console.log("========================================");
+    console.log("📋 DUPLICATE THR - Request received");
+    console.log(`Company: ${company}`);
+    console.log(`From year: ${previousYear} to ${currentYear}`);
+    console.log("========================================");
 
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
@@ -622,57 +707,155 @@ router.post("/duplicate-thr", async (req, res) => {
     const userId = users[0].id;
 
     let tableName = company === "hisana" ? "thr_hisana" : "thr_enakko";
+    console.log(`Target table: ${tableName}`);
 
-    const [existing] = await db.query(`SELECT COUNT(*) as count FROM ${tableName} WHERE user_id = ? AND YEAR(created_at) = ?`, [userId, currentYear]);
+    // Get existing data in current year untuk pengecekan duplikasi
+    const [existingCurrent] = await db.query(
+      `SELECT no_induk FROM ${tableName} 
+       WHERE user_id = ? 
+       AND YEAR(created_at) = ?`,
+      [userId, currentYear],
+    );
 
-    console.log(`📊 Existing data for year ${currentYear}: ${existing[0].count} records`);
+    const existingNoInduk = new Set(existingCurrent.map((row) => row.no_induk));
+    console.log(`Existing data in current year: ${existingNoInduk.size} records`);
 
-    if (existing[0].count > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Data THR tahun ${currentYear} sudah ada (${existing[0].count} records).`,
-        hasData: true,
-        count: existing[0].count,
-      });
-    }
+    // Get ALL data from previous year (semua status)
+    const [previousData] = await db.query(
+      `SELECT * FROM ${tableName} 
+       WHERE user_id = ? 
+       AND YEAR(created_at) = ?
+       ORDER BY id`,
+      [userId, previousYear],
+    );
 
-    const [previousData] = await db.query(`SELECT no_induk, nama, jumlah_thr, nohp, id FROM ${tableName} WHERE user_id = ? AND YEAR(created_at) = ?`, [userId, previousYear]);
-
-    console.log(`📊 Previous year data for ${previousYear}: ${previousData.length} records`);
+    console.log(`Previous year data found: ${previousData.length} records`);
 
     if (previousData.length === 0) {
-      return res.status(404).json({
+      return res.status(400).json({
         success: false,
-        message: `Tidak ada data THR tahun ${previousYear} untuk diduplikasi. Pastikan sudah menginput data THR untuk tahun ${previousYear} terlebih dahulu.`,
-        hasPreviousData: false,
+        message: `Tidak ada data THR dari tahun ${previousYear} untuk diduplikasi. Pastikan data THR tahun lalu sudah ada.`,
       });
     }
 
-    let insertedCount = 0;
-    for (const item of previousData) {
-      await db.query(`INSERT INTO ${tableName} (user_id, no_induk, nama, tahun, jumlah_thr, nohp, status, is_duplicated, duplicated_from_id, duplicated_at) VALUES (?, ?, ?, ?, ?, ?, 'belum_dikirim', 1, ?, NOW())`, [
-        userId,
-        item.no_induk,
-        item.nama,
-        currentYear,
-        item.jumlah_thr,
-        item.nohp,
-        item.id,
-      ]);
-      insertedCount++;
+    // Log breakdown status
+    const statusBreakdown = previousData.reduce((acc, item) => {
+      acc[item.status] = (acc[item.status] || 0) + 1;
+      return acc;
+    }, {});
+    console.log("Status breakdown from previous year:", statusBreakdown);
+
+    // Filter data to only include employees NOT in current year
+    const dataToDuplicate = previousData.filter((item) => !existingNoInduk.has(item.no_induk));
+    console.log(`Found ${dataToDuplicate.length} new employees to duplicate (out of ${previousData.length} total)`);
+
+    if (dataToDuplicate.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Tidak ada data THR baru untuk diduplikasi. Semua karyawan dari tahun ${previousYear} sudah memiliki data THR di tahun ini.`,
+      });
     }
 
-    console.log(`✅ Duplicated ${insertedCount} THR records from ${previousYear} to ${currentYear}`);
+    // Mulai transaksi
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
 
-    res.json({
-      success: true,
-      message: `Berhasil menduplikasi ${insertedCount} data THR dari tahun ${previousYear} ke tahun ${currentYear}`,
-      duplicatedCount: insertedCount,
-      year: currentYear,
-    });
+    let duplicatedCount = 0;
+    let skippedCount = previousData.length - dataToDuplicate.length;
+    let errors = [];
+    let duplicatedIds = [];
+
+    try {
+      for (const sourceData of dataToDuplicate) {
+        try {
+          const nowDate = new Date();
+
+          // Insert new record with is_duplicated flag
+          const insertQuery = `
+            INSERT INTO ${tableName} (
+              user_id, no_induk, nama, tahun, jumlah_thr, nohp, status,
+              is_duplicated, duplicated_from_id, duplicated_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `;
+
+          const insertValues = [
+            userId,
+            sourceData.no_induk,
+            sourceData.nama,
+            currentYear,
+            sourceData.jumlah_thr,
+            sourceData.nohp,
+            "belum_dikirim", // Always reset to belum_dikirim
+            1, // is_duplicated
+            sourceData.id, // duplicated_from_id
+            nowDate, // duplicated_at
+            nowDate, // created_at
+          ];
+
+          console.log(`Duplicating THR for employee: ${sourceData.no_induk} (${sourceData.nama}) from ID: ${sourceData.id} (status asli: ${sourceData.status})`);
+          const [result] = await connection.query(insertQuery, insertValues);
+          duplicatedIds.push(result.insertId);
+          duplicatedCount++;
+        } catch (err) {
+          console.error(`Error inserting record for ${sourceData.no_induk}:`, err);
+          errors.push(`${sourceData.no_induk}: ${err.message}`);
+        }
+      }
+
+      // Commit transaksi
+      await connection.commit();
+      console.log(`Transaction committed successfully`);
+
+      // Prepare message HTML for SweetAlert
+      let messageHtml = `<div style="background:#f0fdf4;border-radius:12px;padding:15px">
+          <p><strong>✅ Berhasil menduplikasi data THR dari tahun ${previousYear} ke tahun ${currentYear}.</strong></p>
+          <p style="margin-top: 10px;">
+            <i class="fas fa-check-circle" style="color:#16a34a"></i> <strong>${duplicatedCount}</strong> data THR berhasil diduplikasi
+          </p>`;
+
+      if (skippedCount > 0) {
+        messageHtml += `<p style="margin-top: 5px;">
+          <i class="fas fa-info-circle" style="color:#f59e0b"></i> <strong>${skippedCount}</strong> data THR dilewati (sudah ada di tahun ini)
+        </p>`;
+      }
+
+      if (errors.length > 0 && errors.length <= 5) {
+        messageHtml += `<div style="margin-top: 10px; padding: 10px; background: #fee2e2; border-radius: 8px;">
+          <p style="margin: 0 0 5px 0; font-weight: bold; color: #dc2626;">Data gagal diduplikasi:</p>
+          <ul style="margin: 0; padding-left: 20px; color: #dc2626;">`;
+        errors.forEach((error) => {
+          messageHtml += `<li>${escapeHtml(error)}</li>`;
+        });
+        messageHtml += `</ul></div>`;
+      }
+
+      messageHtml += `</div>`;
+
+      res.json({
+        success: true,
+        message: `Berhasil menduplikasi ${duplicatedCount} data THR dari tahun ${previousYear} ke tahun ${currentYear}.`,
+        messageHtml: messageHtml,
+        duplicatedCount: duplicatedCount,
+        skippedCount: skippedCount,
+        totalPrevious: previousData.length,
+        duplicatedIds: duplicatedIds,
+        errors: errors.length > 0 ? errors : undefined,
+        year: currentYear,
+      });
+    } catch (err) {
+      // Rollback jika ada error
+      await connection.rollback();
+      console.error("Transaction error, rolling back:", err);
+      throw err;
+    } finally {
+      connection.release();
+    }
   } catch (err) {
     console.error("Error duplicating THR:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message || "Terjadi kesalahan saat menduplikasi data THR",
+    });
   }
 });
 
@@ -703,6 +886,7 @@ router.post("/cancel-duplicate-thr", async (req, res) => {
 
     const currentYear = new Date().getFullYear();
 
+    // Get all data in current year
     const getDataQuery = `
       SELECT id, no_induk, nama, is_duplicated 
       FROM ${tableName} 
@@ -710,6 +894,8 @@ router.post("/cancel-duplicate-thr", async (req, res) => {
       AND YEAR(created_at) = ?
     `;
     const [currentData] = await db.query(getDataQuery, [userId, currentYear]);
+
+    console.log(`Found ${currentData.length} records in current year ${currentYear}`);
 
     if (currentData.length === 0) {
       return res.status(400).json({
@@ -721,6 +907,8 @@ router.post("/cancel-duplicate-thr", async (req, res) => {
     const duplicatedData = currentData.filter((item) => item.is_duplicated === 1);
     const manualData = currentData.filter((item) => item.is_duplicated !== 1);
 
+    console.log(`Duplicated records: ${duplicatedData.length}, Manual records: ${manualData.length}`);
+
     if (duplicatedData.length === 0) {
       return res.status(400).json({
         success: false,
@@ -728,9 +916,12 @@ router.post("/cancel-duplicate-thr", async (req, res) => {
       });
     }
 
+    // Delete only duplicated data
     const duplicatedIds = duplicatedData.map((item) => item.id);
     const deleteQuery = `DELETE FROM ${tableName} WHERE id IN (${duplicatedIds.map(() => "?").join(",")}) AND user_id = ?`;
     const [result] = await db.query(deleteQuery, [...duplicatedIds, userId]);
+
+    console.log(`Deleted ${result.affectedRows} duplicated records`);
 
     let message = `Berhasil membatalkan duplikasi THR. ${result.affectedRows} data hasil duplikasi telah dihapus.`;
     if (manualData.length > 0) {
@@ -742,6 +933,11 @@ router.post("/cancel-duplicate-thr", async (req, res) => {
       message: message,
       deletedCount: result.affectedRows,
       manualDataCount: manualData.length,
+      duplicatedDataList: duplicatedData.map((d) => ({
+        id: d.id,
+        no_induk: d.no_induk,
+        nama: d.nama,
+      })),
     });
   } catch (err) {
     console.error("[CANCEL DUPLICATE THR ERROR]:", err);
@@ -784,6 +980,8 @@ router.get("/check-thr-duplicate-status", async (req, res) => {
 
     const hasRecentDuplicate = result[0].count > 0;
 
+    console.log(`[CHECK THR STATUS] User ${userId}, Year ${currentYear}, Has duplicated data: ${hasRecentDuplicate}`);
+
     res.json({
       success: true,
       hasRecentDuplicate,
@@ -793,6 +991,12 @@ router.get("/check-thr-duplicate-status", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+// Helper function untuk escape HTML
+function escapeHtml(text) {
+  if (!text) return "";
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
 
 // ============================
 // GET THR STATISTICS

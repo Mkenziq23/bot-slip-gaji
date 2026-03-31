@@ -34,11 +34,17 @@ export default async function kirimBonusEnakko(bonus, senderNumber) {
     const namaFile = `Bonus_${bonus.nama.replace(/[^a-z0-9]/gi, "_")}_${bulanText}_${bonus.tahun}.pdf`;
 
     // 4. Kirim PDF
-    await socket.sendMessage(jid, {
+    const sapaan = `Yth. Bapak/Ibu *${bonus.nama}*,`;
+    const isiPesan = `Berikut kami lampirkan Slip Bonus Anda untuk periode ${bulanText} ${bonus.tahun}.`;
+    const penutup = `Terima kasih atas dedikasi dan performa yang Anda berikan.`;
+
+    const captionFinal = `${sapaan}\n\n${isiPesan}\n\n${penutup}`;
+
+    await sock.sendMessage(jid, {
       document: fs.readFileSync(fileBonus),
       mimetype: "application/pdf",
       fileName: namaFile,
-      caption: `Halo *${bonus.nama}*, berikut slip bonus Anda untuk periode ${bulanText} ${bonus.tahun}.`,
+      caption: captionFinal,
     });
 
     console.log(`✅ Bonus Enakko terkirim ke ${bonus.nama} (${bonus.nohp}) - Rp ${bonus.jumlah_bonus}`);

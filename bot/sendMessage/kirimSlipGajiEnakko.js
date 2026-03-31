@@ -32,11 +32,16 @@ export default async function kirimSlipEnakko(karyawan, senderNumber) {
     const namaFile = `Slip_Gaji_${(karyawan.nama_karyawan || karyawan.nama || "karyawan").replace(/[^a-z0-9]/gi, "_")}.pdf`;
 
     // 4. Kirim PDF
-    await socket.sendMessage(jid, {
+    const sapaan = `Yth. Bapak/Ibu *${karyawan.nama}*,`;
+    const isiPesan = `Bersama pesan ini, kami lampirkan Slip Gaji Anda untuk periode ini.`;
+    const penutup = `Silakan unduh dokumen terlampir untuk melihat rincian selengkapnya. Jika terdapat pertanyaan atau kekeliruan data, mohon segera hubungi bagian Administrasi/HRD.\n\nTerima kasih.`;
+    const captionFinal = `${sapaan}\n\n${isiPesan}\n\n${penutup}`;
+
+    await sock.sendMessage(jid, {
       document: fs.readFileSync(fileSlip),
       mimetype: "application/pdf",
       fileName: namaFile,
-      caption: `Slip gaji Anda (Enakko)`,
+      caption: captionFinal,
     });
 
     console.log(`✅ Slip Enakko terkirim ke ${karyawan.nama_karyawan || karyawan.nama} (${karyawan.nohp})`);

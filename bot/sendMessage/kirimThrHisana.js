@@ -4,16 +4,17 @@ import generateTHRPDF from "../generator/thrGenerator.js";
 import { getSocketByNumber } from "../index.js";
 
 export default async function kirimThrHisana(thr, senderNumber) {
-  const sock = getSocketByNumber(senderNumber);
+  const socket = getSocketByNumber(senderNumber);
 
-  if (!sock) {
-    throw new Error(`Bot tidak aktif untuk nomor ${senderNumber}`);
+  if (!socket) {
+    console.error(`❌ Bot tidak aktif untuk nomor ${senderNumber}`);
+    throw new Error("WhatsApp tidak terhubung");
   }
 
   let fileThr;
 
   try {
-    console.log(`📄 Generating THR PDF for ${thr.nama}...`);
+    console.log(`📄 Generating THR PDF for ${thr.nama} (Hisana)...`);
 
     // 1. Generate PDF THR
     fileThr = await generateTHRPDF(thr, "hisana");
@@ -27,7 +28,7 @@ export default async function kirimThrHisana(thr, senderNumber) {
     }
 
     if (nomorTujuan.length < 10 || nomorTujuan.length > 15) {
-      throw new Error(`Nomor HP tidak valid: ${thr.nohp}`);
+      throw new Error(`Nomor HP tidak valid: ${thr.nohp} (cleaned: ${nomorTujuan})`);
     }
 
     const jid = `${nomorTujuan}@s.whatsapp.net`;
@@ -36,13 +37,18 @@ export default async function kirimThrHisana(thr, senderNumber) {
     const namaFile = `THR_${thr.nama.replace(/[^a-z0-9]/gi, "_")}_${thr.tahun}.pdf`;
 
     // 4. Kirim PDF
-    console.log(`📤 Sending THR to ${thr.nama} (${nomorTujuan})...`);
+    console.log(`📤 Sending THR Hisana to ${thr.nama} (${nomorTujuan})...`);
 
-    await sock.sendMessage(jid, {
+    const sapaan = `Assalamu'alaikum / Salam Sejahtera Bapak/Ibu *${thr.nama}*,`;
+    const isiPesan = `Bersama pesan ini, kami sampaikan dokumen elektronik Slip Tunjangan Hari Raya (THR) Anda untuk Tahun ${thr.tahun}.`;
+    const doaPenutup = `Semoga bermanfaat bagi Anda dan keluarga. Mohon dapat diperiksa dan disimpan sebagaimana mestinya.\n\nTerima kasih atas dedikasi Anda.`;
+    const captionFinal = `${sapaan}\n\n${isiPesan}\n\n${doaPenutup}`;
+
+    await socket.sendMessage(jid, {
       document: fs.readFileSync(fileThr),
       mimetype: "application/pdf",
       fileName: namaFile,
-      caption: `Assalamu'alaikum *${thr.nama}*, berikut slip THR (Tunjangan Hari Raya) Anda untuk tahun ${thr.tahun}. Mohon segera dikonfirmasi penerimaannya. Terima kasih.`,
+      caption: captionFinal,
     });
 
     console.log(`✅ THR Hisana terkirim ke ${thr.nama} (${thr.nohp}) - Rp ${thr.jumlah_thr}`);
@@ -55,7 +61,8 @@ export default async function kirimThrHisana(thr, senderNumber) {
 
     return true;
   } catch (err) {
-    console.error(`❌ Gagal kirim THR ke ${thr.nama} (${thr.nohp}):`, err.message);
+    console.error(`❌ Gagal kirim THR Hisana ke ${thr.nama} (${thr.nohp}):`, err.message);
+    console.error("Error stack:", err.stack);
 
     // Cleanup file jika ada
     if (fileThr && fs.existsSync(fileThr)) {

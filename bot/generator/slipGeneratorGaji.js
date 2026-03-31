@@ -168,7 +168,7 @@ async function generateSlip(data, company = "hisana") {
       doc.fontSize(14).text(`Rp ${rupiah(total)}`, 315, y + 22, { width: 200, align: "right" });
 
       // ======================
-      // FOOTER & SIGNATURE
+      // FOOTER
       // ======================
       y = 680;
       doc
@@ -177,11 +177,11 @@ async function generateSlip(data, company = "hisana") {
         .fontSize(8)
         .text(`Catatan: ${normalized.keterangan || "Slip ini adalah dokumen sah yang dihasilkan secara elektronik."}`, 70, y, { width: 250 });
 
-      // Tanda Tangan
-      doc.fillColor(theme.textMain).font("Helvetica").fontSize(10);
-      doc.text("Diterima Oleh,", 400, y);
-      doc.text("________________________", 400, y + 60);
-      doc.font("Helvetica-Bold").text(namaKaryawan.toUpperCase(), 400, y + 75, { width: 130, align: "center" });
+      // // Tanda Tangan
+      // doc.fillColor(theme.textMain).font("Helvetica").fontSize(10);
+      // doc.text("Diterima Oleh,", 400, y);
+      // doc.text("________________________", 400, y + 60);
+      // doc.font("Helvetica-Bold").text(namaKaryawan.toUpperCase(), 400, y + 75, { width: 130, align: "center" });
 
       // Metadata Akhir
       doc

@@ -59,6 +59,10 @@ let cancelSlipProgress = {
 };
 let cancelSlipProgressInterval = null;
 
+let currentSlipMonth = "all";
+let currentSlipYear = "all";
+let availableSlipYears = [];
+
 // =============================
 // GLOBAL BONUS
 // =============================
@@ -68,6 +72,9 @@ const pageSizeBonus = 10;
 let selectedBonusSet = new Set();
 let bonusDuplicateCheckInterval = null;
 let bonusProgressInterval = null;
+let currentBonusMonth = "all";
+let currentBonusYear = "all";
+let availableBonusYears = [];
 
 let bonusProgress = {
   running: false,
@@ -85,7 +92,7 @@ let cancelBonusProgress = {
 let cancelBonusProgressInterval = null;
 
 // =============================
-// THR GLOBAL THR
+// THR GLOBAL
 // =============================
 let thrData = [];
 let currentThrPage = 1;
@@ -108,40 +115,148 @@ let cancelThrProgress = {
 };
 let cancelThrProgressInterval = null;
 
+// Employee search for bonus
+let employeeList = [];
+let selectedEmployee = null;
+
+// Employee search for THR
+let thrEmployeeList = [];
+let selectedThrEmployee = null;
+
 function rupiah(x) {
   if (!x) return "Rp 0";
   return "Rp " + Number(x).toLocaleString("id-ID");
 }
 
-// =============================
-// LOAD DATA
-// =============================
-async function loadData() {
+async function loadAvailableSlipYears() {
   try {
-    const res = await fetch(`/my-slip?company=${currentCompany}`);
-    let data = await res.json();
-    dataAll = data;
+    console.log(`Loading available years for company: ${currentCompany}`);
+    const res = await fetch(`/slip-years?company=${currentCompany}`);
+    const data = await res.json();
 
-    const now = new Date();
-    const bulan = now.toLocaleString("id-ID", { month: "long" });
-    const tahun = now.getFullYear();
+    if (data.success) {
+      const yearSelect = document.getElementById("slipYearSelect");
+      if (yearSelect) {
+        const currentSelection = yearSelect.value;
 
-    console.log(`Loaded data for ${currentCompany} - ${bulan} ${tahun}:`, dataAll.length, "records");
+        // Simpan nilai yang dipilih saat ini
+        yearSelect.innerHTML = '<option value="all">Semua Tahun</option>';
 
-    renderTable();
-    renderDataTable();
+        data.years.forEach((year) => {
+          const option = document.createElement("option");
+          option.value = year;
+          option.textContent = year;
+          yearSelect.appendChild(option);
+        });
 
-    // Update select all status setelah render table
-    setTimeout(() => {
-      updateSelectAllSlipStatus();
-    }, 100);
+        // Kembalikan pilihan sebelumnya jika masih valid
+        if (currentSelection && (currentSelection === "all" || data.years.includes(parseInt(currentSelection)))) {
+          yearSelect.value = currentSelection;
+          currentSlipYear = currentSelection;
+        } else if (currentSlipYear !== "all") {
+          // Jika tahun yang dipilih sebelumnya tidak tersedia, set ke "all"
+          yearSelect.value = "all";
+          currentSlipYear = "all";
+        }
+
+        console.log(`Available years loaded: ${data.years.join(", ")}`);
+        console.log(`Current year selection: ${yearSelect.value}`);
+      }
+    }
   } catch (err) {
-    console.error("Load data error:", err);
+    console.error("Load available slip years error:", err);
   }
 }
+
+function initializeSlipFilters() {
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
+  currentSlipMonth = currentMonth.toString();
+  currentSlipYear = currentYear.toString();
+
+  const monthSelect = document.getElementById("slipMonthSelect");
+  const yearSelect = document.getElementById("slipYearSelect");
+
+  if (monthSelect) {
+    monthSelect.value = currentSlipMonth;
+  }
+
+  if (yearSelect) {
+    window.pendingSlipYear = currentSlipYear;
+  }
+
+  console.log("Slip filters initialized to current month:", currentMonth, "year:", currentYear);
+}
+
+function setupFilterListeners() {
+  const monthSelect = document.getElementById("slipMonthSelect");
+  const yearSelect = document.getElementById("slipYearSelect");
+
+  if (monthSelect) {
+    // Hapus event listener lama
+    const newMonthSelect = monthSelect.cloneNode(true);
+    monthSelect.parentNode.replaceChild(newMonthSelect, monthSelect);
+
+    newMonthSelect.addEventListener("change", async (e) => {
+      const selectedMonth = e.target.value;
+      console.log(`Month filter changed to: ${selectedMonth}`);
+
+      currentSlipMonth = selectedMonth;
+      currentPage = 1;
+      currentPageData = 1;
+      checkedSet.clear();
+
+      await loadData();
+    });
+  }
+
+  if (yearSelect) {
+    // Hapus event listener lama
+    const newYearSelect = yearSelect.cloneNode(true);
+    yearSelect.parentNode.replaceChild(newYearSelect, yearSelect);
+
+    newYearSelect.addEventListener("change", async (e) => {
+      const selectedYear = e.target.value;
+      console.log(`Year filter changed to: ${selectedYear}`);
+
+      currentSlipYear = selectedYear;
+      currentPage = 1;
+      currentPageData = 1;
+      checkedSet.clear();
+
+      await loadData();
+    });
+  }
+}
+
+// Panggil fungsi ini di inisialisasi
+setupFilterListeners();
+
+function resetFiltersToCurrent() {
+  const { month, year } = getCurrentMonthYear();
+
+  currentSlipMonth = month;
+  currentSlipYear = year;
+
+  const monthSelect = document.getElementById("slipMonthSelect");
+  const yearSelect = document.getElementById("slipYearSelect");
+
+  if (monthSelect) monthSelect.value = month;
+  if (yearSelect) yearSelect.value = year;
+
+  // Reload data
+  loadData();
+}
+
+// Tambahkan tombol reset filter di HTML (opsional)
+// Anda bisa menambahkan tombol ini di HTML jika diperlukan
+
 // =============================
 // UPLOAD EXCEL
 // =============================
+// Di dashboard.js, tambahkan di uploadExcel function
 async function uploadExcel(formData, statusId, formId) {
   const statusEl = document.getElementById(statusId);
   const formEl = document.getElementById(formId);
@@ -149,6 +264,7 @@ async function uploadExcel(formData, statusId, formId) {
   try {
     const res = await fetch("/upload", { method: "POST", body: formData });
     const result = await res.json();
+    console.log("Upload result:", result); // Tambahkan ini
     if (result.success) {
       Swal.fire("Import Berhasil!", result.message, "success");
       await loadData();
@@ -211,27 +327,58 @@ function renderFormFields() {
       <div class="formGroup"><label>Store *</label><input type="text" id="store" required placeholder="Nama store/toko" /></div>
       <div class="formGroup"><label>Tanggal Awal Masuk</label><input type="date" id="awal_masuk" /></div>
       <div class="formGroup"><label>Jumlah Hari Kerja *</label><input type="number" id="kerja" required value="0" step="1" /></div>
-      <div class="formGroup"><label>Gaji Pokok *</label><input type="number" id="gaji" required value="0" step="1000" /></div>
-      <div class="formGroup"><label>Iuran BPJS Ketenagakerjaan</label><input type="number" id="iuran_bpjs_ketenagakerjaan" value="0" step="1000" /></div>
-      <div class="formGroup"><label>Kerajinan</label><input type="number" id="kerajinan" value="0" step="1000" /></div>
-      <div class="formGroup"><label>Cuti</label><input type="number" id="cuti" value="0" step="1000" /></div>
-      <div class="formGroup"><label>Tunjangan BPJS & Pulsa</label><input type="number" id="tunj_bpjs_pulsa" value="0" step="1000" /></div>
-      <div class="formGroup"><label>Total Perhitungan</label><input type="number" id="jumlah" readonly style="background:#f3f4f6" /></div>
-      <div class="formGroup"><label>Uang Makan (UM) *</label><input type="number" id="um" required value="0" step="1000" /></div>
+      <div class="formGroup"><label>Gaji Pokok *</label><input type="text" id="gaji" required placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
+      <div class="formGroup"><label>Iuran BPJS Ketenagakerjaan</label><input type="text" id="iuran_bpjs_ketenagakerjaan" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
+      <div class="formGroup"><label>Kerajinan</label><input type="text" id="kerajinan" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
+      <div class="formGroup"><label>Cuti</label><input type="text" id="cuti" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
+      <div class="formGroup"><label>Tunjangan BPJS & Pulsa</label><input type="text" id="tunj_bpjs_pulsa" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
+      <div class="formGroup"><label>Total Perhitungan</label><input type="text" id="jumlah" readonly style="background:#f3f4f6; text-align: right; font-family: monospace" /></div>
+      <div class="formGroup"><label>Uang Makan (UM) *</label><input type="text" id="um" required placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
       <div class="formGroup"><label>Keterangan</label><input type="text" id="keterangan" placeholder="Opsional" /></div>
-      <div class="formGroup"><label>Total Gaji</label><input type="number" id="gaji_total" readonly style="background:#f3f4f6" /></div>
+      <div class="formGroup"><label>Total Gaji</label><input type="text" id="gaji_total" readonly style="background:#f3f4f6; text-align: right; font-family: monospace" /></div>
       <div class="formGroup"><label>No HP Karyawan *</label><input type="text" id="nohp" required placeholder="Contoh: 628123456789" /></div>
     `;
+
+    const currencyFields = ["gaji", "iuran_bpjs_ketenagakerjaan", "kerajinan", "cuti", "tunj_bpjs_pulsa", "um"];
+    currencyFields.forEach((fieldId) => {
+      const element = document.getElementById(fieldId);
+      if (element) {
+        element.removeEventListener("input", handleCurrencyInput);
+        element.addEventListener("input", handleCurrencyInput);
+
+        element.addEventListener("keypress", function (e) {
+          const charCode = e.which ? e.which : e.keyCode;
+          if (charCode < 48 || charCode > 57) {
+            if (charCode !== 8 && charCode !== 9 && charCode !== 37 && charCode !== 39 && charCode !== 46) {
+              e.preventDefault();
+            }
+          }
+        });
+
+        element.addEventListener("paste", function (e) {
+          e.preventDefault();
+          let pasteData = (e.clipboardData || window.clipboardData).getData("text");
+          let cleanData = pasteData.replace(/[^\d]/g, "");
+          if (cleanData) {
+            const formatted = formatCurrency(cleanData);
+            this.value = formatted;
+          }
+          const event = new Event("input", { bubbles: true });
+          this.dispatchEvent(event);
+        });
+      }
+    });
 
     const triggerIds = ["gaji", "iuran_bpjs_ketenagakerjaan", "kerajinan", "cuti", "tunj_bpjs_pulsa", "um"];
     triggerIds.forEach((id) => {
       const element = document.getElementById(id);
       if (element) {
-        element.removeEventListener("input", calculatePayroll);
-        element.addEventListener("input", calculatePayroll);
+        element.removeEventListener("input", calculatePayrollWithFormat);
+        element.addEventListener("input", calculatePayrollWithFormat);
       }
     });
-    calculatePayroll();
+
+    calculatePayrollWithFormat();
   } else {
     formGrid.innerHTML = `
       <div class="formGroup"><label>No Induk *</label><input type="text" id="no_induk" required placeholder="Contoh: E001" /></div>
@@ -239,55 +386,131 @@ function renderFormFields() {
       <div class="formGroup"><label>Tanggal Masuk *</label><input type="date" id="tanggal_masuk" required /></div>
       <div class="formGroup"><label>Jabatan *</label><input type="text" id="jabatan" required placeholder="Contoh: Staff, Supervisor" /></div>
       <div class="formGroup"><label>Penempatan</label><input type="text" id="penempatan" placeholder="Contoh: Blimbing, Kepanjen" /></div>
-      <div class="formGroup"><label>Gaji Utuh</label><input type="number" id="gaji_utuh" value="0" step="1000" /></div>
-      <div class="formGroup"><label>Gaji Pokok *</label><input type="number" id="gaji_pokok" required value="0" step="1000" /></div>
-      <div class="formGroup"><label>BPJS Kesehatan</label><input type="number" id="bpjs_kesehatan" value="0" step="1000" /></div>
-      <div class="formGroup"><label>Insentif</label><input type="number" id="insentif" value="0" step="1000" /></div>
-      <div class="formGroup"><label>Total Gaji</label><input type="number" id="total_gaji" readonly style="background:#f3f4f6" /></div>
+      <div class="formGroup"><label>Gaji Utuh</label><input type="text" id="gaji_utuh" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
+      <div class="formGroup"><label>Gaji Pokok *</label><input type="text" id="gaji_pokok" required placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
+      <div class="formGroup"><label>BPJS Kesehatan</label><input type="text" id="bpjs_kesehatan" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
+      <div class="formGroup"><label>Insentif</label><input type="text" id="insentif" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
+      <div class="formGroup"><label>Total Gaji</label><input type="text" id="total_gaji" readonly style="background:#f3f4f6; text-align: right; font-family: monospace" /></div>
       <div class="formGroup"><label>Keterangan</label><input type="text" id="keterangan" placeholder="Opsional" /></div>
       <div class="formGroup"><label>No HP Karyawan *</label><input type="text" id="nohp" required placeholder="Contoh: 628123456789" /></div>
     `;
+
+    const currencyFieldsEnakko = ["gaji_utuh", "gaji_pokok", "bpjs_kesehatan", "insentif"];
+    currencyFieldsEnakko.forEach((fieldId) => {
+      const element = document.getElementById(fieldId);
+      if (element) {
+        element.removeEventListener("input", handleCurrencyInput);
+        element.addEventListener("input", handleCurrencyInput);
+
+        element.addEventListener("keypress", function (e) {
+          const charCode = e.which ? e.which : e.keyCode;
+          if (charCode < 48 || charCode > 57) {
+            if (charCode !== 8 && charCode !== 9 && charCode !== 37 && charCode !== 39 && charCode !== 46) {
+              e.preventDefault();
+            }
+          }
+        });
+
+        element.addEventListener("paste", function (e) {
+          e.preventDefault();
+          let pasteData = (e.clipboardData || window.clipboardData).getData("text");
+          let cleanData = pasteData.replace(/[^\d]/g, "");
+          if (cleanData) {
+            const formatted = formatCurrency(cleanData);
+            this.value = formatted;
+          }
+          const event = new Event("input", { bubbles: true });
+          this.dispatchEvent(event);
+        });
+      }
+    });
 
     const triggerIdsEnakko = ["gaji_utuh", "gaji_pokok", "bpjs_kesehatan", "insentif"];
     triggerIdsEnakko.forEach((id) => {
       const element = document.getElementById(id);
       if (element) {
-        element.removeEventListener("input", calculateEnakkoTotal);
-        element.addEventListener("input", calculateEnakkoTotal);
+        element.removeEventListener("input", calculateEnakkoTotalWithFormat);
+        element.addEventListener("input", calculateEnakkoTotalWithFormat);
       }
     });
-    calculateEnakkoTotal();
+    calculateEnakkoTotalWithFormat();
   }
 }
 
-function calculatePayroll() {
-  const gaji = parseFloat(document.getElementById("gaji")?.value) || 0;
-  const iuran = parseFloat(document.getElementById("iuran_bpjs_ketenagakerjaan")?.value) || 0;
-  const kerajinan = parseFloat(document.getElementById("kerajinan")?.value) || 0;
-  const cuti = parseFloat(document.getElementById("cuti")?.value) || 0;
-  const tunjangan = parseFloat(document.getElementById("tunj_bpjs_pulsa")?.value) || 0;
-  const um = parseFloat(document.getElementById("um")?.value) || 0;
+function formatCurrency(angka) {
+  if (!angka) return "";
+  let cleanNumber = angka.toString().replace(/[^\d]/g, "");
+  if (!cleanNumber) return "";
+  const number = parseInt(cleanNumber);
+  if (isNaN(number)) return "";
+  return number.toLocaleString("id-ID");
+}
+
+function parseCurrency(value) {
+  if (!value) return 0;
+  let cleanValue = value.toString().replace(/[^\d]/g, "");
+  return parseInt(cleanValue) || 0;
+}
+
+function handleCurrencyInput(e) {
+  const input = e.target;
+  let value = input.value;
+  const cursorPosition = input.selectionStart;
+  let cleanValue = value.replace(/[^\d]/g, "");
+
+  if (cleanValue) {
+    let formattedValue = "";
+    let counter = 0;
+    for (let i = cleanValue.length - 1; i >= 0; i--) {
+      counter++;
+      formattedValue = cleanValue[i] + formattedValue;
+      if (counter % 3 === 0 && i !== 0) {
+        formattedValue = "." + formattedValue;
+      }
+    }
+    input.value = formattedValue;
+    const newPosition = formattedValue.length - (cleanValue.length - cursorPosition);
+    setTimeout(() => {
+      input.setSelectionRange(newPosition, newPosition);
+    }, 0);
+  } else {
+    input.value = "";
+  }
+}
+
+function calculatePayrollWithFormat() {
+  const gaji = parseCurrency(document.getElementById("gaji")?.value);
+  const iuran = parseCurrency(document.getElementById("iuran_bpjs_ketenagakerjaan")?.value);
+  const kerajinan = parseCurrency(document.getElementById("kerajinan")?.value);
+  const cuti = parseCurrency(document.getElementById("cuti")?.value);
+  const tunjangan = parseCurrency(document.getElementById("tunj_bpjs_pulsa")?.value);
+  const um = parseCurrency(document.getElementById("um")?.value);
 
   const jumlah = gaji - iuran + kerajinan + cuti + tunjangan;
   const gajiTotal = jumlah + um;
 
   const jumlahField = document.getElementById("jumlah");
   const gajiTotalField = document.getElementById("gaji_total");
-  if (jumlahField) jumlahField.value = Math.round(jumlah);
-  if (gajiTotalField) gajiTotalField.value = Math.round(gajiTotal);
+
+  if (jumlahField) {
+    jumlahField.value = jumlah.toLocaleString("id-ID");
+  }
+  if (gajiTotalField) {
+    gajiTotalField.value = gajiTotal.toLocaleString("id-ID");
+  }
 }
 
-function calculateEnakkoTotal() {
-  const gajiUtuh = parseFloat(document.getElementById("gaji_utuh")?.value) || 0;
-  const gajiPokok = parseFloat(document.getElementById("gaji_pokok")?.value) || 0;
-  const bpjsKesehatan = parseFloat(document.getElementById("bpjs_kesehatan")?.value) || 0;
-  const insentif = parseFloat(document.getElementById("insentif")?.value) || 0;
+function calculateEnakkoTotalWithFormat() {
+  const gajiUtuh = parseCurrency(document.getElementById("gaji_utuh")?.value);
+  const gajiPokok = parseCurrency(document.getElementById("gaji_pokok")?.value);
+  const bpjsKesehatan = parseCurrency(document.getElementById("bpjs_kesehatan")?.value);
+  const insentif = parseCurrency(document.getElementById("insentif")?.value);
 
   const totalGaji = gajiPokok + bpjsKesehatan + insentif;
 
   const totalGajiField = document.getElementById("total_gaji");
   if (totalGajiField) {
-    totalGajiField.value = Math.round(totalGaji);
+    totalGajiField.value = totalGaji.toLocaleString("id-ID");
   }
 }
 
@@ -301,7 +524,9 @@ const submenuEnakko = document.getElementById("submenuEnakko");
 
 function activateSubmenu(btnId, sectionId) {
   const parent = document.getElementById(btnId).parentNode;
-  parent.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+  if (parent) {
+    parent.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+  }
   document.getElementById(btnId).classList.add("active");
 
   document.querySelectorAll(".section").forEach((s) => s.classList.remove("active"));
@@ -312,8 +537,19 @@ function activateSubmenu(btnId, sectionId) {
   }
 }
 
+function activateDataSlipMenu() {
+  if (currentCompany === "hisana") {
+    document.getElementById("menuDataHisana").click();
+  } else {
+    document.getElementById("menuDataEnakko").click();
+  }
+}
+
 function switchMainMenu(company) {
+  console.log("Switching to company:", company);
+
   currentCompany = company;
+
   checkedSet.clear();
   selectedBonusSet.clear();
   selectedThrSet.clear();
@@ -322,37 +558,66 @@ function switchMainMenu(company) {
   currentBonusPage = 1;
   currentThrPage = 1;
 
+  const { month, year } = getCurrentMonthYear();
+
+  currentSlipMonth = month;
+  currentSlipYear = year;
+  currentBonusMonth = month;
+  currentBonusYear = year;
+
+  const slipMonthSelect = document.getElementById("slipMonthSelect");
+  const slipYearSelect = document.getElementById("slipYearSelect");
+  const bonusMonthSelect = document.getElementById("bonusMonthSelect");
+  const bonusYearSelect = document.getElementById("bonusYearSelect");
+
+  if (slipMonthSelect) slipMonthSelect.value = currentSlipMonth;
+  if (slipYearSelect) slipYearSelect.value = currentSlipYear;
+  if (bonusMonthSelect) bonusMonthSelect.value = currentBonusMonth;
+  if (bonusYearSelect) bonusYearSelect.value = currentBonusYear;
+
   resetBonusProgress();
   resetThrProgress();
 
-  // Reset progress untuk Kirim Slip
   const progressContainer = document.getElementById("progressContainer");
   const progressBar = document.getElementById("bar");
   if (progressContainer) progressContainer.style.display = "none";
   if (progressBar) progressBar.style.width = "0%";
-
-  renderTableHeader();
-  renderDataTableHeader();
-  loadData();
 
   if (company === "hisana") {
     menuHisanaBtn.classList.add("active");
     menuEnakkoBtn.classList.remove("active");
     submenuHisana.style.display = "flex";
     submenuEnakko.style.display = "none";
-    document.getElementById("menuDataHisana").click();
+    activateDataSlipMenu();
   } else {
     menuEnakkoBtn.classList.add("active");
     menuHisanaBtn.classList.remove("active");
     submenuEnakko.style.display = "flex";
     submenuHisana.style.display = "none";
-    document.getElementById("menuDataEnakko").click();
+    // Aktifkan menu Data Slip Gaji
+    activateDataSlipMenu();
   }
+
+  employeeList = [];
+  selectedEmployee = null;
+  resetEmployeeSelection();
+  thrEmployeeList = [];
+  selectedThrEmployee = null;
+  resetThrEmployeeSelection();
 
   stopBonusDuplicateStatusCheck();
   stopThrDuplicateStatusCheck();
   stopGajiDuplicateStatusCheck();
+
+  renderTableHeader();
+  renderDataTableHeader();
+  loadData();
+  loadBonusData();
+  loadThrData();
+
   setTimeout(() => {
+    initializeBonusDuplicationButtons();
+    initializeThrDuplicationButtons();
     checkBonusDuplicateStatus();
     startBonusDuplicateStatusCheck();
     checkThrDuplicateStatus();
@@ -361,6 +626,13 @@ function switchMainMenu(company) {
     startGajiDuplicateStatusCheck();
   }, 500);
 }
+
+// Tambahkan event listener untuk halaman refresh
+window.addEventListener("load", () => {
+  // Set default company dan aktifkan data slip gaji
+  currentCompany = "hisana";
+  activateDataSlipMenu();
+});
 
 menuHisanaBtn.onclick = () => switchMainMenu("hisana");
 menuEnakkoBtn.onclick = () => switchMainMenu("enakko");
@@ -379,6 +651,15 @@ document.getElementById("menuDataHisana").onclick = () => {
 };
 document.getElementById("menuBonusHisana").onclick = () => {
   activateSubmenu("menuBonusHisana", "sectionBonus");
+  if (currentBonusMonth === "all" || currentBonusYear === "all") {
+    const now = new Date();
+    currentBonusMonth = (now.getMonth() + 1).toString();
+    currentBonusYear = now.getFullYear().toString();
+    const monthSelect = document.getElementById("bonusMonthSelect");
+    const yearSelect = document.getElementById("bonusYearSelect");
+    if (monthSelect) monthSelect.value = currentBonusMonth;
+    if (yearSelect) yearSelect.value = currentBonusYear;
+  }
   loadBonusData();
 };
 document.getElementById("menuTHRHisana").onclick = () => {
@@ -397,17 +678,21 @@ document.getElementById("menuDataEnakko").onclick = () => {
 };
 document.getElementById("menuBonusEnakko").onclick = () => {
   activateSubmenu("menuBonusEnakko", "sectionBonus");
+  if (currentBonusMonth === "all" || currentBonusYear === "all") {
+    const now = new Date();
+    currentBonusMonth = (now.getMonth() + 1).toString();
+    currentBonusYear = now.getFullYear().toString();
+    const monthSelect = document.getElementById("bonusMonthSelect");
+    const yearSelect = document.getElementById("bonusYearSelect");
+    if (monthSelect) monthSelect.value = currentBonusMonth;
+    if (yearSelect) yearSelect.value = currentBonusYear;
+  }
   loadBonusData();
 };
 document.getElementById("menuTHREnakko").onclick = () => {
   activateSubmenu("menuTHREnakko", "sectionTHR");
   loadThrData();
 };
-
-window.addEventListener("DOMContentLoaded", () => {
-  if (!currentCompany) currentCompany = "hisana";
-  switchMainMenu(currentCompany);
-});
 
 // =============================
 // TABLE RENDER FUNCTIONS
@@ -438,6 +723,7 @@ function renderTableHeader() {
         <th>Gaji Total</th>
         <th>No HP</th>
         <th>Status Slip</th>
+        <th style="width: 150px">Alasan Pembatalan</th>
       </tr>
     `;
   } else {
@@ -458,6 +744,7 @@ function renderTableHeader() {
         <th>Keterangan</th>
         <th>No HP</th>
         <th>Status Slip</th>
+        <th style="width: 150px">Alasan Pembatalan</th>
       </tr>
     `;
   }
@@ -478,7 +765,6 @@ function renderTable() {
   pageData.forEach((d, i) => {
     const tr = document.createElement("tr");
 
-    // Add class based on status
     if (d.status_slip === "terkirim") {
       tr.classList.add("status-sent");
     } else if (d.status_slip === "dibatalkan") {
@@ -493,6 +779,13 @@ function renderTable() {
       statusBadge = '<span class="status-badge cancelled"><i class="fas fa-ban"></i> Dibatalkan</span>';
     } else {
       statusBadge = '<span class="status-badge pending"><i class="fas fa-clock"></i> Belum Dikirim</span>';
+    }
+
+    let cancellationNoteDisplay = "-";
+    if (d.status_slip === "dibatalkan" && d.cancellation_note) {
+      cancellationNoteDisplay = `<span class="cancellation-note" title="${escapeHtml(d.cancellation_note)}">${escapeHtml(d.cancellation_note.length > 30 ? d.cancellation_note.substring(0, 30) + "..." : d.cancellation_note)}</span>`;
+    } else if (d.status_slip === "dibatalkan") {
+      cancellationNoteDisplay = '<span class="cancellation-note" style="color: #f59e0b;"><i class="fas fa-info-circle"></i> Alasan tidak tersedia</span>';
     }
 
     if (currentCompany === "hisana") {
@@ -517,6 +810,7 @@ function renderTable() {
         <td class="total-bold" style="background:#f0f9ff">${rupiah(d.gaji_total)}</td>
         <td>${d.nohp}</td>
         <td>${statusBadge}</td>
+        <td style="font-size:0.85rem;">${cancellationNoteDisplay}</td>
       `;
     } else {
       let tanggalMasukFormatted = d.tanggal_masuk ? new Date(d.tanggal_masuk).toISOString().split("T")[0] : "";
@@ -536,15 +830,13 @@ function renderTable() {
         <td style="font-style:italic; color:var(--text-muted)">${d.keterangan || "-"}</td>
         <td>${d.nohp}</td>
         <td>${statusBadge}</td>
+        <td style="font-size:0.85rem;">${cancellationNoteDisplay}</td>
       `;
     }
     tbody.appendChild(tr);
   });
 
-  // Attach event handler untuk setiap checkbox individu
   attachIndividualCheckboxHandlers();
-
-  // Setup dan update select all checkbox
   setupSelectAllSlipListener();
   updateSelectAllSlipStatus();
   updateCancelSlipButtonVisibility();
@@ -553,10 +845,8 @@ function renderTable() {
   if (pageInfo) pageInfo.innerText = `Halaman ${currentPage} dari ${totalPages || 1}`;
 }
 
-// Fungsi terpisah untuk attach event handler checkbox individu
 function attachIndividualCheckboxHandlers() {
   document.querySelectorAll(".chk-slip").forEach((chk) => {
-    // Hapus listener lama jika ada
     const newChk = chk.cloneNode(true);
     chk.parentNode.replaceChild(newChk, chk);
 
@@ -568,17 +858,14 @@ function attachIndividualCheckboxHandlers() {
         } else {
           checkedSet.delete(no);
         }
-
-        // Update status checkbox select all
         updateSelectAllSlipStatus();
-
-        // Debug: log jumlah yang dipilih
+        updateCancelSlipButtonVisibility();
         console.log("Selected count:", checkedSet.size);
       };
     }
   });
 }
-// Fungsi untuk setup event listener select all
+
 function setupSelectAllSlipListener() {
   const selectAllCheckbox = document.getElementById("selectAllSlip");
   if (!selectAllCheckbox) return;
@@ -603,6 +890,40 @@ function setupSelectAllSlipListener() {
   });
 }
 
+function updateSelectAllSlipStatus() {
+  const selectAllCheckbox = document.getElementById("selectAllSlip");
+  if (!selectAllCheckbox) return;
+
+  const checkboxes = document.querySelectorAll(".chk-slip:not(:disabled)");
+  const checkedCheckboxes = document.querySelectorAll(".chk-slip:checked:not(:disabled)");
+
+  if (checkboxes.length === 0) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+  } else if (checkedCheckboxes.length === 0) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+  } else if (checkedCheckboxes.length === checkboxes.length) {
+    selectAllCheckbox.checked = true;
+    selectAllCheckbox.indeterminate = false;
+  } else {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = true;
+  }
+}
+
+function updateCancelSlipButtonVisibility() {
+  const selectedCancellable = Array.from(checkedSet).filter((noInduk) => {
+    const item = dataAll.find((d) => d.no_induk === noInduk);
+    return item && item.status_slip === "terkirim";
+  });
+
+  const cancelButton = document.getElementById("cancelSendSelected");
+  if (cancelButton) {
+    cancelButton.style.display = selectedCancellable.length > 0 ? "inline-flex" : "none";
+  }
+}
+
 async function cancelSelectedSlips() {
   const selectedCancellable = Array.from(checkedSet).filter((noInduk) => {
     const item = dataAll.find((d) => d.no_induk === noInduk);
@@ -619,20 +940,20 @@ async function cancelSelectedSlips() {
     return;
   }
 
-  // Get IDs of selected items
+  const companyName = currentCompany === "hisana" ? "Hisana" : "Enakko";
   const selectedIds = dataAll.filter((d) => selectedCancellable.includes(d.no_induk) && d.status_slip === "terkirim").map((d) => d.id);
 
   const result = await Swal.fire({
     title: "Konfirmasi Pembatalan Slip Gaji",
     html: `
       <div style="text-align: left;">
-        <p>Anda akan membatalkan ${selectedCancellable.length} slip gaji yang sudah terkirim.</p>
+        <p>Anda akan membatalkan <strong>${selectedCancellable.length}</strong> slip gaji yang sudah terkirim untuk <strong>${companyName}</strong>.</p>
         <p style="margin-top: 10px; color: #dc2626;">
           <i class="fas fa-exclamation-triangle"></i> Tindakan ini akan:
         </p>
         <ul style="text-align: left; margin-top: 5px; color: #666;">
           <li>Mengubah status slip menjadi "Dibatalkan"</li>
-          <li>Mengirim pesan notifikasi ke karyawan yang bersangkutan</li>
+          <li>Mengirim pesan notifikasi WhatsApp ke karyawan yang bersangkutan</li>
           <li>Slip dapat dikirim ulang setelah dibatalkan</li>
           <li>Mencatat waktu dan alasan pembatalan</li>
         </ul>
@@ -658,7 +979,6 @@ async function cancelSelectedSlips() {
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Membatalkan...';
 
-  // Tampilkan progress container
   const progressContainer = document.getElementById("cancelSlipProgressContainer");
   const progressBar = document.getElementById("cancelSlipProgressBar");
   const progressStatus = document.getElementById("cancelSlipProgressStatus");
@@ -688,32 +1008,27 @@ async function cancelSelectedSlips() {
 
     if (data.success) {
       await loadData();
-
-      // Clear selections
       checkedSet.clear();
-
-      // Uncheck all checkboxes
       const allCheckboxes = document.querySelectorAll(".chk-slip");
       allCheckboxes.forEach((chk) => {
         chk.checked = false;
       });
-
-      // Reset select all checkbox
       const selectAllCheckbox = document.getElementById("selectAllSlip");
       if (selectAllCheckbox) {
         selectAllCheckbox.checked = false;
         selectAllCheckbox.indeterminate = false;
       }
-
       updateCancelSlipButtonVisibility();
 
       Swal.fire({
         title: "Berhasil!",
         html: `
           <div style="text-align: left;">
-            <p>${data.message}</p>
-            <p style="margin-top: 10px; color: #16a34a;">
-              <i class="fas fa-check-circle"></i> Status slip telah berhasil dibatalkan.
+            <p><strong>Berhasil membatalkan ${selectedCancellable.length} slip gaji ${companyName}.</strong></p>
+            ${data.successCount > 0 ? `<p style="margin-top: 10px; color: #16a34a;"><i class="fas fa-check-circle"></i> ${data.successCount} notifikasi berhasil terkirim</p>` : ""}
+            ${data.failedCount > 0 ? `<p style="margin-top: 10px; color: #f59e0b;"><i class="fas fa-exclamation-triangle"></i> ${data.failedCount} notifikasi gagal terkirim</p>` : ""}
+            <p style="margin-top: 10px; color: #2563eb;">
+              <i class="fas fa-info-circle"></i> Status slip telah berhasil dibatalkan.
             </p>
           </div>
         `,
@@ -739,85 +1054,6 @@ const cancelSlipBtn = document.getElementById("cancelSendSelected");
 if (cancelSlipBtn) {
   cancelSlipBtn.addEventListener("click", cancelSelectedSlips);
 }
-
-// Fungsi untuk update status checkbox select all
-function updateSelectAllSlipStatus() {
-  const selectAllCheckbox = document.getElementById("selectAllSlip");
-  if (!selectAllCheckbox) return;
-
-  const checkboxes = document.querySelectorAll(".chk-slip:not(:disabled)");
-  const checkedCheckboxes = document.querySelectorAll(".chk-slip:checked:not(:disabled)");
-
-  if (checkboxes.length === 0) {
-    selectAllCheckbox.checked = false;
-    selectAllCheckbox.indeterminate = false;
-  } else if (checkedCheckboxes.length === 0) {
-    selectAllCheckbox.checked = false;
-    selectAllCheckbox.indeterminate = false;
-  } else if (checkedCheckboxes.length === checkboxes.length) {
-    selectAllCheckbox.checked = true;
-    selectAllCheckbox.indeterminate = false;
-  } else {
-    selectAllCheckbox.checked = false;
-    selectAllCheckbox.indeterminate = true;
-  }
-}
-
-function resetCancelSlipProgress() {
-  if (cancelSlipProgressInterval) {
-    clearInterval(cancelSlipProgressInterval);
-    cancelSlipProgressInterval = null;
-  }
-
-  cancelSlipProgress = { running: false, total: 0, sent: 0, failed: 0 };
-
-  const progressContainer = document.getElementById("cancelSlipProgressContainer");
-  const progressBar = document.getElementById("cancelSlipProgressBar");
-  const progressStatus = document.getElementById("cancelSlipProgressStatus");
-
-  if (progressContainer) progressContainer.style.display = "none";
-  if (progressBar) progressBar.style.width = "0%";
-  if (progressStatus) progressStatus.innerText = "Siap membatalkan slip.";
-
-  const btn = document.getElementById("cancelSendSelected");
-  if (btn) {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-ban"></i> Batalkan Kirim Terpilih';
-  }
-}
-
-function updateCancelSlipButtonVisibility() {
-  const selectedCancellable = Array.from(checkedSet).filter((noInduk) => {
-    const item = dataAll.find((d) => d.no_induk === noInduk);
-    return item && item.status_slip === "terkirim";
-  });
-
-  const cancelButton = document.getElementById("cancelSendSelected");
-  if (cancelButton) {
-    cancelButton.style.display = selectedCancellable.length > 0 ? "inline-flex" : "none";
-  }
-}
-
-// Override attachIndividualCheckboxHandlers to update cancel button
-const originalAttachHandlers = attachIndividualCheckboxHandlers;
-attachIndividualCheckboxHandlers = function () {
-  originalAttachHandlers();
-  document.querySelectorAll(".chk-slip").forEach((chk) => {
-    if (!chk.disabled) {
-      chk.onchange = (e) => {
-        const no = e.target.dataset.noinduk;
-        if (e.target.checked) {
-          checkedSet.add(no);
-        } else {
-          checkedSet.delete(no);
-        }
-        updateSelectAllSlipStatus();
-        updateCancelSlipButtonVisibility();
-        console.log("Selected count:", checkedSet.size);
-      };
-    }
-  });
-};
 
 // =============================
 // DATA TABLE FUNCTIONS
@@ -879,16 +1115,39 @@ function renderDataTable() {
   tbody.innerHTML = "";
 
   const query = document.getElementById("searchDataInput")?.value.toLowerCase() || "";
-  filteredData = dataAll.filter((d) => Object.values(d).some((v) => String(v).toLowerCase().includes(query)));
+  filteredData = dataAll.filter((d) => {
+    if (currentCompany === "hisana") {
+      return d.nama?.toLowerCase().includes(query) || d.no_induk?.toLowerCase().includes(query) || d.posisi?.toLowerCase().includes(query);
+    } else {
+      return d.nama_karyawan?.toLowerCase().includes(query) || d.no_induk?.toLowerCase().includes(query) || d.jabatan?.toLowerCase().includes(query);
+    }
+  });
+
   const totalPages = Math.ceil(filteredData.length / pageSizeData);
   if (currentPageData > totalPages) currentPageData = 1;
   const start = (currentPageData - 1) * pageSizeData;
   const pageData = filteredData.slice(start, start + pageSizeData);
 
+  if (pageData.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="${currentCompany === "hisana" ? 19 : 15}" style="text-align: center; padding: 40px;">
+          <i class="fas fa-database" style="font-size: 48px; color: #cbd5e1; margin-bottom: 10px; display: block;"></i>
+          <p style="color: #64748b;">Belum ada data slip gaji untuk periode ini</p>
+          <button class="btn-primary" onclick="openModal()" style="margin-top: 10px;">
+            <i class="fas fa-plus"></i> Tambah Data Manual
+          </button>
+        </td>
+      </tr>
+    `;
+    const dataPageInfo = document.getElementById("dataPageInfo");
+    if (dataPageInfo) dataPageInfo.innerText = `Halaman 0 dari 0`;
+    return;
+  }
+
   pageData.forEach((d, i) => {
     const tr = document.createElement("tr");
 
-    // Add class based on status
     if (d.status_slip === "terkirim") {
       tr.classList.add("status-sent");
     } else if (d.status_slip === "dibatalkan") {
@@ -907,21 +1166,21 @@ function renderDataTable() {
     if (currentCompany === "hisana") {
       let awalMasukFormatted = d.awal_masuk ? new Date(d.awal_masuk).toISOString().split("T")[0] : "";
       tr.innerHTML = `
-        <td>${start + i + 1}</td>
+        <td class="text-center">${start + i + 1}</td>
         <td>${d.no_induk}</td>
-        <td style="font-weight:600">${d.nama}</td>
-        <td>${d.posisi}</td>
-        <td>${d.store}</td>
+        <td style="font-weight:600">${escapeHtml(d.nama)}</td>
+        <td>${escapeHtml(d.posisi)}</td>
+        <td>${escapeHtml(d.store)}</td>
         <td>${awalMasukFormatted}</td>
-        <td>${d.kerja}</td>
+        <td class="text-center">${d.kerja}</td>
         <td class="money">${rupiah(d.gaji)}</td>
         <td class="deduction">-${rupiah(d.iuran_bpjs_ketenagakerjaan)}</td>
-        <td>${rupiah(d.kerajinan)}</td>
-        <td>${rupiah(d.cuti)}</td>
-        <td>${rupiah(d.tunj_bpjs_pulsa)}</td>
+        <td class="money">${rupiah(d.kerajinan)}</td>
+        <td class="money">${rupiah(d.cuti)}</td>
+        <td class="money">${rupiah(d.tunj_bpjs_pulsa)}</td>
         <td class="total-bold">${rupiah(d.jumlah)}</td>
-        <td>${rupiah(d.um)}</td>
-        <td>${d.keterangan || "-"}</td>
+        <td class="money">${rupiah(d.um)}</td>
+        <td style="font-style:italic; color:var(--text-muted)">${d.keterangan || "-"}</td>
         <td class="total-bold" style="background:#fffbeb">${rupiah(d.gaji_total)}</td>
         <td>${d.nohp}</td>
         <td>${statusBadge}</td>
@@ -933,18 +1192,18 @@ function renderDataTable() {
     } else {
       let tanggalMasukFormatted = d.tanggal_masuk ? new Date(d.tanggal_masuk).toISOString().split("T")[0] : "";
       tr.innerHTML = `
-        <td>${start + i + 1}</td>
+        <td class="text-center">${start + i + 1}</td>
         <td>${d.no_induk}</td>
-        <td style="font-weight:600">${d.nama_karyawan || d.nama}</td>
+        <td style="font-weight:600">${escapeHtml(d.nama_karyawan || d.nama)}</td>
         <td>${tanggalMasukFormatted}</td>
-        <td>${d.jabatan || "-"}</td>
-        <td>${d.penempatan || "-"}</td>
+        <td>${escapeHtml(d.jabatan || "-")}</td>
+        <td>${escapeHtml(d.penempatan || "-")}</td>
         <td class="money">${rupiah(d.gaji_utuh || 0)}</td>
         <td class="money">${rupiah(d.gaji_pokok || 0)}</td>
         <td class="deduction">-${rupiah(d.bpjs_kesehatan || 0)}</td>
-        <td>${rupiah(d.insentif || 0)}</td>
+        <td class="money">${rupiah(d.insentif || 0)}</td>
         <td class="total-bold">${rupiah(d.total_gaji || 0)}</td>
-        <td>${d.keterangan || "-"}</td>
+        <td style="font-style:italic; color:var(--text-muted)">${d.keterangan || "-"}</td>
         <td>${d.nohp}</td>
         <td>${statusBadge}</td>
         <td>
@@ -960,12 +1219,114 @@ function renderDataTable() {
   if (dataPageInfo) dataPageInfo.innerText = `Halaman ${currentPageData} dari ${totalPages || 1}`;
 }
 
+async function loadData() {
+  try {
+    // Get current month/year for reference
+    const { month: currentMonth, year: currentYear } = getCurrentMonthYear();
+
+    // Jika filter masih "all", set ke bulan dan tahun saat ini
+    if (currentSlipMonth === "all") {
+      currentSlipMonth = currentMonth;
+      const monthSelect = document.getElementById("slipMonthSelect");
+      if (monthSelect) monthSelect.value = currentMonth;
+    }
+
+    if (currentSlipYear === "all") {
+      currentSlipYear = currentYear;
+      const yearSelect = document.getElementById("slipYearSelect");
+      if (yearSelect) yearSelect.value = currentYear;
+    }
+
+    console.log(`Loading slip data - Company: ${currentCompany}, Month filter: ${currentSlipMonth}, Year filter: ${currentSlipYear}`);
+
+    let url = `/my-slip?company=${currentCompany}`;
+
+    // Tambahkan parameter filter - KIRIMKAN KE SERVER
+    if (currentSlipMonth && currentSlipMonth !== "all") {
+      url += `&month=${currentSlipMonth}`;
+      console.log(`Adding month filter: ${currentSlipMonth}`);
+    }
+
+    if (currentSlipYear && currentSlipYear !== "all") {
+      url += `&year=${currentSlipYear}`;
+      console.log(`Adding year filter: ${currentSlipYear}`);
+    }
+
+    console.log(`Fetching URL: ${url}`);
+
+    const res = await fetch(url);
+    let data = await res.json();
+    dataAll = data;
+
+    console.log(`Loaded ${dataAll.length} records for ${currentCompany}`);
+
+    renderTable();
+    renderDataTable();
+
+    await loadAvailableSlipYears();
+
+    setTimeout(() => {
+      updateSelectAllSlipStatus();
+    }, 100);
+  } catch (err) {
+    console.error("Load data error:", err);
+    Swal.fire("Error", "Gagal memuat data: " + err.message, "error");
+  }
+}
+
+function getCurrentMonthYear() {
+  const now = new Date();
+  return {
+    month: (now.getMonth() + 1).toString(),
+    year: now.getFullYear().toString(),
+  };
+}
+
+// document.getElementById("slipMonthSelect")?.addEventListener("change", (e) => {
+//   const selectedMonth = e.target.value;
+//   currentSlipMonth = selectedMonth;
+//   currentPage = 1;
+//   checkedSet.clear();
+//   loadData();
+// });
+
+// document.getElementById("slipYearSelect")?.addEventListener("change", (e) => {
+//   const selectedYear = e.target.value;
+//   currentSlipYear = selectedYear;
+//   currentPage = 1;
+//   checkedSet.clear();
+//   loadData();
+// });
+
+// Tambahkan fungsi untuk memuat data berdasarkan filter
+// function loadDataByFilters() {
+//   const month = document.getElementById("slipMonthSelect").value;
+//   const year = document.getElementById("slipYearSelect").value;
+
+//   currentSlipMonth = month;
+//   currentSlipYear = year;
+//   currentPage = 1;
+//   currentPageData = 1;
+//   checkedSet.clear();
+
+//   loadData();
+// }
+
+// Tambahkan event listener untuk filter
+// document.getElementById("slipMonthSelect")?.addEventListener("change", loadDataByFilters);
+// document.getElementById("slipYearSelect")?.addEventListener("change", loadDataByFilters);
+
 // =============================
-// GAJI FUNCTIONS
+// GAJI CRUD OPERATIONS
 // =============================
 function openModal(item = null) {
   const modal = document.getElementById("dataModal");
   if (!modal) return;
+
+  // Reset form terlebih dahulu
+  const form = document.getElementById("dataForm");
+  if (form) form.reset();
+  document.getElementById("dataId").value = "";
 
   modal.style.display = "flex";
   renderFormFields();
@@ -975,7 +1336,7 @@ function openModal(item = null) {
     document.getElementById("dataId").value = item.id;
 
     if (currentCompany === "hisana") {
-      const fields = ["no_induk", "nama", "posisi", "store", "awal_masuk", "kerja", "gaji", "iuran_bpjs_ketenagakerjaan", "kerajinan", "cuti", "tunj_bpjs_pulsa", "jumlah", "um", "keterangan", "gaji_total", "nohp"];
+      const fields = ["no_induk", "nama", "posisi", "store", "awal_masuk", "kerja", "keterangan", "nohp"];
       fields.forEach((k) => {
         const el = document.getElementById(k);
         if (!el) return;
@@ -985,21 +1346,52 @@ function openModal(item = null) {
           el.value = item[k] || "";
         }
       });
-      calculatePayroll();
+
+      const currencyFields = ["gaji", "iuran_bpjs_ketenagakerjaan", "kerajinan", "cuti", "tunj_bpjs_pulsa", "um", "jumlah", "gaji_total"];
+      currencyFields.forEach((k) => {
+        const el = document.getElementById(k);
+        if (el && item[k] !== undefined && item[k] !== null) {
+          const value = parseFloat(item[k]);
+          if (!isNaN(value) && value !== 0) {
+            el.value = value.toLocaleString("id-ID");
+          } else if (value === 0) {
+            el.value = "";
+          }
+        }
+      });
+
+      calculatePayrollWithFormat();
     } else {
-      document.getElementById("no_induk").value = item.no_induk || "";
-      document.getElementById("nama_karyawan").value = item.nama_karyawan || item.nama || "";
-      document.getElementById("tanggal_masuk").value = item.tanggal_masuk ? new Date(item.tanggal_masuk).toISOString().split("T")[0] : "";
-      document.getElementById("jabatan").value = item.jabatan || "";
-      document.getElementById("penempatan").value = item.penempatan || "";
-      document.getElementById("gaji_utuh").value = item.gaji_utuh || 0;
-      document.getElementById("gaji_pokok").value = item.gaji_pokok || 0;
-      document.getElementById("bpjs_kesehatan").value = item.bpjs_kesehatan || 0;
-      document.getElementById("insentif").value = item.insentif || 0;
-      document.getElementById("total_gaji").value = item.total_gaji || 0;
-      document.getElementById("keterangan").value = item.keterangan || "";
-      document.getElementById("nohp").value = item.nohp || "";
-      calculateEnakkoTotal();
+      const fields = ["no_induk", "tanggal_masuk", "jabatan", "penempatan", "keterangan", "nohp"];
+      fields.forEach((k) => {
+        const el = document.getElementById(k);
+        if (!el) return;
+        if (k === "tanggal_masuk" && item[k]) {
+          el.value = new Date(item[k]).toISOString().split("T")[0];
+        } else {
+          el.value = item[k] || "";
+        }
+      });
+
+      const currencyFields = ["gaji_utuh", "gaji_pokok", "bpjs_kesehatan", "insentif", "total_gaji"];
+      currencyFields.forEach((k) => {
+        const el = document.getElementById(k);
+        if (el && item[k] !== undefined && item[k] !== null) {
+          const value = parseFloat(item[k]);
+          if (!isNaN(value) && value !== 0) {
+            el.value = value.toLocaleString("id-ID");
+          } else if (value === 0) {
+            el.value = "";
+          }
+        }
+      });
+
+      const namaField = document.getElementById("nama_karyawan");
+      if (namaField) {
+        namaField.value = item.nama_karyawan || item.nama || "";
+      }
+
+      calculateEnakkoTotalWithFormat();
     }
   } else {
     document.getElementById("modalTitle").innerText = "Tambah Data Slip Baru";
@@ -1007,20 +1399,27 @@ function openModal(item = null) {
     document.getElementById("dataId").value = "";
 
     if (currentCompany === "hisana") {
-      if (document.getElementById("kerja")) document.getElementById("kerja").value = 0;
-      if (document.getElementById("gaji")) document.getElementById("gaji").value = 0;
-      if (document.getElementById("iuran_bpjs_ketenagakerjaan")) document.getElementById("iuran_bpjs_ketenagakerjaan").value = 0;
-      if (document.getElementById("kerajinan")) document.getElementById("kerajinan").value = 0;
-      if (document.getElementById("cuti")) document.getElementById("cuti").value = 0;
-      if (document.getElementById("tunj_bpjs_pulsa")) document.getElementById("tunj_bpjs_pulsa").value = 0;
-      if (document.getElementById("um")) document.getElementById("um").value = 0;
-      calculatePayroll();
+      const currencyFields = ["gaji", "iuran_bpjs_ketenagakerjaan", "kerajinan", "cuti", "tunj_bpjs_pulsa", "um", "jumlah", "gaji_total"];
+      currencyFields.forEach((k) => {
+        const el = document.getElementById(k);
+        if (el) el.value = "";
+      });
+
+      const numberFields = ["kerja"];
+      numberFields.forEach((k) => {
+        const el = document.getElementById(k);
+        if (el) el.value = 0;
+      });
+
+      calculatePayrollWithFormat();
     } else {
-      if (document.getElementById("gaji_utuh")) document.getElementById("gaji_utuh").value = 0;
-      if (document.getElementById("gaji_pokok")) document.getElementById("gaji_pokok").value = 0;
-      if (document.getElementById("bpjs_kesehatan")) document.getElementById("bpjs_kesehatan").value = 0;
-      if (document.getElementById("insentif")) document.getElementById("insentif").value = 0;
-      calculateEnakkoTotal();
+      const currencyFields = ["gaji_utuh", "gaji_pokok", "bpjs_kesehatan", "insentif", "total_gaji"];
+      currencyFields.forEach((k) => {
+        const el = document.getElementById(k);
+        if (el) el.value = "";
+      });
+
+      calculateEnakkoTotalWithFormat();
     }
   }
 }
@@ -1030,9 +1429,6 @@ window.openModalById = (id) => {
   openModal(item);
 };
 
-// =============================
-// CRUD OPERATIONS
-// =============================
 window.deleteData = async (id) => {
   const result = await Swal.fire({
     title: "Apakah Anda yakin?",
@@ -1062,6 +1458,9 @@ window.deleteData = async (id) => {
   }
 };
 
+// =============================
+// DATA FORM SUBMIT HANDLER
+// =============================
 document.getElementById("dataForm").onsubmit = async (e) => {
   e.preventDefault();
 
@@ -1076,15 +1475,15 @@ document.getElementById("dataForm").onsubmit = async (e) => {
       store: document.getElementById("store")?.value || "",
       awal_masuk: document.getElementById("awal_masuk")?.value || null,
       kerja: parseInt(document.getElementById("kerja")?.value) || 0,
-      gaji: parseFloat(document.getElementById("gaji")?.value) || 0,
-      iuran_bpjs_ketenagakerjaan: parseFloat(document.getElementById("iuran_bpjs_ketenagakerjaan")?.value) || 0,
-      kerajinan: parseFloat(document.getElementById("kerajinan")?.value) || 0,
-      cuti: parseFloat(document.getElementById("cuti")?.value) || 0,
-      tunj_bpjs_pulsa: parseFloat(document.getElementById("tunj_bpjs_pulsa")?.value) || 0,
-      jumlah: parseFloat(document.getElementById("jumlah")?.value) || 0,
-      um: parseFloat(document.getElementById("um")?.value) || 0,
+      gaji: parseCurrency(document.getElementById("gaji")?.value),
+      iuran_bpjs_ketenagakerjaan: parseCurrency(document.getElementById("iuran_bpjs_ketenagakerjaan")?.value),
+      kerajinan: parseCurrency(document.getElementById("kerajinan")?.value),
+      cuti: parseCurrency(document.getElementById("cuti")?.value),
+      tunj_bpjs_pulsa: parseCurrency(document.getElementById("tunj_bpjs_pulsa")?.value),
+      jumlah: parseCurrency(document.getElementById("jumlah")?.value),
+      um: parseCurrency(document.getElementById("um")?.value),
       keterangan: document.getElementById("keterangan")?.value || "",
-      gaji_total: parseFloat(document.getElementById("gaji_total")?.value) || 0,
+      gaji_total: parseCurrency(document.getElementById("gaji_total")?.value),
       nohp: document.getElementById("nohp")?.value || "",
     };
 
@@ -1099,11 +1498,11 @@ document.getElementById("dataForm").onsubmit = async (e) => {
       tanggal_masuk: document.getElementById("tanggal_masuk")?.value || null,
       jabatan: document.getElementById("jabatan")?.value || "",
       penempatan: document.getElementById("penempatan")?.value || "",
-      gaji_utuh: parseFloat(document.getElementById("gaji_utuh")?.value) || 0,
-      gaji_pokok: parseFloat(document.getElementById("gaji_pokok")?.value) || 0,
-      bpjs_kesehatan: parseFloat(document.getElementById("bpjs_kesehatan")?.value) || 0,
-      insentif: parseFloat(document.getElementById("insentif")?.value) || 0,
-      total_gaji: parseFloat(document.getElementById("total_gaji")?.value) || 0,
+      gaji_utuh: parseCurrency(document.getElementById("gaji_utuh")?.value),
+      gaji_pokok: parseCurrency(document.getElementById("gaji_pokok")?.value),
+      bpjs_kesehatan: parseCurrency(document.getElementById("bpjs_kesehatan")?.value),
+      insentif: parseCurrency(document.getElementById("insentif")?.value),
+      total_gaji: parseCurrency(document.getElementById("total_gaji")?.value),
       keterangan: document.getElementById("keterangan")?.value || "",
       nohp: document.getElementById("nohp")?.value || "",
     };
@@ -1127,7 +1526,7 @@ document.getElementById("dataForm").onsubmit = async (e) => {
     const result = await res.json();
 
     if (result.success) {
-      document.getElementById("dataModal").style.display = "none";
+      closeGajiModal(); // Gunakan fungsi close yang sudah diperbaiki
       await loadData();
       Swal.fire("Berhasil!", id ? "Data berhasil diperbarui." : "Data berhasil ditambahkan.", "success");
     } else {
@@ -1140,7 +1539,7 @@ document.getElementById("dataForm").onsubmit = async (e) => {
 };
 
 // =============================
-// EVENT LISTENERS
+// GAJI EVENT LISTENERS
 // =============================
 document.getElementById("searchInput")?.addEventListener("input", () => {
   currentPage = 1;
@@ -1163,6 +1562,9 @@ document.getElementById("nextPage")?.addEventListener("click", () => {
   }
 });
 
+// =============================
+// GAJI - KIRIM SLIP WHATSAPP
+// =============================
 document.getElementById("sendSelected")?.addEventListener("click", async () => {
   const selected = Array.from(checkedSet);
   if (selected.length === 0) {
@@ -1175,9 +1577,23 @@ document.getElementById("sendSelected")?.addEventListener("click", async () => {
     return;
   }
 
+  // Filter data yang belum terkirim atau dibatalkan
+  const selectedData = dataAll.filter((d) => selected.includes(d.no_induk) && d.status_slip !== "terkirim");
+
+  if (selectedData.length === 0) {
+    Swal.fire({
+      title: "Peringatan",
+      text: "Tidak ada slip yang dapat dikirim. Slip yang dipilih sudah terkirim semua.",
+      icon: "warning",
+      confirmButtonText: "OK",
+    });
+    return;
+  }
+
+  // Jika ada data yang bisa dikirim, tampilkan konfirmasi dengan jumlah yang akan dikirim
   const result = await Swal.fire({
     title: "Konfirmasi",
-    text: `Kirim slip ke ${selected.length} karyawan terpilih?`,
+    text: `Kirim slip ke ${selectedData.length} karyawan terpilih?`,
     icon: "question",
     showCancelButton: true,
     confirmButtonText: "Ya, Kirim!",
@@ -1188,7 +1604,10 @@ document.getElementById("sendSelected")?.addEventListener("click", async () => {
       const res = await fetch("/start-send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected, company: currentCompany }),
+        body: JSON.stringify({
+          selected: selectedData.map((d) => d.no_induk),
+          company: currentCompany,
+        }),
       });
 
       const data = await res.json();
@@ -1216,7 +1635,6 @@ if (fileInputData && fileNameData) {
   });
 }
 
-// File input preview untuk upload form kirim
 const fileInputKirim = document.getElementById("fileInputKirim");
 const fileNameKirim = document.getElementById("fileNameKirim");
 
@@ -1239,7 +1657,6 @@ function trackProgress() {
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Mengirim...';
 
-  // Tampilkan progress container saat mulai mengirim
   if (progressContainer) progressContainer.style.display = "block";
 
   const interval = setInterval(async () => {
@@ -1284,9 +1701,7 @@ function trackProgress() {
         }).then(() => {
           checkedSet.clear();
           loadData();
-          // Reset progress bar
           if (progressBar) progressBar.style.width = "0%";
-          // Sembunyikan progress container setelah selesai
           if (progressContainer) progressContainer.style.display = "none";
         });
 
@@ -1350,138 +1765,70 @@ document.getElementById("exportBtn")?.addEventListener("click", () => {
   XLSX.writeFile(wb, `Export_Slip_Gaji_${currentCompany}.xlsx`);
 });
 
-// document.getElementById("closeModal")?.addEventListener("click", () => {
-//   const modal = document.getElementById("dataModal");
-//   if (modal) modal.style.display = "none";
-// });
-
 // =============================
 // MODAL GAJI (DATA SLIP) FIX
 // =============================
-
-// Fungsi untuk menutup modal gaji
 function closeGajiModal() {
   const modal = document.getElementById("dataModal");
   if (modal) {
     modal.style.display = "none";
+    // Reset form saat modal ditutup
+    const form = document.getElementById("dataForm");
+    if (form) form.reset();
+    document.getElementById("dataId").value = "";
   }
 }
 
-// Setup modal gaji close on outside click
-function setupGajiModalOutsideClick() {
-  const modal = document.getElementById("dataModal");
-  if (modal) {
-    modal.addEventListener("click", (e) => {
-      if (e.target === modal) {
-        closeGajiModal();
-      }
-    });
-  }
-}
-
-// Setup all close buttons for gaji modal
 function setupGajiModalButtons() {
-  // Tombol X (close)
+  // Close button (X)
   const closeBtn = document.getElementById("closeModal");
   if (closeBtn) {
+    // Hapus event listener lama
     const newCloseBtn = closeBtn.cloneNode(true);
     closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
-    newCloseBtn.addEventListener("click", closeGajiModal);
+    newCloseBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeGajiModal();
+    };
   }
 
-  // Tombol Batal
+  // Cancel button
   const cancelBtn = document.getElementById("cancelModalBtn");
   if (cancelBtn) {
+    // Hapus event listener lama
     const newCancelBtn = cancelBtn.cloneNode(true);
     cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
-    newCancelBtn.addEventListener("click", closeGajiModal);
+    newCancelBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeGajiModal();
+    };
   }
 }
 
-// Override openModal function untuk gaji
-const originalOpenModal = window.openModal;
-window.openModal = function (item = null) {
-  const modal = document.getElementById("dataModal");
-  if (!modal) return;
-
-  modal.style.display = "flex";
-  renderFormFields();
-
-  if (item) {
-    document.getElementById("modalTitle").innerText = "Edit Data Slip";
-    document.getElementById("dataId").value = item.id;
-
-    if (currentCompany === "hisana") {
-      const fields = ["no_induk", "nama", "posisi", "store", "awal_masuk", "kerja", "gaji", "iuran_bpjs_ketenagakerjaan", "kerajinan", "cuti", "tunj_bpjs_pulsa", "jumlah", "um", "keterangan", "gaji_total", "nohp"];
-      fields.forEach((k) => {
-        const el = document.getElementById(k);
-        if (!el) return;
-        if (k === "awal_masuk" && item[k]) {
-          el.value = new Date(item[k]).toISOString().split("T")[0];
-        } else {
-          el.value = item[k] || "";
-        }
-      });
-      calculatePayroll();
-    } else {
-      document.getElementById("no_induk").value = item.no_induk || "";
-      document.getElementById("nama_karyawan").value = item.nama_karyawan || item.nama || "";
-      document.getElementById("tanggal_masuk").value = item.tanggal_masuk ? new Date(item.tanggal_masuk).toISOString().split("T")[0] : "";
-      document.getElementById("jabatan").value = item.jabatan || "";
-      document.getElementById("penempatan").value = item.penempatan || "";
-      document.getElementById("gaji_utuh").value = item.gaji_utuh || 0;
-      document.getElementById("gaji_pokok").value = item.gaji_pokok || 0;
-      document.getElementById("bpjs_kesehatan").value = item.bpjs_kesehatan || 0;
-      document.getElementById("insentif").value = item.insentif || 0;
-      document.getElementById("total_gaji").value = item.total_gaji || 0;
-      document.getElementById("keterangan").value = item.keterangan || "";
-      document.getElementById("nohp").value = item.nohp || "";
-      calculateEnakkoTotal();
-    }
-  } else {
-    document.getElementById("modalTitle").innerText = "Tambah Data Slip Baru";
-    document.getElementById("dataForm").reset();
-    document.getElementById("dataId").value = "";
-
-    if (currentCompany === "hisana") {
-      if (document.getElementById("kerja")) document.getElementById("kerja").value = 0;
-      if (document.getElementById("gaji")) document.getElementById("gaji").value = 0;
-      if (document.getElementById("iuran_bpjs_ketenagakerjaan")) document.getElementById("iuran_bpjs_ketenagakerjaan").value = 0;
-      if (document.getElementById("kerajinan")) document.getElementById("kerajinan").value = 0;
-      if (document.getElementById("cuti")) document.getElementById("cuti").value = 0;
-      if (document.getElementById("tunj_bpjs_pulsa")) document.getElementById("tunj_bpjs_pulsa").value = 0;
-      if (document.getElementById("um")) document.getElementById("um").value = 0;
-      calculatePayroll();
-    } else {
-      if (document.getElementById("gaji_utuh")) document.getElementById("gaji_utuh").value = 0;
-      if (document.getElementById("gaji_pokok")) document.getElementById("gaji_pokok").value = 0;
-      if (document.getElementById("bpjs_kesehatan")) document.getElementById("bpjs_kesehatan").value = 0;
-      if (document.getElementById("insentif")) document.getElementById("insentif").value = 0;
-      calculateEnakkoTotal();
-    }
-  }
-};
-
-// Override openModalById
-window.openModalById = (id) => {
-  const item = dataAll.find((d) => d.id == id);
-  window.openModal(item);
-};
-
-// Initialize gaji modal when DOM is ready
-document.addEventListener("DOMContentLoaded", function () {
-  setupGajiModalOutsideClick();
+function initializeGajiModal() {
   setupGajiModalButtons();
-});
-
-// Hapus event listener lama yang mungkin conflict
-if (document.getElementById("closeModal")) {
-  // Event listener baru sudah di-setup di atas
-  console.log("Gaji modal buttons initialized");
+  setupGajiModalOutsideClick();
 }
+
+// function setupGajiModalOutsideClick() {
+//   const modal = document.getElementById("dataModal");
+//   if (modal) {
+//     // Hapus event listener lama
+//     const newModal = modal.cloneNode(true);
+//     modal.parentNode.replaceChild(newModal, modal);
+
+//     newModal.onclick = (e) => {
+//       if (e.target === newModal) {
+//         closeGajiModal();
+//       }
+//     };
+//   }
+// }
 
 document.getElementById("addDataBtn")?.addEventListener("click", () => openModal());
-// Reset Checkbox untuk Slip Gaji
+
 document.getElementById("resetCheckbox")?.addEventListener("click", () => {
   if (checkedSet.size === 0) {
     Swal.fire({
@@ -1543,9 +1890,198 @@ document.getElementById("nextDataPage")?.addEventListener("click", () => {
 });
 
 // =============================
+// INITIALIZE DUPLICATION BUTTONS
+// =============================
+document.addEventListener("DOMContentLoaded", () => {
+  // Tombol duplikasi data slip gaji
+  const duplicateDataBtn = document.getElementById("duplicateDataBtn");
+  if (duplicateDataBtn) {
+    // Hapus event listener lama jika ada
+    const newDuplicateBtn = duplicateDataBtn.cloneNode(true);
+    duplicateDataBtn.parentNode.replaceChild(newDuplicateBtn, duplicateDataBtn);
+
+    newDuplicateBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      console.log("Duplicate button clicked!");
+      await duplicatePreviousMonthData();
+    });
+  }
+
+  // Tombol batal duplikasi data slip gaji
+  const cancelDuplicateBtn = document.getElementById("cancelDuplicateBtn");
+  if (cancelDuplicateBtn) {
+    const newCancelBtn = cancelDuplicateBtn.cloneNode(true);
+    cancelDuplicateBtn.parentNode.replaceChild(newCancelBtn, cancelDuplicateBtn);
+
+    newCancelBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      console.log("Cancel duplicate button clicked!");
+      await cancelDuplicate();
+    });
+  }
+});
+// =============================
+// GAJI DUPLICATION FUNCTIONS
+// =============================
+async function duplicatePreviousMonthData() {
+  console.log("duplicatePreviousMonthData called for company:", currentCompany);
+
+  try {
+    const result = await Swal.fire({
+      title: "Duplikasi Data Bulan Lalu?",
+      html: `
+        <div style="text-align: left;">
+          <p>Anda akan menduplikasi data slip gaji dari <strong>bulan sebelumnya</strong> untuk <strong>${currentCompany === "hisana" ? "Hisana" : "Enakko"}</strong>.</p>
+          <p style="margin-top: 10px; color: #f59e0b;">
+            <i class="fas fa-info-circle"></i> Hanya data karyawan yang belum memiliki data di bulan ini yang akan diduplikasi.
+          </p>
+        </div>
+      `,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#2563eb",
+      confirmButtonText: "Ya, Duplikasi",
+      cancelButtonText: "Batal",
+    });
+
+    if (!result.isConfirmed) return;
+
+    Swal.fire({
+      title: "Sedang Memproses...",
+      text: "Mohon tunggu, sedang menduplikasi data",
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      },
+    });
+
+    console.log(`Sending duplicate request to /duplicate-data?company=${currentCompany}`);
+
+    const response = await fetch(`/duplicate-data?company=${currentCompany}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const data = await response.json();
+    console.log("Duplicate response:", data);
+    Swal.close();
+
+    if (response.ok && data.success) {
+      Swal.fire({
+        title: "Berhasil!",
+        html: `
+          <div style="background:#f0fdf4;border-radius:12px;padding:15px">
+            <p>${data.message}</p>
+            ${data.duplicatedCount ? `<p style="margin-top: 10px;"><strong>${data.duplicatedCount}</strong> data berhasil diduplikasi</p>` : ""}
+            ${data.skippedCount ? `<p style="margin-top: 5px; color: #f59e0b;">${data.skippedCount} data dilewati (sudah ada)</p>` : ""}
+          </div>
+        `,
+        icon: "success",
+        confirmButtonText: "OK",
+      });
+
+      await loadData();
+
+      const duplicateBtn = document.getElementById("duplicateDataBtn");
+      const cancelBtn = document.getElementById("cancelDuplicateBtn");
+      if (duplicateBtn && cancelBtn) {
+        duplicateBtn.style.display = "none";
+        cancelBtn.style.display = "inline-block";
+      }
+      startGajiDuplicateStatusCheck();
+    } else {
+      Swal.fire("Gagal!", data.message || "Terjadi kesalahan saat menduplikasi data", "error");
+    }
+  } catch (err) {
+    console.error("Duplicate data error:", err);
+    Swal.close();
+    Swal.fire("Error!", err.message || "Terjadi kesalahan pada server", "error");
+  }
+}
+
+async function cancelDuplicate() {
+  try {
+    const result = await Swal.fire({
+      title: "Batalkan Duplikasi?",
+      html: `<p>Data hasil duplikasi akan dihapus permanen!</p>`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#ef4444",
+      confirmButtonText: "Ya, Batalkan",
+      cancelButtonText: "Tidak",
+    });
+
+    if (!result.isConfirmed) return;
+
+    Swal.fire({ title: "Sedang Memproses...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    const response = await fetch(`/cancel-duplicate?company=${currentCompany}`, { method: "POST" });
+    const data = await response.json();
+    Swal.close();
+
+    if (!response.ok) {
+      Swal.fire("Gagal!", data.message || "Terjadi kesalahan", "error");
+      return;
+    }
+
+    if (data.success) {
+      Swal.fire({ title: "Berhasil!", html: `<div style="background:#fef2e8;border-radius:12px;padding:15px"><p>${data.message}</p></div>`, icon: "success", confirmButtonText: "OK" });
+      await loadData();
+
+      const duplicateBtn = document.getElementById("duplicateDataBtn");
+      const cancelBtn = document.getElementById("cancelDuplicateBtn");
+      if (duplicateBtn && cancelBtn) {
+        duplicateBtn.style.display = "inline-block";
+        cancelBtn.style.display = "none";
+      }
+      stopGajiDuplicateStatusCheck();
+    }
+  } catch (err) {
+    console.error("Cancel duplicate error:", err);
+    Swal.fire("Error!", err.message, "error");
+  }
+}
+
+async function checkDuplicateStatus() {
+  try {
+    const response = await fetch(`/check-duplicate-status?company=${currentCompany}`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+
+    const duplicateBtn = document.getElementById("duplicateDataBtn");
+    const cancelBtn = document.getElementById("cancelDuplicateBtn");
+
+    if (duplicateBtn && cancelBtn) {
+      if (data.hasRecentDuplicate) {
+        duplicateBtn.style.display = "none";
+        cancelBtn.style.display = "inline-block";
+      } else {
+        duplicateBtn.style.display = "inline-block";
+        cancelBtn.style.display = "none";
+      }
+    }
+  } catch (err) {
+    console.error("Check duplicate status error:", err);
+  }
+}
+
+function startGajiDuplicateStatusCheck() {
+  if (gajiDuplicateCheckInterval) clearInterval(gajiDuplicateCheckInterval);
+  gajiDuplicateCheckInterval = setInterval(() => checkDuplicateStatus(), 5000);
+}
+
+function stopGajiDuplicateStatusCheck() {
+  if (gajiDuplicateCheckInterval) {
+    clearInterval(gajiDuplicateCheckInterval);
+    gajiDuplicateCheckInterval = null;
+  }
+}
+
+// =============================
 // BONUS FUNCTIONS
 // =============================
-
 function resetBonusProgress() {
   if (bonusProgressInterval) {
     clearInterval(bonusProgressInterval);
@@ -1569,74 +2105,150 @@ function resetBonusProgress() {
   }
 }
 
-function updateCancelBonusButtonVisibility() {
-  // Show cancel button if there are selected items with "terkirim" status
-  const selectedCancellable = Array.from(selectedBonusSet).filter((id) => {
-    const item = bonusData.find((d) => d.id === id);
-    return item && item.status === "terkirim";
-  });
+function initializeBonusFilters() {
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
 
-  const cancelButton = document.getElementById("cancelSendBonusSelected");
-  if (cancelButton) {
-    // Tombol batalkan hanya muncul jika ada data terkirim yang dipilih
-    cancelButton.style.display = selectedCancellable.length > 0 ? "inline-flex" : "none";
+  currentBonusMonth = currentMonth.toString();
+  currentBonusYear = currentYear.toString();
+
+  const monthSelect = document.getElementById("bonusMonthSelect");
+  const yearSelect = document.getElementById("bonusYearSelect");
+
+  if (monthSelect) {
+    monthSelect.value = currentBonusMonth;
   }
+
+  if (yearSelect) {
+    window.pendingBonusYear = currentBonusYear;
+  }
+
+  console.log("Bonus filters initialized to current month:", currentMonth, "year:", currentYear);
 }
-
-// Reset Bonus Checkbox Button
-document.getElementById("resetBonusCheckbox")?.addEventListener("click", () => {
-  if (selectedBonusSet.size === 0) {
-    Swal.fire({
-      title: "Info",
-      text: "Tidak ada checkbox bonus yang dipilih untuk direset.",
-      icon: "info",
-      toast: true,
-      timer: 2000,
-      showConfirmButton: false,
-    });
-    return;
-  }
-
-  selectedBonusSet.clear();
-
-  // Reset semua checkbox individu
-  const checkboxes = document.querySelectorAll(".chk-bonus");
-  checkboxes.forEach((chk) => {
-    chk.checked = false;
-  });
-
-  // Reset checkbox select all
-  const selectAllBonus = document.getElementById("selectAllBonus");
-  if (selectAllBonus) {
-    selectAllBonus.checked = false;
-    selectAllBonus.indeterminate = false;
-  }
-
-  renderBonusTable();
-  updateCancelBonusButtonVisibility();
-
-  Swal.fire({
-    title: "Berhasil!",
-    text: "Semua pilihan checkbox bonus telah direset.",
-    icon: "success",
-    toast: true,
-    timer: 2000,
-    showConfirmButton: false,
-  });
-});
 
 async function loadBonusData() {
   try {
-    const res = await fetch(`/bonus?company=${currentCompany}`);
+    console.log("Loading bonus data with filters - Month:", currentBonusMonth, "Year:", currentBonusYear);
+
+    let url = `/bonus?company=${currentCompany}`;
+
+    // Kirim filter bulan dan tahun
+    if (currentBonusMonth && currentBonusMonth !== "all") {
+      url += `&month=${currentBonusMonth}`;
+    }
+    if (currentBonusYear && currentBonusYear !== "all") {
+      url += `&year=${currentBonusYear}`;
+    }
+
+    console.log(`Fetching bonus URL: ${url}`);
+
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     bonusData = await res.json();
     console.log("Bonus data loaded:", bonusData.length, "records");
+
+    // Log breakdown status untuk debugging
+    const statusBreakdown = bonusData.reduce((acc, item) => {
+      acc[item.status] = (acc[item.status] || 0) + 1;
+      return acc;
+    }, {});
+    console.log("Bonus status breakdown:", statusBreakdown);
+
+    // Render tabel bonus
     renderBonusTable();
+
+    // Load available years untuk filter
+    await loadAvailableBonusYears();
+
+    // Setelah data dimuat, check duplicate status
+    setTimeout(() => {
+      checkBonusDuplicateStatus();
+    }, 100);
   } catch (err) {
     console.error("Load bonus data error:", err);
-    Swal.fire("Error", "Gagal memuat data bonus", "error");
+    Swal.fire("Error", "Gagal memuat data bonus: " + err.message, "error");
   }
 }
+
+async function loadAvailableBonusYears() {
+  try {
+    console.log(`Loading available bonus years for company: ${currentCompany}`);
+    const res = await fetch(`/bonus-years?company=${currentCompany}`);
+    const data = await res.json();
+
+    if (data.success) {
+      const yearSelect = document.getElementById("bonusYearSelect");
+      if (yearSelect) {
+        const currentSelection = yearSelect.value;
+
+        // Simpan nilai yang dipilih saat ini
+        yearSelect.innerHTML = '<option value="all">Semua Tahun</option>';
+
+        data.years.forEach((year) => {
+          const option = document.createElement("option");
+          option.value = year;
+          option.textContent = year;
+          yearSelect.appendChild(option);
+        });
+
+        // Kembalikan pilihan sebelumnya jika masih valid
+        if (currentSelection && (currentSelection === "all" || data.years.includes(parseInt(currentSelection)))) {
+          yearSelect.value = currentSelection;
+          currentBonusYear = currentSelection;
+        } else if (currentBonusYear !== "all") {
+          // Jika tahun yang dipilih sebelumnya tidak tersedia, set ke "all"
+          yearSelect.value = "all";
+          currentBonusYear = "all";
+        }
+
+        console.log(`Available bonus years loaded: ${data.years.join(", ")}`);
+        console.log(`Current bonus year selection: ${yearSelect.value}`);
+      }
+    }
+  } catch (err) {
+    console.error("Load available bonus years error:", err);
+  }
+}
+
+function setupBonusFilterListeners() {
+  const monthSelect = document.getElementById("bonusMonthSelect");
+  const yearSelect = document.getElementById("bonusYearSelect");
+
+  if (monthSelect) {
+    const newMonthSelect = monthSelect.cloneNode(true);
+    monthSelect.parentNode.replaceChild(newMonthSelect, monthSelect);
+
+    newMonthSelect.addEventListener("change", async (e) => {
+      const selectedMonth = e.target.value;
+      console.log(`Bonus month filter changed to: ${selectedMonth}`);
+
+      currentBonusMonth = selectedMonth;
+      currentBonusPage = 1;
+      selectedBonusSet.clear();
+
+      await loadBonusData();
+    });
+  }
+
+  if (yearSelect) {
+    const newYearSelect = yearSelect.cloneNode(true);
+    yearSelect.parentNode.replaceChild(newYearSelect, yearSelect);
+
+    newYearSelect.addEventListener("change", async (e) => {
+      const selectedYear = e.target.value;
+      console.log(`Bonus year filter changed to: ${selectedYear}`);
+
+      currentBonusYear = selectedYear;
+      currentBonusPage = 1;
+      selectedBonusSet.clear();
+
+      await loadBonusData();
+    });
+  }
+}
+// Panggil di inisialisasi
+setupBonusFilterListeners();
 
 function renderBonusTable() {
   const tbody = document.querySelector("#tableBonus tbody");
@@ -1653,10 +2265,33 @@ function renderBonusTable() {
 
   const bulanNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
+  if (pageData.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="12" style="text-align: center; padding: 40px;">
+          <i class="fas fa-calendar-alt" style="font-size: 48px; color: #cbd5e1; margin-bottom: 10px; display: block;"></i>
+          <p style="color: #64748b;">Belum ada data bonus${currentBonusMonth !== "all" ? ` untuk bulan ${bulanNames[currentBonusMonth - 1]}` : ""}${currentBonusYear !== "all" ? ` tahun ${currentBonusYear}` : ""}</p>
+          <button class="btn-primary" onclick="openBonusModal()" style="margin-top: 10px;">
+            <i class="fas fa-plus"></i> Tambah Data Bonus
+          </button>
+        </td>
+      </tr>
+    `;
+    const bonusPageInfo = document.getElementById("bonusPageInfo");
+    if (bonusPageInfo) bonusPageInfo.innerText = `Halaman 0 dari 0`;
+
+    // Reset select all checkbox saat tidak ada data
+    const selectAllCheckbox = document.getElementById("selectAllBonus");
+    if (selectAllCheckbox) {
+      selectAllCheckbox.checked = false;
+      selectAllCheckbox.indeterminate = false;
+    }
+    return;
+  }
+
   pageData.forEach((d, i) => {
     const tr = document.createElement("tr");
 
-    // Add class based on status
     if (d.status === "terkirim") {
       tr.classList.add("status-sent");
     } else if (d.status === "dibatalkan") {
@@ -1672,6 +2307,13 @@ function renderBonusTable() {
       statusBadge = '<span class="status-badge pending"><i class="fas fa-clock"></i> Belum Dikirim</span>';
     }
 
+    let cancellationNoteDisplay = "-";
+    if (d.status === "dibatalkan" && d.cancellation_note) {
+      cancellationNoteDisplay = `<span class="cancellation-note" title="${escapeHtml(d.cancellation_note)}">${escapeHtml(d.cancellation_note.length > 30 ? d.cancellation_note.substring(0, 30) + "..." : d.cancellation_note)}</span>`;
+    } else if (d.status === "dibatalkan") {
+      cancellationNoteDisplay = '<span class="cancellation-note" style="color: #f59e0b;"><i class="fas fa-info-circle"></i> Alasan tidak tersedia</span>';
+    }
+
     const isChecked = selectedBonusSet.has(d.id) ? "checked" : "";
 
     tr.innerHTML = `
@@ -1682,8 +2324,9 @@ function renderBonusTable() {
       <td style="text-align: center;">${bulanNames[d.bulan - 1]}
       <td style="text-align: center;">${d.tahun}
       <td class="money">${rupiah(d.jumlah_bonus)}
-      <td>${d.nohp}
+      <td>${escapeHtml(d.nohp)}
       <td>${statusBadge}
+      <td style="font-size:0.85rem;">${cancellationNoteDisplay}
       <td style="font-size:0.8rem; text-align: center;">${new Date(d.created_at).toLocaleDateString("id-ID")}
       <td style="text-align: center;">
         <button class="btn-primary" style="padding:5px 10px; margin-right: 5px;" onclick='openBonusModalById(${d.id})'><i class="fas fa-edit"></i></button>
@@ -1692,9 +2335,8 @@ function renderBonusTable() {
     tbody.appendChild(tr);
   });
 
-  // Attach checkbox handlers - semua checkbox aktif
+  // Attach individual checkbox handlers
   document.querySelectorAll(".chk-bonus").forEach((chk) => {
-    // Hapus listener lama dengan clone
     const newChk = chk.cloneNode(true);
     chk.parentNode.replaceChild(newChk, chk);
 
@@ -1705,193 +2347,379 @@ function renderBonusTable() {
       } else {
         selectedBonusSet.delete(id);
       }
+      updateSelectAllBonusStatus();
       updateCancelBonusButtonVisibility();
+      console.log("Selected bonus count:", selectedBonusSet.size);
     };
   });
+
+  // Setup select all checkbox
+  setupSelectAllBonusListener();
+
+  // Update select all status
+  updateSelectAllBonusStatus();
 
   const bonusPageInfo = document.getElementById("bonusPageInfo");
   if (bonusPageInfo) bonusPageInfo.innerText = `Halaman ${currentBonusPage} dari ${totalPages || 1}`;
 
-  // Update cancel button visibility
   updateCancelBonusButtonVisibility();
 }
 
-// Update cancelSelectedBonuses function
-async function cancelSelectedBonuses() {
+function setupSelectAllBonusListener() {
+  const selectAllCheckbox = document.getElementById("selectAllBonus");
+  if (!selectAllCheckbox) return;
+
+  // Clone untuk menghindari multiple event listeners
+  const newSelectAll = selectAllCheckbox.cloneNode(true);
+  selectAllCheckbox.parentNode.replaceChild(newSelectAll, selectAllCheckbox);
+
+  newSelectAll.addEventListener("change", (e) => {
+    const isChecked = e.target.checked;
+    const checkboxes = document.querySelectorAll(".chk-bonus");
+
+    checkboxes.forEach((chk) => {
+      chk.checked = isChecked;
+      const id = parseInt(chk.dataset.id);
+      if (isChecked) {
+        selectedBonusSet.add(id);
+      } else {
+        selectedBonusSet.delete(id);
+      }
+    });
+
+    updateSelectAllBonusStatus();
+    updateCancelBonusButtonVisibility();
+    console.log("Select all bonus - checked:", isChecked, "Total selected:", selectedBonusSet.size);
+  });
+}
+
+function updateSelectAllBonusStatus() {
+  const selectAllCheckbox = document.getElementById("selectAllBonus");
+  if (!selectAllCheckbox) return;
+
+  const checkboxes = document.querySelectorAll(".chk-bonus:not(:disabled)");
+  const checkedCheckboxes = document.querySelectorAll(".chk-bonus:checked:not(:disabled)");
+
+  if (checkboxes.length === 0) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+  } else if (checkedCheckboxes.length === 0) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+  } else if (checkedCheckboxes.length === checkboxes.length) {
+    selectAllCheckbox.checked = true;
+    selectAllCheckbox.indeterminate = false;
+  } else {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = true;
+  }
+}
+
+// =============================
+// BONUS RESET CHECKBOX
+// =============================
+const resetBonusCheckbox = document.getElementById("resetBonusCheckbox");
+if (resetBonusCheckbox) {
+  const newResetBonusBtn = resetBonusCheckbox.cloneNode(true);
+  resetBonusCheckbox.parentNode.replaceChild(newResetBonusBtn, resetBonusCheckbox);
+
+  newResetBonusBtn.addEventListener("click", () => {
+    if (selectedBonusSet.size === 0) {
+      Swal.fire({
+        title: "Info",
+        text: "Tidak ada checkbox bonus yang dipilih untuk direset.",
+        icon: "info",
+        toast: true,
+        timer: 2000,
+        showConfirmButton: false,
+      });
+      return;
+    }
+
+    selectedBonusSet.clear();
+
+    const checkboxes = document.querySelectorAll(".chk-bonus");
+    checkboxes.forEach((chk) => {
+      chk.checked = false;
+    });
+
+    const selectAllBonus = document.getElementById("selectAllBonus");
+    if (selectAllBonus) {
+      selectAllBonus.checked = false;
+      selectAllBonus.indeterminate = false;
+    }
+
+    updateCancelBonusButtonVisibility();
+
+    Swal.fire({
+      title: "Berhasil!",
+      text: "Semua pilihan checkbox bonus telah direset.",
+      icon: "success",
+      toast: true,
+      timer: 2000,
+      showConfirmButton: false,
+    });
+  });
+}
+
+// =============================
+// BONUS FILTER & PAGINATION
+// =============================
+const prevBonusPage = document.getElementById("prevBonusPage");
+if (prevBonusPage) {
+  const newPrevBonusBtn = prevBonusPage.cloneNode(true);
+  prevBonusPage.parentNode.replaceChild(newPrevBonusBtn, prevBonusPage);
+
+  newPrevBonusBtn.addEventListener("click", () => {
+    if (currentBonusPage > 1) {
+      currentBonusPage--;
+      renderBonusTable();
+    }
+  });
+}
+
+const nextBonusPage = document.getElementById("nextBonusPage");
+if (nextBonusPage) {
+  const newNextBonusBtn = nextBonusPage.cloneNode(true);
+  nextBonusPage.parentNode.replaceChild(newNextBonusBtn, nextBonusPage);
+
+  newNextBonusBtn.addEventListener("click", () => {
+    const query = document.getElementById("searchBonusInput")?.value.toLowerCase() || "";
+    const filtered = bonusData.filter((d) => d.nama?.toLowerCase().includes(query) || d.no_induk?.toLowerCase().includes(query));
+    if (currentBonusPage * pageSizeBonus < filtered.length) {
+      currentBonusPage++;
+      renderBonusTable();
+    }
+  });
+}
+
+const searchBonusInput = document.getElementById("searchBonusInput");
+if (searchBonusInput) {
+  const newSearchBonus = searchBonusInput.cloneNode(true);
+  searchBonusInput.parentNode.replaceChild(newSearchBonus, searchBonusInput);
+
+  newSearchBonus.addEventListener("input", () => {
+    currentBonusPage = 1;
+    renderBonusTable();
+  });
+}
+
+function updateCancelBonusButtonVisibility() {
   const selectedCancellable = Array.from(selectedBonusSet).filter((id) => {
     const item = bonusData.find((d) => d.id === id);
     return item && item.status === "terkirim";
   });
 
-  if (selectedCancellable.length === 0) {
-    Swal.fire({
-      title: "Peringatan",
-      text: "Tidak ada bonus terkirim yang dipilih untuk dibatalkan. Silakan pilih bonus dengan status 'Terkirim'.",
-      icon: "warning",
-      confirmButtonText: "OK",
-    });
-    return;
-  }
-
-  const result = await Swal.fire({
-    title: "Konfirmasi Pembatalan",
-    html: `
-      <div style="text-align: left;">
-        <p>Anda akan membatalkan ${selectedCancellable.length} slip bonus yang sudah terkirim.</p>
-        <p style="margin-top: 10px; color: #dc2626;">
-          <i class="fas fa-exclamation-triangle"></i> Tindakan ini akan:
-        </p>
-        <ul style="text-align: left; margin-top: 5px; color: #666;">
-          <li>Mengubah status bonus menjadi "Dibatalkan"</li>
-          <li>Mengirim pesan notifikasi ke karyawan yang bersangkutan</li>
-          <li>Bonus dapat dikirim ulang setelah dibatalkan</li>
-          <li>Mencatat waktu dan alasan pembatalan</li>
-        </ul>
-      </div>
-    `,
-    icon: "warning",
-    showCancelButton: true,
-    confirmButtonColor: "#dc2626",
-    confirmButtonText: "Ya, Batalkan!",
-    cancelButtonText: "Batal",
-    input: "textarea",
-    inputPlaceholder: "Alasan pembatalan (opsional)...",
-    inputAttributes: {
-      "aria-label": "Alasan pembatalan",
-    },
-  });
-
-  if (!result.isConfirmed) return;
-
-  const cancellationNote = result.value || "Pembatalan oleh user";
-
-  const btn = document.getElementById("cancelSendBonusSelected");
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Membatalkan...';
-
-  try {
-    const res = await fetch("/cancel-bonus", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        selected: selectedCancellable,
-        company: currentCompany,
-        cancellation_note: cancellationNote,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (data.success) {
-      Swal.fire({
-        title: "Pembatalan Dimulai",
-        html: `
-          <div style="text-align: left;">
-            <p>${data.message}</p>
-            <p style="margin-top: 10px; color: #16a34a;">
-              <i class="fas fa-info-circle"></i> Proses pembatalan berjalan di background.
-            </p>
-            <p>Karyawan akan menerima notifikasi WhatsApp dalam beberapa saat.</p>
-            <p style="margin-top: 10px; font-size: 0.9rem; color: #666;">
-              Refresh halaman dalam beberapa detik untuk melihat perubahan status.
-            </p>
-          </div>
-        `,
-        icon: "success",
-        confirmButtonText: "OK",
-      }).then(async () => {
-        // Clear selections
-        selectedBonusSet.clear();
-
-        // Uncheck all checkboxes
-        const allCheckboxes = document.querySelectorAll(".chk-bonus");
-        allCheckboxes.forEach((chk) => {
-          chk.checked = false;
-        });
-
-        // Reset select all checkbox
-        const selectAllCheckbox = document.getElementById("selectAllBonus");
-        if (selectAllCheckbox) {
-          selectAllCheckbox.checked = false;
-          selectAllCheckbox.indeterminate = false;
-        }
-
-        // Reload data after a short delay
-        setTimeout(async () => {
-          await loadBonusData();
-          updateCancelBonusButtonVisibility();
-        }, 2000);
-
-        // Reset cancel button
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-ban"></i> Batalkan Kirim Terpilih';
-      });
-    } else {
-      Swal.fire("Gagal!", data.message || "Terjadi kesalahan saat membatalkan bonus.", "error");
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-ban"></i> Batalkan Kirim Terpilih';
-    }
-  } catch (err) {
-    console.error("Cancel bonus error:", err);
-    Swal.fire("Error", "Gagal membatalkan bonus: " + err.message, "error");
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-ban"></i> Batalkan Kirim Terpilih';
+  const cancelButton = document.getElementById("cancelSendBonusSelected");
+  if (cancelButton) {
+    cancelButton.style.display = selectedCancellable.length > 0 ? "inline-flex" : "none";
   }
 }
-
-function escapeHtml(text) {
-  if (!text) return "";
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-document.getElementById("prevBonusPage")?.addEventListener("click", () => {
-  if (currentBonusPage > 1) {
-    currentBonusPage--;
-    renderBonusTable();
-  }
-});
-
-document.getElementById("nextBonusPage")?.addEventListener("click", () => {
-  const query = document.getElementById("searchBonusInput")?.value.toLowerCase() || "";
-  const filtered = bonusData.filter((d) => d.nama?.toLowerCase().includes(query) || d.no_induk?.toLowerCase().includes(query));
-  if (currentBonusPage * pageSizeBonus < filtered.length) {
-    currentBonusPage++;
-    renderBonusTable();
-  }
-});
 
 // =============================
-// OPEN BONUS MODAL FUNCTION
+// BONUS MODAL FUNCTIONS
 // =============================
 function openBonusModal(item = null) {
   const modal = document.getElementById("bonusModal");
   if (!modal) return;
 
-  // Reset form terlebih dahulu
+  // Reset form
   document.getElementById("bonusForm").reset();
   document.getElementById("bonus_id").value = "";
+  resetEmployeeSelection();
+
+  const bonusJumlahInput = document.getElementById("bonus_jumlah");
+  if (bonusJumlahInput) {
+    bonusJumlahInput.value = "";
+  }
 
   if (item) {
     console.log("Editing bonus:", item);
     document.getElementById("bonus_id").value = item.id;
-    document.getElementById("bonus_no_induk").value = item.no_induk || "";
-    document.getElementById("bonus_nama").value = item.nama || "";
-    // Format periode: YYYY-MM
+
+    // Pilih karyawan dari data yang ada
+    selectEmployee(item.no_induk, item.nama, item.nohp);
+
+    // Set periode
     const year = item.tahun;
     const month = String(item.bulan).padStart(2, "0");
     document.getElementById("bonus_periode").value = `${year}-${month}`;
-    document.getElementById("bonus_jumlah").value = item.jumlah_bonus || 0;
-    document.getElementById("bonus_nohp").value = item.nohp || "";
+
+    // Set jumlah bonus
+    if (bonusJumlahInput && item.jumlah_bonus) {
+      const formatted = item.jumlah_bonus.toLocaleString("id-ID");
+      bonusJumlahInput.value = formatted;
+    }
   } else {
-    // Set default periode ke bulan saat ini untuk tambah baru
+    // Set default periode ke bulan saat ini
     const now = new Date();
     const defaultPeriode = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     document.getElementById("bonus_periode").value = defaultPeriode;
   }
 
   modal.style.display = "flex";
+
+  // Load employee list jika belum ada
+  if (employeeList.length === 0) {
+    loadEmployeeList().then(() => {
+      // Re-render dropdown jika ada pencarian
+      const searchInput = document.getElementById("employeeSearch");
+      if (searchInput && searchInput.value) {
+        renderEmployeeDropdown(searchInput.value.split(" - ")[0] || "");
+      }
+    });
+  }
+}
+
+const bonusFormElement = document.getElementById("bonusForm");
+if (bonusFormElement) {
+  const newBonusForm = bonusFormElement.cloneNode(true);
+  bonusFormElement.parentNode.replaceChild(newBonusForm, bonusFormElement);
+
+  function parseRupiah(value) {
+    if (!value) return 0;
+    let cleanValue = value.toString().replace(/[^\d]/g, "");
+    return parseInt(cleanValue) || 0;
+  }
+
+  function handleBonusJumlahInput(e) {
+    const input = e.target;
+    let value = input.value;
+    let cleanValue = value.replace(/[^\d]/g, "");
+
+    if (cleanValue) {
+      let formattedValue = "";
+      let counter = 0;
+      for (let i = cleanValue.length - 1; i >= 0; i--) {
+        counter++;
+        formattedValue = cleanValue[i] + formattedValue;
+        if (counter % 3 === 0 && i !== 0) {
+          formattedValue = "." + formattedValue;
+        }
+      }
+      input.value = formattedValue;
+    } else {
+      input.value = "";
+    }
+  }
+
+  const bonusJumlahInput = document.getElementById("bonus_jumlah");
+  if (bonusJumlahInput) {
+    bonusJumlahInput.addEventListener("input", handleBonusJumlahInput);
+    bonusJumlahInput.addEventListener("keypress", function (e) {
+      const charCode = e.which ? e.which : e.keyCode;
+      if (charCode < 48 || charCode > 57) {
+        if (charCode !== 8 && charCode !== 9 && charCode !== 37 && charCode !== 39 && charCode !== 46) {
+          e.preventDefault();
+        }
+      }
+    });
+    bonusJumlahInput.addEventListener("paste", function (e) {
+      e.preventDefault();
+      let pasteData = (e.clipboardData || window.clipboardData).getData("text");
+      let cleanData = pasteData.replace(/[^\d]/g, "");
+      if (cleanData) {
+        let formatted = "";
+        let counter = 0;
+        for (let i = cleanData.length - 1; i >= 0; i--) {
+          counter++;
+          formatted = cleanData[i] + formatted;
+          if (counter % 3 === 0 && i !== 0) {
+            formatted = "." + formatted;
+          }
+        }
+        this.value = formatted;
+      }
+      const event = new Event("input", { bubbles: true });
+      this.dispatchEvent(event);
+    });
+  }
+
+  newBonusForm.onsubmit = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    console.log("Bonus form submitted");
+
+    const id = document.getElementById("bonus_id").value;
+    const noInduk = document.getElementById("bonus_no_induk")?.value.trim() || "";
+    const nama = document.getElementById("bonus_nama")?.value.trim() || "";
+
+    const jumlahBonusInput = document.getElementById("bonus_jumlah")?.value || "0";
+    const jumlahBonus = parseRupiah(jumlahBonusInput);
+    const periode = document.getElementById("bonus_periode")?.value || "";
+    const nohp = document.getElementById("bonus_nohp")?.value.trim() || "";
+
+    // Validasi
+    if (!noInduk) {
+      Swal.fire("Error", "Pilih karyawan terlebih dahulu", "error");
+      return;
+    }
+    if (!nama) {
+      Swal.fire("Error", "Nama karyawan tidak valid", "error");
+      return;
+    }
+    if (!periode) {
+      Swal.fire("Error", "Bulan dan Tahun harus diisi", "error");
+      return;
+    }
+    if (!jumlahBonus || jumlahBonus <= 0) {
+      Swal.fire("Error", "Jumlah Bonus harus lebih dari 0", "error");
+      return;
+    }
+    if (!nohp) {
+      Swal.fire("Error", "No HP harus diisi", "error");
+      return;
+    }
+
+    // Parse periode
+    const [year, month] = periode.split("-");
+    const payload = {
+      no_induk: noInduk,
+      nama: nama,
+      periode: periode,
+      bulan: parseInt(month),
+      tahun: parseInt(year),
+      jumlah_bonus: jumlahBonus,
+      nohp: nohp,
+    };
+
+    console.log("Payload:", payload);
+
+    const method = id ? "PUT" : "POST";
+    const url = id ? `/bonus/${id}?company=${currentCompany}` : `/bonus?company=${currentCompany}`;
+
+    console.log(`Sending ${method} request to ${url}`);
+
+    try {
+      const res = await fetch(url, {
+        method: method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await res.json();
+      console.log("Response:", result);
+
+      if (result.success) {
+        const modal = document.getElementById("bonusModal");
+        if (modal) modal.style.display = "none";
+
+        document.getElementById("bonusForm").reset();
+        document.getElementById("bonus_id").value = "";
+        resetEmployeeSelection();
+
+        await loadBonusData();
+
+        Swal.fire("Berhasil!", id ? "Bonus berhasil diperbarui." : "Bonus berhasil ditambahkan.", "success");
+      } else {
+        Swal.fire("Gagal", result.message || "Tidak dapat menyimpan data.", "error");
+      }
+    } catch (err) {
+      console.error("Submit error:", err);
+      Swal.fire("Error", `Terjadi kesalahan: ${err.message}`, "error");
+    }
+  };
 }
 
 window.openBonusModalById = (id) => {
@@ -1905,9 +2733,6 @@ window.openBonusModalById = (id) => {
   }
 };
 
-// =============================
-// DELETE BONUS FUNCTION
-// =============================
 window.deleteBonus = async (id) => {
   const result = await Swal.fire({
     title: "Apakah Anda yakin?",
@@ -1927,7 +2752,6 @@ window.deleteBonus = async (id) => {
 
     if (resultData.success) {
       Swal.fire("Berhasil!", "Data bonus berhasil dihapus.", "success");
-      // Hapus dari selectedBonusSet jika ada
       if (selectedBonusSet.has(id)) {
         selectedBonusSet.delete(id);
       }
@@ -1941,122 +2765,16 @@ window.deleteBonus = async (id) => {
   }
 };
 
-// =============================
-// BONUS FORM HANDLER
-// =============================
-const bonusFormElement = document.getElementById("bonusForm");
-if (bonusFormElement) {
-  // Hapus event listener lama dengan clone & replace
-  const newBonusForm = bonusFormElement.cloneNode(true);
-  bonusFormElement.parentNode.replaceChild(newBonusForm, bonusFormElement);
-
-  newBonusForm.onsubmit = async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    console.log("Bonus form submitted");
-
-    const id = document.getElementById("bonus_id").value;
-    const payload = {
-      no_induk: document.getElementById("bonus_no_induk")?.value.trim() || "",
-      nama: document.getElementById("bonus_nama")?.value.trim() || "",
-      periode: document.getElementById("bonus_periode")?.value || "",
-      jumlah_bonus: parseFloat(document.getElementById("bonus_jumlah")?.value) || 0,
-      nohp: document.getElementById("bonus_nohp")?.value.trim() || "",
-    };
-
-    console.log("Payload:", payload);
-
-    // Validasi
-    if (!payload.no_induk) {
-      Swal.fire("Error", "No Induk harus diisi", "error");
-      return;
-    }
-    if (!payload.nama) {
-      Swal.fire("Error", "Nama harus diisi", "error");
-      return;
-    }
-    if (!payload.periode) {
-      Swal.fire("Error", "Bulan dan Tahun harus diisi", "error");
-      return;
-    }
-    if (!payload.jumlah_bonus || payload.jumlah_bonus <= 0) {
-      Swal.fire("Error", "Jumlah Bonus harus lebih dari 0", "error");
-      return;
-    }
-    if (!payload.nohp) {
-      Swal.fire("Error", "No HP harus diisi", "error");
-      return;
-    }
-
-    const method = id ? "PUT" : "POST";
-    const url = id ? `/bonus/${id}?company=${currentCompany}` : `/bonus?company=${currentCompany}`;
-
-    console.log(`Sending ${method} request to ${url}`);
-
-    try {
-      const res = await fetch(url, {
-        method: method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const result = await res.json();
-      console.log("Response:", result);
-
-      if (result.success) {
-        // Tutup modal
-        const modal = document.getElementById("bonusModal");
-        if (modal) modal.style.display = "none";
-
-        // Reset form
-        document.getElementById("bonusForm").reset();
-        document.getElementById("bonus_id").value = "";
-
-        // Reload data
-        await loadBonusData();
-
-        Swal.fire("Berhasil!", id ? "Bonus berhasil diperbarui." : "Bonus berhasil ditambahkan.", "success");
-      } else {
-        Swal.fire("Gagal", result.message || "Tidak dapat menyimpan data.", "error");
-      }
-    } catch (err) {
-      console.error("Submit error:", err);
-      Swal.fire("Error", `Terjadi kesalahan: ${err.message}`, "error");
-    }
-  };
-}
-
-// =============================
-// ADD BONUS BUTTON HANDLER
-// =============================
 const addBonusBtnElement = document.getElementById("addBonusBtn");
 if (addBonusBtnElement) {
-  // Hapus event listener lama
   const newAddBonusBtn = addBonusBtnElement.cloneNode(true);
   addBonusBtnElement.parentNode.replaceChild(newAddBonusBtn, addBonusBtnElement);
 
   newAddBonusBtn.addEventListener("click", () => {
-    // Reset form
-    document.getElementById("bonusForm").reset();
-    document.getElementById("bonus_id").value = "";
-
-    // Set default periode ke bulan saat ini
-    const now = new Date();
-    const defaultPeriode = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const periodeInput = document.getElementById("bonus_periode");
-    if (periodeInput) periodeInput.value = defaultPeriode;
-
-    // Tampilkan modal
-    const modal = document.getElementById("bonusModal");
-    if (modal) modal.style.display = "flex";
+    openBonusModal();
   });
 }
 
-// =============================
-// CLOSE BONUS MODAL BUTTONS
-// =============================
-// Tombol Close (X) pada modal bonus
 const closeBonusModalBtn = document.getElementById("closeBonusModal");
 if (closeBonusModalBtn) {
   const newCloseBonusBtn = closeBonusModalBtn.cloneNode(true);
@@ -2067,7 +2785,6 @@ if (closeBonusModalBtn) {
   });
 }
 
-// Tombol Batal pada modal bonus
 const cancelBonusFormBtn = document.getElementById("cancelBonusBtn");
 if (cancelBonusFormBtn) {
   const newCancelBonusBtn = cancelBonusFormBtn.cloneNode(true);
@@ -2078,12 +2795,12 @@ if (cancelBonusFormBtn) {
   });
 }
 
-// =============================
-// SEND BONUS BUTTON HANDLER
-// =============================
+document.addEventListener("DOMContentLoaded", () => {
+  setupEmployeeSearch();
+});
+
 const sendBonusBtn = document.getElementById("sendBonusSelected");
 if (sendBonusBtn) {
-  // Hapus event listener lama
   const newSendBonusBtn = sendBonusBtn.cloneNode(true);
   sendBonusBtn.parentNode.replaceChild(newSendBonusBtn, sendBonusBtn);
 
@@ -2099,13 +2816,12 @@ if (sendBonusBtn) {
       return;
     }
 
-    // Filter untuk pengiriman - hanya yang belum terkirim (termasuk dibatalkan)
     const selectedData = bonusData.filter((d) => selected.includes(d.id) && d.status !== "terkirim");
 
     if (selectedData.length === 0) {
       Swal.fire({
         title: "Peringatan",
-        text: "Tidak ada bonus yang dapat dikirim. Bonus yang dipilih sudah terkirim semua. Silakan pilih bonus yang belum dikirim atau yang dibatalkan.",
+        text: "Tidak ada bonus yang dapat dikirim. Bonus yang dipilih sudah terkirim semua.",
         icon: "warning",
         confirmButtonText: "OK",
       });
@@ -2172,9 +2888,6 @@ if (sendBonusBtn) {
   });
 }
 
-// =============================
-// CANCEL BONUS BUTTON HANDLER
-// =============================
 const cancelBonusBtnElement = document.getElementById("cancelSendBonusSelected");
 if (cancelBonusBtnElement) {
   const newCancelBonusBtn = cancelBonusBtnElement.cloneNode(true);
@@ -2182,40 +2895,139 @@ if (cancelBonusBtnElement) {
   newCancelBonusBtn.addEventListener("click", cancelSelectedBonuses);
 }
 
-// =============================
-// REFRESH BONUS STATUS
-// =============================
-async function refreshBonusStatus() {
-  try {
-    const res = await fetch(`/bonus?company=${currentCompany}`);
-    const newData = await res.json();
+async function cancelSelectedBonuses() {
+  const selectedCancellable = Array.from(selectedBonusSet).filter((id) => {
+    const item = bonusData.find((d) => d.id === id);
+    return item && item.status === "terkirim";
+  });
 
-    // Update data lokal
-    bonusData = newData;
-
-    // Render ulang tabel
-    renderBonusTable();
-
-    // Update selectedBonusSet (hapus yang sudah terkirim)
-    const newSelectedSet = new Set();
-    selectedBonusSet.forEach((id) => {
-      const item = bonusData.find((d) => d.id === id);
-      if (item && item.status !== "terkirim") {
-        newSelectedSet.add(id);
-      }
+  if (selectedCancellable.length === 0) {
+    Swal.fire({
+      title: "Peringatan",
+      text: "Tidak ada bonus terkirim yang dipilih untuk dibatalkan.",
+      icon: "warning",
+      confirmButtonText: "OK",
     });
-    selectedBonusSet.clear();
-    newSelectedSet.forEach((id) => selectedBonusSet.add(id));
+    return;
+  }
 
-    console.log("Bonus status refreshed");
+  const companyName = currentCompany === "hisana" ? "Hisana" : "Enakko";
+
+  const result = await Swal.fire({
+    title: "Konfirmasi Pembatalan Bonus",
+    html: `
+      <div style="text-align: left;">
+        <p>Anda akan membatalkan <strong>${selectedCancellable.length}</strong> slip bonus yang sudah terkirim untuk <strong>${companyName}</strong>.</p>
+        <p style="margin-top: 10px; color: #dc2626;">
+          <i class="fas fa-exclamation-triangle"></i> Tindakan ini akan:
+        </p>
+        <ul style="text-align: left; margin-top: 5px; color: #666;">
+          <li>Mengubah status bonus menjadi "Dibatalkan"</li>
+          <li>Mengirim pesan notifikasi WhatsApp ke karyawan yang bersangkutan</li>
+          <li>Bonus dapat dikirim ulang setelah dibatalkan</li>
+        </ul>
+      </div>
+    `,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#dc2626",
+    confirmButtonText: "Ya, Batalkan!",
+    cancelButtonText: "Batal",
+    input: "textarea",
+    inputPlaceholder: "Alasan pembatalan (opsional)...",
+  });
+
+  if (!result.isConfirmed) return;
+
+  const cancellationNote = result.value || "Pembatalan oleh user";
+
+  const btn = document.getElementById("cancelSendBonusSelected");
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Membatalkan...';
+
+  const progressContainer = document.getElementById("cancelBonusProgressContainer");
+  const progressBar = document.getElementById("cancelBonusProgressBar");
+  const progressStatus = document.getElementById("cancelBonusProgressStatus");
+
+  if (progressContainer) progressContainer.style.display = "block";
+  if (progressBar) progressBar.style.width = "0%";
+  if (progressStatus) progressStatus.innerText = `Memulai pembatalan ${selectedCancellable.length} bonus...`;
+
+  try {
+    const res = await fetch("/cancel-bonus", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        selected: selectedCancellable,
+        company: currentCompany,
+        cancellation_note: cancellationNote,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      await loadBonusData();
+      selectedBonusSet.clear();
+      const allCheckboxes = document.querySelectorAll(".chk-bonus");
+      allCheckboxes.forEach((chk) => {
+        chk.checked = false;
+      });
+      const selectAllCheckbox = document.getElementById("selectAllBonus");
+      if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+      }
+      updateCancelBonusButtonVisibility();
+
+      Swal.fire({
+        title: "Berhasil!",
+        html: `
+          <div style="text-align: left;">
+            <p><strong>Berhasil membatalkan ${selectedCancellable.length} bonus ${companyName}.</strong></p>
+            ${data.messageSentCount > 0 ? `<p style="margin-top: 10px; color: #16a34a;"><i class="fas fa-check-circle"></i> ${data.messageSentCount} notifikasi berhasil terkirim</p>` : ""}
+            ${data.messageFailedCount > 0 ? `<p style="margin-top: 10px; color: #f59e0b;"><i class="fas fa-exclamation-triangle"></i> ${data.messageFailedCount} notifikasi gagal terkirim</p>` : ""}
+          </div>
+        `,
+        icon: "success",
+        confirmButtonText: "OK",
+      });
+    } else {
+      Swal.fire("Gagal!", data.message || "Terjadi kesalahan saat membatalkan bonus.", "error");
+    }
   } catch (err) {
-    console.error("Refresh bonus status error:", err);
+    console.error("Cancel bonus error:", err);
+    Swal.fire("Error", "Gagal membatalkan bonus: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-ban"></i> Batalkan Kirim Terpilih';
+    if (progressContainer) progressContainer.style.display = "none";
   }
 }
 
-// =============================
-// BONUS PROGRESS DISPLAY
-// =============================
+function startBonusProgressTracking() {
+  if (bonusProgressInterval) {
+    clearInterval(bonusProgressInterval);
+    bonusProgressInterval = null;
+  }
+
+  const progressBar = document.getElementById("bonusProgressBar");
+  if (progressBar) {
+    progressBar.style.width = "0%";
+  }
+
+  bonusProgressInterval = setInterval(async () => {
+    try {
+      const progressRes = await fetch("/bonus-progress");
+      const progressData = await progressRes.json();
+      bonusProgress = progressData;
+      updateBonusProgressDisplay();
+    } catch (err) {
+      console.error("Gagal memantau progress bonus:", err);
+    }
+  }, 1500);
+}
+
 function updateBonusProgressDisplay() {
   const progressContainer = document.getElementById("bonusProgressContainer");
   const progressBar = document.getElementById("bonusProgressBar");
@@ -2229,9 +3041,7 @@ function updateBonusProgressDisplay() {
     progressBar.style.width = percent + "%";
     progressStatus.innerText = `Bonus: ${bonusProgress.sent} Berhasil, ${bonusProgress.failed} Gagal dari ${bonusProgress.total} Total`;
 
-    // Jika proses selesai (running false dan semua sudah diproses)
     if (!bonusProgress.running && bonusProgress.sent + bonusProgress.failed >= bonusProgress.total && bonusProgress.total > 0) {
-      // Tampilkan SweetAlert
       Swal.fire({
         title: "Laporan Pengiriman Bonus",
         html: `
@@ -2250,50 +3060,26 @@ function updateBonusProgressDisplay() {
                 <div style="font-size:1.5rem;font-weight:bold;color:#dc2626">${bonusProgress.failed}</div>
               </div>
             </div>
-            <div style="background:#f8fafc;border-radius:12px;padding:15px;border:1px solid #e2e8f0">
-              <p style="margin:0;font-size:0.9rem;color:#475569">
-                ${
-                  bonusProgress.failed > 0
-                    ? `<i class="fas fa-exclamation-circle" style="color:#f59e0b"></i> Ada ${bonusProgress.failed} bonus yang gagal dikirim. Silakan cek koneksi atau nomor WhatsApp.`
-                    : '<i class="fas fa-check-circle" style="color:#16a34a"></i> Semua bonus berhasil terkirim sempurna!'
-                }
-              </p>
-            </div>
           </div>
         `,
         icon: bonusProgress.failed > 0 ? "warning" : "success",
-        confirmButtonText: '<i class="fas fa-check"></i> Selesai',
-        confirmButtonColor: "#2563eb",
+        confirmButtonText: "Selesai",
       }).then(async () => {
-        // Reset progress dan reload data
         resetBonusProgress();
-
-        // Reload bonus data untuk update status di tabel
         await loadBonusData();
-
-        // Clear selections AFTER SweetAlert is closed
         selectedBonusSet.clear();
-
-        // Uncheck all checkboxes
         const allCheckboxes = document.querySelectorAll(".chk-bonus");
         allCheckboxes.forEach((chk) => {
           chk.checked = false;
         });
-
-        // Reset select all checkbox
         const selectAllCheckbox = document.getElementById("selectAllBonus");
         if (selectAllCheckbox) {
           selectAllCheckbox.checked = false;
           selectAllCheckbox.indeterminate = false;
         }
-
-        // Update cancel button visibility
         updateCancelBonusButtonVisibility();
-
-        console.log("Bonus data reloaded, status updated, selections cleared");
       });
 
-      // Hentikan interval tracking
       if (bonusProgressInterval) {
         clearInterval(bonusProgressInterval);
         bonusProgressInterval = null;
@@ -2305,104 +3091,80 @@ function updateBonusProgressDisplay() {
 }
 
 // =============================
-// START BONUS PROGRESS TRACKING
+// BONUS DUPLICATION FUNCTIONS - DIPERBAIKI SEPERTI GAJI
 // =============================
-function startBonusProgressTracking() {
-  // Hentikan interval yang sudah ada
-  if (bonusProgressInterval) {
-    clearInterval(bonusProgressInterval);
-    bonusProgressInterval = null;
-  }
 
-  // Reset progress bar to 0 when starting
-  const progressBar = document.getElementById("bonusProgressBar");
-  if (progressBar) {
-    progressBar.style.width = "0%";
-  }
+function initializeBonusDuplicationButtons() {
+  console.log("Initializing bonus duplication buttons for company:", currentCompany);
 
-  bonusProgressInterval = setInterval(async () => {
-    try {
-      const progressRes = await fetch("/bonus-progress");
-      const progressData = await progressRes.json();
+  // Tombol duplikasi bonus
+  const duplicateBonusBtn = document.getElementById("duplicateBonusBtn");
+  if (duplicateBonusBtn) {
+    // Hapus semua event listener lama dengan clone
+    const newDuplicateBonusBtn = duplicateBonusBtn.cloneNode(true);
+    duplicateBonusBtn.parentNode.replaceChild(newDuplicateBonusBtn, duplicateBonusBtn);
 
-      // Update progress
-      bonusProgress = progressData;
-
-      // Update tampilan
-      updateBonusProgressDisplay();
-
-      // Check if sending is complete
-      if (!bonusProgress.running && bonusProgress.sent + bonusProgress.failed >= bonusProgress.total && bonusProgress.total > 0) {
-        // Clear all selected bonuses after sending is complete
-        selectedBonusSet.clear();
-
-        // Also uncheck all checkboxes in the table
-        const allCheckboxes = document.querySelectorAll(".chk-bonus");
-        allCheckboxes.forEach((chk) => {
-          chk.checked = false;
-        });
-
-        // Reset select all checkbox
-        const selectAllCheckbox = document.getElementById("selectAllBonus");
-        if (selectAllCheckbox) {
-          selectAllCheckbox.checked = false;
-          selectAllCheckbox.indeterminate = false;
-        }
-
-        // Update cancel button visibility
-        updateCancelBonusButtonVisibility();
-
-        console.log("All selections cleared after sending complete");
-      }
-    } catch (err) {
-      console.error("Gagal memantau progress bonus:", err);
-    }
-  }, 1500);
-}
-
-// =============================
-// SEARCH BONUS INPUT HANDLER
-// =============================
-const searchBonusInput = document.getElementById("searchBonusInput");
-if (searchBonusInput) {
-  searchBonusInput.addEventListener("input", () => {
-    currentBonusPage = 1;
-    renderBonusTable();
-  });
-}
-
-// =============================
-// SELECT ALL BONUS HANDLER
-// =============================
-const selectAllBonus = document.getElementById("selectAllBonus");
-if (selectAllBonus) {
-  // Hapus event listener lama
-  const newSelectAllBonus = selectAllBonus.cloneNode(true);
-  selectAllBonus.parentNode.replaceChild(newSelectAllBonus, selectAllBonus);
-
-  newSelectAllBonus.addEventListener("change", (e) => {
-    const checkboxes = document.querySelectorAll(".chk-bonus");
-    checkboxes.forEach((chk) => {
-      chk.checked = e.target.checked;
-      const id = parseInt(chk.dataset.id);
-      if (e.target.checked) {
-        selectedBonusSet.add(id);
-      } else {
-        selectedBonusSet.delete(id);
-      }
+    newDuplicateBonusBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("✅ Duplicate bonus button clicked for company:", currentCompany);
+      await duplicatePreviousMonthBonus();
     });
-    updateCancelBonusButtonVisibility();
-  });
+    console.log("✅ Duplicate bonus button listener attached");
+  } else {
+    console.warn("⚠️ Duplicate bonus button not found in DOM");
+  }
+
+  // Tombol batal duplikasi bonus
+  const cancelDuplicateBonusBtn = document.getElementById("cancelDuplicateBonusBtn");
+  if (cancelDuplicateBonusBtn) {
+    const newCancelDuplicateBonusBtn = cancelDuplicateBonusBtn.cloneNode(true);
+    cancelDuplicateBonusBtn.parentNode.replaceChild(newCancelDuplicateBonusBtn, cancelDuplicateBonusBtn);
+
+    newCancelDuplicateBonusBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("✅ Cancel duplicate bonus button clicked for company:", currentCompany);
+      await cancelBonusDuplicate();
+    });
+    console.log("✅ Cancel duplicate bonus button listener attached");
+  } else {
+    console.warn("⚠️ Cancel duplicate bonus button not found in DOM");
+  }
 }
 
-// =============================
-// BONUS DUPLICATION FUNCTIONS
-// =============================
 async function duplicatePreviousMonthBonus() {
+  console.log("🚀 duplicatePreviousMonthBonus called for company:", currentCompany);
+
   try {
+    // Get current date untuk menampilkan bulan sebelumnya
+    const now = new Date();
+    let previousMonth = now.getMonth() + 1; // 1-12
+    let previousYear = now.getFullYear();
+    let currentMonth = previousMonth;
+    let currentYear = previousYear;
+
+    // Hitung bulan sebelumnya
+    if (previousMonth === 1) {
+      previousMonth = 12;
+      previousYear = previousYear - 1;
+    } else {
+      previousMonth = previousMonth - 1;
+    }
+
+    const bulanNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    // Tampilkan konfirmasi seperti data slip gaji
     const result = await Swal.fire({
-      title: "Duplikasi Bonus Bulan Lalu?",
-      text: `Anda akan menduplikasi data bonus dari bulan sebelumnya untuk ${currentCompany === "hisana" ? "Hisana" : "Enakko"}.`,
+      title: "Duplikasi Data Bonus Bulan Lalu?",
+      html: `
+        <div style="text-align: left;">
+          <p>Anda akan menduplikasi data bonus dari <strong>bulan sebelumnya</strong> untuk <strong>${currentCompany === "hisana" ? "Hisana" : "Enakko"}</strong>.</p>
+          <p style="margin-top: 10px; color: #f59e0b;">
+            <i class="fas fa-info-circle"></i> Hanya data karyawan yang belum memiliki data di bulan ini yang akan diduplikasi.
+          </p>
+        </div>
+      `,
       icon: "question",
       showCancelButton: true,
       confirmButtonColor: "#2563eb",
@@ -2412,38 +3174,94 @@ async function duplicatePreviousMonthBonus() {
 
     if (!result.isConfirmed) return;
 
-    Swal.fire({ title: "Sedang Memproses...", text: "Mohon tunggu", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    Swal.fire({
+      title: "Sedang Memproses...",
+      text: "Mohon tunggu, sedang menduplikasi data bonus",
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      },
+    });
 
-    const response = await fetch(`/duplicate-bonus-data?company=${currentCompany}`, { method: "POST" });
+    console.log(`📡 Sending duplicate bonus request to /duplicate-bonus-data?company=${currentCompany}`);
+
+    const response = await fetch(`/duplicate-bonus-data?company=${currentCompany}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
     const data = await response.json();
+    console.log("Duplicate bonus response:", data);
     Swal.close();
 
-    if (!response.ok) {
-      Swal.fire("Gagal!", data.message || "Terjadi kesalahan", "error");
-      return;
-    }
+    if (response.ok && data.success) {
+      let messageHtml = `
+        <div style="background:#f0fdf4;border-radius:12px;padding:15px">
+          <p>${data.message}</p>
+      `;
 
-    if (data.success) {
-      Swal.fire({ title: "Berhasil!", html: `<div style="background:#f0fdf4;border-radius:12px;padding:15px"><p>${data.message}</p></div>`, icon: "success", confirmButtonText: "OK" });
+      if (data.duplicatedCount) {
+        messageHtml += `<p style="margin-top: 10px;"><strong>${data.duplicatedCount}</strong> data bonus berhasil diduplikasi</p>`;
+      }
+
+      if (data.skippedCount) {
+        messageHtml += `<p style="margin-top: 5px; color: #f59e0b;">${data.skippedCount} data bonus dilewati (sudah ada di bulan ini)</p>`;
+      }
+
+      messageHtml += `</div>`;
+
+      Swal.fire({
+        title: "Berhasil!",
+        html: messageHtml,
+        icon: "success",
+        confirmButtonText: "OK",
+      });
+
+      // Reload data bonus
       await loadBonusData();
 
-      // Sembunyikan tombol duplikasi, tampilkan tombol batal
+      // Update tombol
       const duplicateBtn = document.getElementById("duplicateBonusBtn");
       const cancelBtn = document.getElementById("cancelDuplicateBonusBtn");
       if (duplicateBtn && cancelBtn) {
-        duplicateBtn.style.display = "none";
-        cancelBtn.style.display = "inline-block";
+        if (data.duplicatedCount > 0) {
+          duplicateBtn.style.display = "none";
+          cancelBtn.style.display = "inline-block";
+        } else {
+          duplicateBtn.style.display = "inline-block";
+          cancelBtn.style.display = "none";
+        }
       }
+
+      // Mulai cek status duplikasi
       startBonusDuplicateStatusCheck();
+    } else {
+      Swal.fire({
+        title: "Gagal!",
+        text: data.message || "Terjadi kesalahan saat menduplikasi data bonus",
+        icon: "error",
+        confirmButtonText: "OK",
+      });
     }
   } catch (err) {
-    console.error("Duplicate bonus error:", err);
-    Swal.fire("Error!", err.message, "error");
+    console.error("❌ Duplicate bonus data error:", err);
+    Swal.close();
+    Swal.fire({
+      title: "Error!",
+      text: err.message || "Terjadi kesalahan pada server",
+      icon: "error",
+      confirmButtonText: "OK",
+    });
   }
 }
 
 async function cancelBonusDuplicate() {
+  console.log("🚀 cancelBonusDuplicate called for company:", currentCompany);
+
   try {
+    // Tampilkan konfirmasi seperti data slip gaji
     const result = await Swal.fire({
       title: "Batalkan Duplikasi Bonus?",
       html: `<p>Data bonus hasil duplikasi akan dihapus permanen!</p>`,
@@ -2456,41 +3274,76 @@ async function cancelBonusDuplicate() {
 
     if (!result.isConfirmed) return;
 
-    Swal.fire({ title: "Sedang Memproses...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    Swal.fire({
+      title: "Sedang Memproses...",
+      text: "Mohon tunggu, sedang membatalkan duplikasi bonus",
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      },
+    });
 
-    const response = await fetch(`/cancel-duplicate-bonus?company=${currentCompany}`, { method: "POST" });
+    console.log(`📡 Sending cancel duplicate request to /cancel-duplicate-bonus?company=${currentCompany}`);
+
+    const response = await fetch(`/cancel-duplicate-bonus?company=${currentCompany}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
     const data = await response.json();
+    console.log("Cancel duplicate bonus response:", data);
     Swal.close();
 
-    if (!response.ok) {
-      Swal.fire("Gagal!", data.message || "Terjadi kesalahan", "error");
-      return;
-    }
+    if (response.ok && data.success) {
+      Swal.fire({
+        title: "Berhasil!",
+        html: `<div style="background:#fef2e8;border-radius:12px;padding:15px"><p>${data.message}</p></div>`,
+        icon: "success",
+        confirmButtonText: "OK",
+      });
 
-    if (data.success) {
-      Swal.fire({ title: "Berhasil!", html: `<div style="background:#fef2e8;border-radius:12px;padding:15px"><p>${data.message}</p></div>`, icon: "success", confirmButtonText: "OK" });
+      // Reload data bonus
       await loadBonusData();
 
-      // Tampilkan kembali tombol duplikasi, sembunyikan tombol batal
+      // Update tombol
       const duplicateBtn = document.getElementById("duplicateBonusBtn");
       const cancelBtn = document.getElementById("cancelDuplicateBonusBtn");
       if (duplicateBtn && cancelBtn) {
         duplicateBtn.style.display = "inline-block";
         cancelBtn.style.display = "none";
       }
+
+      // Stop cek status duplikasi
       stopBonusDuplicateStatusCheck();
+    } else {
+      Swal.fire({
+        title: "Gagal!",
+        text: data.message || "Terjadi kesalahan saat membatalkan duplikasi bonus",
+        icon: "error",
+        confirmButtonText: "OK",
+      });
     }
   } catch (err) {
-    console.error("Cancel bonus duplicate error:", err);
-    Swal.fire("Error!", err.message, "error");
+    console.error("❌ Cancel bonus duplicate error:", err);
+    Swal.close();
+    Swal.fire({
+      title: "Error!",
+      text: err.message || "Terjadi kesalahan pada server",
+      icon: "error",
+      confirmButtonText: "OK",
+    });
   }
 }
 
 async function checkBonusDuplicateStatus() {
   try {
+    console.log("🔍 Checking bonus duplicate status for company:", currentCompany);
     const response = await fetch(`/check-bonus-duplicate-status?company=${currentCompany}`);
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
+    console.log("Bonus duplicate status:", data);
 
     const duplicateBtn = document.getElementById("duplicateBonusBtn");
     const cancelBtn = document.getElementById("cancelDuplicateBonusBtn");
@@ -2499,22 +3352,26 @@ async function checkBonusDuplicateStatus() {
       if (data.hasRecentDuplicate) {
         duplicateBtn.style.display = "none";
         cancelBtn.style.display = "inline-block";
+        console.log("✅ Bonus - Showing cancel button (has duplicate data)");
       } else {
         duplicateBtn.style.display = "inline-block";
         cancelBtn.style.display = "none";
+        console.log("✅ Bonus - Showing duplicate button (no duplicate data)");
       }
     }
   } catch (err) {
-    console.error("Check bonus duplicate status error:", err);
+    console.error("❌ Check bonus duplicate status error:", err);
   }
 }
 
 function startBonusDuplicateStatusCheck() {
+  console.log("Starting bonus duplicate status check interval");
   if (bonusDuplicateCheckInterval) clearInterval(bonusDuplicateCheckInterval);
   bonusDuplicateCheckInterval = setInterval(() => checkBonusDuplicateStatus(), 5000);
 }
 
 function stopBonusDuplicateStatusCheck() {
+  console.log("Stopping bonus duplicate status check interval");
   if (bonusDuplicateCheckInterval) {
     clearInterval(bonusDuplicateCheckInterval);
     bonusDuplicateCheckInterval = null;
@@ -2522,26 +3379,207 @@ function stopBonusDuplicateStatusCheck() {
 }
 
 // =============================
-// BONUS DUPLICATION BUTTONS
+// EMPLOYEE SEARCH DROPDOWN FOR BONUS
 // =============================
-const duplicateBonusBtn = document.getElementById("duplicateBonusBtn");
-if (duplicateBonusBtn) {
-  const newDuplicateBonusBtn = duplicateBonusBtn.cloneNode(true);
-  duplicateBonusBtn.parentNode.replaceChild(newDuplicateBonusBtn, duplicateBonusBtn);
-  newDuplicateBonusBtn.addEventListener("click", duplicatePreviousMonthBonus);
+async function loadEmployeeList() {
+  try {
+    console.log(`Loading employee list for company: ${currentCompany}`);
+    const res = await fetch(`/my-slip?company=${currentCompany}`);
+    const data = await res.json();
+
+    const employeeMap = new Map();
+    data.forEach((slip) => {
+      if (!employeeMap.has(slip.no_induk)) {
+        // Ambil data sesuai company
+        let nama, posisi, store;
+        if (currentCompany === "hisana") {
+          nama = slip.nama;
+          posisi = slip.posisi;
+          store = slip.store;
+        } else {
+          nama = slip.nama_karyawan || slip.nama;
+          posisi = slip.jabatan;
+          store = slip.penempatan;
+        }
+
+        employeeMap.set(slip.no_induk, {
+          no_induk: slip.no_induk,
+          nama: nama,
+          posisi: posisi,
+          store: store,
+          nohp: slip.nohp,
+        });
+      }
+    });
+
+    employeeList = Array.from(employeeMap.values());
+    console.log(`Employee list loaded for ${currentCompany}:`, employeeList.length, "employees");
+    return employeeList;
+  } catch (err) {
+    console.error("Load employee list error:", err);
+    return [];
+  }
 }
 
-const cancelDuplicateBonusBtn = document.getElementById("cancelDuplicateBonusBtn");
-if (cancelDuplicateBonusBtn) {
-  const newCancelDuplicateBonusBtn = cancelDuplicateBonusBtn.cloneNode(true);
-  cancelDuplicateBonusBtn.parentNode.replaceChild(newCancelDuplicateBonusBtn, cancelDuplicateBonusBtn);
-  newCancelDuplicateBonusBtn.addEventListener("click", cancelBonusDuplicate);
+function renderEmployeeDropdown(filterText = "") {
+  const employeeListContainer = document.getElementById("employeeList");
+  if (!employeeListContainer) return;
+
+  const filtered = employeeList.filter((emp) => emp.no_induk.toLowerCase().includes(filterText.toLowerCase()) || emp.nama.toLowerCase().includes(filterText.toLowerCase()));
+
+  if (filtered.length === 0) {
+    employeeListContainer.innerHTML = '<div class="employee-empty">Tidak ada karyawan ditemukan</div>';
+    return;
+  }
+
+  employeeListContainer.innerHTML = filtered
+    .map(
+      (emp) => `
+    <div class="employee-item" data-no-induk="${emp.no_induk}" data-nama="${emp.nama}" data-nohp="${emp.nohp}">
+      <div class="employee-no-induk">${escapeHtml(emp.no_induk)}</div>
+      <div class="employee-name">${escapeHtml(emp.nama)}</div>
+      <div class="employee-detail">${escapeHtml(emp.posisi || "")} ${emp.store ? " - " + escapeHtml(emp.store) : ""}</div>
+    </div>
+  `,
+    )
+    .join("");
+
+  document.querySelectorAll(".employee-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      const noInduk = item.dataset.noInduk;
+      const nama = item.dataset.nama;
+      const nohp = item.dataset.nohp;
+      selectEmployee(noInduk, nama, nohp);
+    });
+  });
 }
+
+function selectEmployee(noInduk, nama, nohp) {
+  selectedEmployee = { no_induk: noInduk, nama: nama, nohp: nohp };
+
+  document.getElementById("bonus_no_induk").value = noInduk;
+  document.getElementById("bonus_nama").value = nama;
+
+  const searchInput = document.getElementById("employeeSearch");
+  if (searchInput) {
+    searchInput.value = `${noInduk} - ${nama}`;
+  }
+
+  const nohpInput = document.getElementById("bonus_nohp");
+  if (nohpInput && (!nohpInput.value || nohpInput.value === "")) {
+    nohpInput.value = nohp || "";
+  }
+
+  const dropdown = document.getElementById("employeeDropdown");
+  if (dropdown) dropdown.style.display = "none";
+}
+
+function setupEmployeeSearch() {
+  const searchInput = document.getElementById("employeeSearch");
+  const dropdown = document.getElementById("employeeDropdown");
+  const dropdownSearch = document.getElementById("dropdownSearch");
+
+  if (!searchInput || !dropdown) return;
+
+  // Hapus event listener lama
+  const newSearchInput = searchInput.cloneNode(true);
+  searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+
+  const newDropdown = dropdown.cloneNode(true);
+  dropdown.parentNode.replaceChild(newDropdown, dropdown);
+
+  newSearchInput.addEventListener("focus", async () => {
+    if (employeeList.length === 0) {
+      await loadEmployeeList();
+    }
+    renderEmployeeDropdown(newSearchInput.value.split(" - ")[0] || "");
+    newDropdown.style.display = "block";
+  });
+
+  newSearchInput.addEventListener("input", (e) => {
+    const value = e.target.value.split(" - ")[0] || e.target.value;
+    renderEmployeeDropdown(value);
+    newDropdown.style.display = "block";
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!newSearchInput.contains(e.target) && !newDropdown.contains(e.target)) {
+      newDropdown.style.display = "none";
+    }
+  });
+
+  const newDropdownSearch = document.getElementById("dropdownSearch");
+  if (newDropdownSearch) {
+    const newDropdownSearchInput = newDropdownSearch.cloneNode(true);
+    newDropdownSearch.parentNode.replaceChild(newDropdownSearchInput, newDropdownSearch);
+
+    newDropdownSearchInput.addEventListener("input", (e) => {
+      renderEmployeeDropdown(e.target.value);
+    });
+    newDropdownSearchInput.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  newDropdown.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+}
+
+function resetEmployeeSelection() {
+  selectedEmployee = null;
+  const searchInput = document.getElementById("employeeSearch");
+  const noIndukInput = document.getElementById("bonus_no_induk");
+  const namaInput = document.getElementById("bonus_nama");
+
+  if (searchInput) searchInput.value = "";
+  if (noIndukInput) noIndukInput.value = "";
+  if (namaInput) namaInput.value = "";
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  initializeGajiModal();
+
+  // Inisialisasi filter slip gaji
+  const { month, year } = getCurrentMonthYear();
+  currentSlipMonth = month;
+  currentSlipYear = year;
+
+  // Inisialisasi filter bonus
+  currentBonusMonth = month;
+  currentBonusYear = year;
+
+  const slipMonthSelect = document.getElementById("slipMonthSelect");
+  const slipYearSelect = document.getElementById("slipYearSelect");
+  const bonusMonthSelect = document.getElementById("bonusMonthSelect");
+  const bonusYearSelect = document.getElementById("bonusYearSelect");
+
+  if (slipMonthSelect) slipMonthSelect.value = month;
+  if (slipYearSelect) slipYearSelect.value = year;
+  if (bonusMonthSelect) bonusMonthSelect.value = month;
+  if (bonusYearSelect) bonusYearSelect.value = year;
+
+  // Setup event listeners
+  setupFilterListeners();
+  setupBonusFilterListeners();
+  initializeBonusDuplicationButtons();
+  initializeThrDuplicationButtons();
+
+  // Load data
+  loadData();
+  loadBonusData();
+  loadThrData();
+
+  setTimeout(() => {
+    checkDuplicateStatus();
+    checkBonusDuplicateStatus();
+    checkThrDuplicateStatus();
+  }, 1000);
+});
 
 // =============================
 // THR FUNCTIONS
 // =============================
-
 function resetThrProgress() {
   if (thrProgressInterval) {
     clearInterval(thrProgressInterval);
@@ -2565,41 +3603,6 @@ function resetThrProgress() {
   }
 }
 
-function resetCancelThrProgress() {
-  if (cancelThrProgressInterval) {
-    clearInterval(cancelThrProgressInterval);
-    cancelThrProgressInterval = null;
-  }
-
-  cancelThrProgress = { running: false, total: 0, sent: 0, failed: 0 };
-
-  const progressContainer = document.getElementById("cancelThrProgressContainer");
-  const progressBar = document.getElementById("cancelThrProgressBar");
-  const progressStatus = document.getElementById("cancelThrProgressStatus");
-
-  if (progressContainer) progressContainer.style.display = "none";
-  if (progressBar) progressBar.style.width = "0%";
-  if (progressStatus) progressStatus.innerText = "Siap membatalkan THR.";
-
-  const btn = document.getElementById("cancelSendThrSelected");
-  if (btn) {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-ban"></i> Batalkan Kirim Terpilih';
-  }
-}
-
-function updateCancelThrButtonVisibility() {
-  const selectedCancellable = Array.from(selectedThrSet).filter((id) => {
-    const item = thrData.find((d) => d.id === id);
-    return item && item.status === "terkirim";
-  });
-
-  const cancelButton = document.getElementById("cancelSendThrSelected");
-  if (cancelButton) {
-    cancelButton.style.display = selectedCancellable.length > 0 ? "inline-flex" : "none";
-  }
-}
-
 async function loadThrData() {
   try {
     console.log("Loading THR data for company:", currentCompany);
@@ -2612,44 +3615,62 @@ async function loadThrData() {
       url = `/thr?company=${currentCompany}&year=all`;
     }
 
+    console.log(`Fetching THR URL: ${url}`);
+
     const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     thrData = await res.json();
     console.log("THR data loaded:", thrData.length, "records");
+
+    // Log breakdown status untuk debugging
+    const statusBreakdown = thrData.reduce((acc, item) => {
+      acc[item.status] = (acc[item.status] || 0) + 1;
+      return acc;
+    }, {});
+    console.log("THR status breakdown:", statusBreakdown);
+
+    // Render tabel THR
     renderThrTable();
 
-    await loadAvailableYears();
-    await checkThrDuplicateStatus();
+    // Load available years untuk filter
+    await loadAvailableThrYears();
+
+    // Setelah data dimuat, check duplicate status
+    setTimeout(() => {
+      checkThrDuplicateStatus();
+    }, 100);
   } catch (err) {
     console.error("Load THR data error:", err);
+    Swal.fire("Error", "Gagal memuat data THR: " + err.message, "error");
   }
 }
 
-async function loadAvailableYears() {
-  try {
-    const res = await fetch(`/thr-years?company=${currentCompany}`);
-    const data = await res.json();
-    if (data.success) {
-      const yearSelect = document.getElementById("thrYearSelect");
-      if (yearSelect) {
-        const currentSelection = yearSelect.value;
-        yearSelect.innerHTML = '<option value="all">Semua Tahun</option>';
-        data.years.forEach((year) => {
-          const option = document.createElement("option");
-          option.value = year;
-          option.textContent = year;
-          yearSelect.appendChild(option);
-        });
-        if (currentSelection && (currentSelection === "all" || data.years.includes(parseInt(currentSelection)))) {
-          yearSelect.value = currentSelection;
-        } else if (currentThrYear !== "all") {
-          yearSelect.value = currentThrYear;
-        }
-      }
-    }
-  } catch (err) {
-    console.error("Load available years error:", err);
-  }
-}
+// async function loadAvailableYears() {
+//   try {
+//     const res = await fetch(`/thr-years?company=${currentCompany}`);
+//     const data = await res.json();
+//     if (data.success) {
+//       const yearSelect = document.getElementById("thrYearSelect");
+//       if (yearSelect) {
+//         const currentSelection = yearSelect.value;
+//         yearSelect.innerHTML = '<option value="all">Semua Tahun</option>';
+//         data.years.forEach((year) => {
+//           const option = document.createElement("option");
+//           option.value = year;
+//           option.textContent = year;
+//           yearSelect.appendChild(option);
+//         });
+//         if (currentSelection && (currentSelection === "all" || data.years.includes(parseInt(currentSelection)))) {
+//           yearSelect.value = currentSelection;
+//         } else if (currentThrYear !== "all") {
+//           yearSelect.value = currentThrYear;
+//         }
+//       }
+//     }
+//   } catch (err) {
+//     console.error("Load available years error:", err);
+//   }
+// }
 
 function renderThrTable() {
   const tbody = document.querySelector("#tableTHR tbody");
@@ -2667,7 +3688,7 @@ function renderThrTable() {
   if (pageData.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="10" style="text-align: center; padding: 40px;">
+        <td colspan="11" style="text-align: center; padding: 40px;">
           <i class="fas fa-calendar-alt" style="font-size: 48px; color: #cbd5e1; margin-bottom: 10px; display: block;"></i>
           <p style="color: #64748b;">Belum ada data THR${currentThrYear !== "all" ? ` untuk tahun ${currentThrYear}` : ""}</p>
           <button class="btn-primary" onclick="openThrModal()" style="margin-top: 10px;">
@@ -2684,7 +3705,6 @@ function renderThrTable() {
   pageData.forEach((d, i) => {
     const tr = document.createElement("tr");
 
-    // Add class based on status
     if (d.status === "terkirim") {
       tr.classList.add("status-sent");
     } else if (d.status === "dibatalkan") {
@@ -2700,6 +3720,13 @@ function renderThrTable() {
       statusBadge = '<span class="status-badge pending"><i class="fas fa-clock"></i> Belum Dikirim</span>';
     }
 
+    let cancellationNoteDisplay = "-";
+    if (d.status === "dibatalkan" && d.cancellation_note) {
+      cancellationNoteDisplay = `<span class="cancellation-note" title="${escapeHtml(d.cancellation_note)}">${escapeHtml(d.cancellation_note.length > 30 ? d.cancellation_note.substring(0, 30) + "..." : d.cancellation_note)}</span>`;
+    } else if (d.status === "dibatalkan") {
+      cancellationNoteDisplay = '<span class="cancellation-note" style="color: #f59e0b;"><i class="fas fa-info-circle"></i> Alasan tidak tersedia</span>';
+    }
+
     const isChecked = selectedThrSet.has(d.id) ? "checked" : "";
 
     tr.innerHTML = `
@@ -2711,6 +3738,7 @@ function renderThrTable() {
       <td class="money">${rupiah(d.jumlah_thr)}
       <td>${escapeHtml(d.nohp)}
       <td>${statusBadge}
+      <td style="font-size:0.85rem;">${cancellationNoteDisplay}
       <td style="font-size:0.8rem; text-align: center;">${new Date(d.created_at).toLocaleDateString("id-ID")}
       <td style="text-align: center;">
         <button class="btn-primary" style="padding:5px 10px; margin-right: 5px;" onclick='openThrModalById(${d.id})'><i class="fas fa-edit"></i></button>
@@ -2719,9 +3747,11 @@ function renderThrTable() {
     tbody.appendChild(tr);
   });
 
-  // Attach checkbox handlers - semua checkbox aktif
   document.querySelectorAll(".chk-thr").forEach((chk) => {
-    chk.onchange = (e) => {
+    const newChk = chk.cloneNode(true);
+    chk.parentNode.replaceChild(newChk, chk);
+
+    newChk.onchange = (e) => {
       const id = parseInt(e.target.dataset.id);
       if (e.target.checked) {
         selectedThrSet.add(id);
@@ -2735,35 +3765,85 @@ function renderThrTable() {
   const thrPageInfo = document.getElementById("thrPageInfo");
   if (thrPageInfo) thrPageInfo.innerText = `Halaman ${currentThrPage} dari ${totalPages || 1}`;
 
-  // Update cancel button visibility
   updateCancelThrButtonVisibility();
 }
 
+function updateCancelThrButtonVisibility() {
+  const selectedCancellable = Array.from(selectedThrSet).filter((id) => {
+    const item = thrData.find((d) => d.id === id);
+    return item && item.status === "terkirim";
+  });
+
+  const cancelButton = document.getElementById("cancelSendThrSelected");
+  if (cancelButton) {
+    cancelButton.style.display = selectedCancellable.length > 0 ? "inline-flex" : "none";
+  }
+}
+
+// =============================
+// THR MODAL FUNCTIONS
+// =============================
 function openThrModal(item = null) {
   const modal = document.getElementById("thrModal");
   if (!modal) return;
   modal.style.display = "flex";
 
+  // Reset form
+  document.getElementById("thrForm").reset();
+  document.getElementById("thr_id").value = "";
+  resetThrEmployeeSelection();
+
+  const thrJumlahInput = document.getElementById("thr_jumlah_thr");
+  if (thrJumlahInput) {
+    thrJumlahInput.value = "";
+  }
+
   if (item) {
+    console.log("Editing THR:", item);
     document.getElementById("thr_id").value = item.id;
-    document.getElementById("thr_no_induk").value = item.no_induk;
-    document.getElementById("thr_nama").value = item.nama;
+
+    // Pilih karyawan dari data yang ada
+    selectThrEmployee(item.no_induk, item.nama, item.nohp);
+
+    // Set tahun
     document.getElementById("thr_tahun").value = item.tahun;
-    document.getElementById("thr_jumlah_thr").value = item.jumlah_thr;
-    document.getElementById("thr_nohp").value = item.nohp;
+
+    // Set jumlah THR
+    if (thrJumlahInput && item.jumlah_thr) {
+      const formatted = item.jumlah_thr.toLocaleString("id-ID");
+      thrJumlahInput.value = formatted;
+    }
   } else {
-    document.getElementById("thrForm").reset();
-    document.getElementById("thr_id").value = "";
+    // Set default tahun ke tahun saat ini
     const currentYear = new Date().getFullYear();
     document.getElementById("thr_tahun").value = currentYear;
+  }
+
+  // Load employee list jika belum ada
+  if (thrEmployeeList.length === 0) {
+    loadThrEmployeeList().then(() => {
+      // Re-render dropdown jika ada pencarian
+      const searchInput = document.getElementById("thrEmployeeSearch");
+      if (searchInput && searchInput.value) {
+        renderThrEmployeeDropdown(searchInput.value.split(" - ")[0] || "");
+      }
+    });
   }
 }
 
 window.openThrModalById = (id) => {
   const item = thrData.find((d) => d.id == id);
-  openThrModal(item);
+  if (item) {
+    openThrModal(item);
+  } else {
+    console.error("THR not found:", id);
+    Swal.fire("Error", "Data THR tidak ditemukan", "error");
+  }
 };
 
+// =============================
+// THR DELETE FUNCTION
+// =============================
 window.deleteThr = async (id) => {
   const result = await Swal.fire({
     title: "Apakah Anda yakin?",
@@ -2793,52 +3873,156 @@ window.deleteThr = async (id) => {
   }
 };
 
-document.getElementById("thrForm").onsubmit = async (e) => {
-  e.preventDefault();
+// =============================
+// THR FORM HANDLER
+// =============================
+const thrFormElement = document.getElementById("thrForm");
+if (thrFormElement) {
+  const newThrForm = thrFormElement.cloneNode(true);
+  thrFormElement.parentNode.replaceChild(newThrForm, thrFormElement);
 
-  const id = document.getElementById("thr_id").value;
-  const payload = {
-    no_induk: document.getElementById("thr_no_induk").value,
-    nama: document.getElementById("thr_nama").value,
-    tahun: parseInt(document.getElementById("thr_tahun").value),
-    jumlah_thr: parseFloat(document.getElementById("thr_jumlah_thr").value),
-    nohp: document.getElementById("thr_nohp").value,
-    company: currentCompany,
-  };
-
-  console.log("📤 Sending THR data:", payload);
-
-  if (!payload.no_induk || !payload.nama || !payload.tahun || !payload.jumlah_thr || !payload.nohp) {
-    Swal.fire("Error", "Semua field harus diisi", "error");
-    return;
+  function parseThrRupiah(value) {
+    if (!value) return 0;
+    let cleanValue = value.toString().replace(/[^\d]/g, "");
+    return parseInt(cleanValue) || 0;
   }
 
-  const method = id ? "PUT" : "POST";
-  const url = id ? `/thr/${id}?company=${currentCompany}` : `/thr?company=${currentCompany}`;
+  function handleThrJumlahInput(e) {
+    const input = e.target;
+    let value = input.value;
+    let cleanValue = value.replace(/[^\d]/g, "");
 
-  try {
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const result = await res.json();
-
-    if (result.success) {
-      document.getElementById("thrModal").style.display = "none";
-      await loadThrData();
-      Swal.fire("Berhasil!", id ? "THR berhasil diperbarui." : "THR berhasil ditambahkan.", "success");
+    if (cleanValue) {
+      let formattedValue = "";
+      let counter = 0;
+      for (let i = cleanValue.length - 1; i >= 0; i--) {
+        counter++;
+        formattedValue = cleanValue[i] + formattedValue;
+        if (counter % 3 === 0 && i !== 0) {
+          formattedValue = "." + formattedValue;
+        }
+      }
+      input.value = formattedValue;
     } else {
-      Swal.fire("Gagal", result.message || "Tidak dapat menyimpan data.", "error");
+      input.value = "";
     }
-  } catch (err) {
-    console.error("Submit error:", err);
-    Swal.fire("Error", `Terjadi kesalahan: ${err.message}`, "error");
   }
-};
 
-// Send THR Selected - Updated
+  const thrJumlahInput = document.getElementById("thr_jumlah_thr");
+  if (thrJumlahInput) {
+    thrJumlahInput.addEventListener("input", handleThrJumlahInput);
+    thrJumlahInput.addEventListener("keypress", function (e) {
+      const charCode = e.which ? e.which : e.keyCode;
+      if (charCode < 48 || charCode > 57) {
+        if (charCode !== 8 && charCode !== 9 && charCode !== 37 && charCode !== 39 && charCode !== 46) {
+          e.preventDefault();
+        }
+      }
+    });
+    thrJumlahInput.addEventListener("paste", function (e) {
+      e.preventDefault();
+      let pasteData = (e.clipboardData || window.clipboardData).getData("text");
+      let cleanData = pasteData.replace(/[^\d]/g, "");
+      if (cleanData) {
+        let formatted = "";
+        let counter = 0;
+        for (let i = cleanData.length - 1; i >= 0; i--) {
+          counter++;
+          formatted = cleanData[i] + formatted;
+          if (counter % 3 === 0 && i !== 0) {
+            formatted = "." + formatted;
+          }
+        }
+        this.value = formatted;
+      }
+      const event = new Event("input", { bubbles: true });
+      this.dispatchEvent(event);
+    });
+  }
+
+  newThrForm.onsubmit = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    console.log("THR form submitted");
+
+    const id = document.getElementById("thr_id").value;
+    const noInduk = document.getElementById("thr_no_induk")?.value.trim() || "";
+    const nama = document.getElementById("thr_nama")?.value.trim() || "";
+    const tahun = document.getElementById("thr_tahun")?.value.trim() || "";
+    const jumlahThrInput = document.getElementById("thr_jumlah_thr")?.value || "0";
+    const jumlahThr = parseThrRupiah(jumlahThrInput);
+    const nohp = document.getElementById("thr_nohp")?.value.trim() || "";
+
+    // Validasi
+    if (!noInduk) {
+      Swal.fire("Error", "Pilih karyawan terlebih dahulu", "error");
+      return;
+    }
+    if (!nama) {
+      Swal.fire("Error", "Nama karyawan tidak valid", "error");
+      return;
+    }
+    if (!tahun) {
+      Swal.fire("Error", "Tahun harus diisi", "error");
+      return;
+    }
+    if (!jumlahThr || jumlahThr <= 0) {
+      Swal.fire("Error", "Jumlah THR harus lebih dari 0", "error");
+      return;
+    }
+    if (!nohp) {
+      Swal.fire("Error", "No HP harus diisi", "error");
+      return;
+    }
+
+    const payload = {
+      no_induk: noInduk,
+      nama: nama,
+      tahun: parseInt(tahun),
+      jumlah_thr: jumlahThr,
+      nohp: nohp,
+      company: currentCompany,
+    };
+
+    console.log("Payload THR:", payload);
+
+    const method = id ? "PUT" : "POST";
+    const url = id ? `/thr/${id}?company=${currentCompany}` : `/thr?company=${currentCompany}`;
+
+    console.log(`Sending ${method} request to ${url}`);
+
+    try {
+      const res = await fetch(url, {
+        method: method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await res.json();
+      console.log("Response:", result);
+
+      if (result.success) {
+        const modal = document.getElementById("thrModal");
+        if (modal) modal.style.display = "none";
+
+        document.getElementById("thrForm").reset();
+        document.getElementById("thr_id").value = "";
+        resetThrEmployeeSelection();
+
+        await loadThrData();
+
+        Swal.fire("Berhasil!", id ? "THR berhasil diperbarui." : "THR berhasil ditambahkan.", "success");
+      } else {
+        Swal.fire("Gagal", result.message || "Tidak dapat menyimpan data.", "error");
+      }
+    } catch (err) {
+      console.error("Submit error:", err);
+      Swal.fire("Error", `Terjadi kesalahan: ${err.message}`, "error");
+    }
+  };
+}
+
 const sendThrBtn = document.getElementById("sendThrSelected");
 if (sendThrBtn) {
   const newSendThrBtn = sendThrBtn.cloneNode(true);
@@ -2856,13 +4040,12 @@ if (sendThrBtn) {
       return;
     }
 
-    // Filter untuk pengiriman - hanya yang belum terkirim (termasuk dibatalkan)
     const selectedData = thrData.filter((d) => selected.includes(d.id) && d.status !== "terkirim");
 
     if (selectedData.length === 0) {
       Swal.fire({
         title: "Peringatan",
-        text: "Tidak ada THR yang dapat dikirim. THR yang dipilih sudah terkirim semua. Silakan pilih THR yang belum dikirim atau yang dibatalkan.",
+        text: "Tidak ada THR yang dapat dikirim. THR yang dipilih sudah terkirim semua.",
         icon: "warning",
         confirmButtonText: "OK",
       });
@@ -2883,20 +4066,13 @@ if (sendThrBtn) {
       btn.disabled = true;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Mengirim...';
 
-      // Tampilkan progress container segera
       const progressContainer = document.getElementById("thrProgressContainer");
       const progressBar = document.getElementById("thrProgressBar");
       const progressStatus = document.getElementById("thrProgressStatus");
 
-      if (progressContainer) {
-        progressContainer.style.display = "block";
-      }
-      if (progressBar) {
-        progressBar.style.width = "0%";
-      }
-      if (progressStatus) {
-        progressStatus.innerText = `Memulai pengiriman ${selectedData.length} THR...`;
-      }
+      if (progressContainer) progressContainer.style.display = "block";
+      if (progressBar) progressBar.style.width = "0%";
+      if (progressStatus) progressStatus.innerText = `Memulai pengiriman ${selectedData.length} THR...`;
 
       try {
         const res = await fetch("/send-thr", {
@@ -2920,24 +4096,26 @@ if (sendThrBtn) {
           Swal.fire("Error", data.message || "Gagal memulai pengiriman", "error");
           btn.disabled = false;
           btn.innerHTML = '<i class="fas fa-paper-plane"></i> Kirim THR Terpilih';
-          if (progressContainer) {
-            progressContainer.style.display = "none";
-          }
+          if (progressContainer) progressContainer.style.display = "none";
         }
       } catch (err) {
         console.error("Send THR error:", err);
         Swal.fire("Error", "Gagal memulai pengiriman: " + err.message, "error");
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-paper-plane"></i> Kirim THR Terpilih';
-        if (progressContainer) {
-          progressContainer.style.display = "none";
-        }
+        if (progressContainer) progressContainer.style.display = "none";
       }
     }
   });
 }
 
-// Cancel Selected THR
+const cancelThrBtn = document.getElementById("cancelSendThrSelected");
+if (cancelThrBtn) {
+  const newCancelThrBtn = cancelThrBtn.cloneNode(true);
+  cancelThrBtn.parentNode.replaceChild(newCancelThrBtn, cancelThrBtn);
+  newCancelThrBtn.addEventListener("click", cancelSelectedThr);
+}
+
 async function cancelSelectedThr() {
   const selectedCancellable = Array.from(selectedThrSet).filter((id) => {
     const item = thrData.find((d) => d.id === id);
@@ -2947,26 +4125,27 @@ async function cancelSelectedThr() {
   if (selectedCancellable.length === 0) {
     Swal.fire({
       title: "Peringatan",
-      text: "Tidak ada THR terkirim yang dipilih untuk dibatalkan. Silakan pilih THR dengan status 'Terkirim'.",
+      text: "Tidak ada THR terkirim yang dipilih untuk dibatalkan.",
       icon: "warning",
       confirmButtonText: "OK",
     });
     return;
   }
 
+  const companyName = currentCompany === "hisana" ? "Hisana" : "Enakko";
+
   const result = await Swal.fire({
     title: "Konfirmasi Pembatalan THR",
     html: `
       <div style="text-align: left;">
-        <p>Anda akan membatalkan ${selectedCancellable.length} THR yang sudah terkirim.</p>
+        <p>Anda akan membatalkan <strong>${selectedCancellable.length}</strong> THR yang sudah terkirim untuk <strong>${companyName}</strong>.</p>
         <p style="margin-top: 10px; color: #dc2626;">
           <i class="fas fa-exclamation-triangle"></i> Tindakan ini akan:
         </p>
         <ul style="text-align: left; margin-top: 5px; color: #666;">
           <li>Mengubah status THR menjadi "Dibatalkan"</li>
-          <li>Mengirim pesan notifikasi ke karyawan yang bersangkutan</li>
+          <li>Mengirim pesan notifikasi WhatsApp ke karyawan yang bersangkutan</li>
           <li>THR dapat dikirim ulang setelah dibatalkan</li>
-          <li>Mencatat waktu dan alasan pembatalan</li>
         </ul>
       </div>
     `,
@@ -2977,9 +4156,6 @@ async function cancelSelectedThr() {
     cancelButtonText: "Batal",
     input: "textarea",
     inputPlaceholder: "Alasan pembatalan (opsional)...",
-    inputAttributes: {
-      "aria-label": "Alasan pembatalan",
-    },
   });
 
   if (!result.isConfirmed) return;
@@ -2989,6 +4165,14 @@ async function cancelSelectedThr() {
   const btn = document.getElementById("cancelSendThrSelected");
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Membatalkan...';
+
+  const progressContainer = document.getElementById("cancelThrProgressContainer");
+  const progressBar = document.getElementById("cancelThrProgressBar");
+  const progressStatus = document.getElementById("cancelThrProgressStatus");
+
+  if (progressContainer) progressContainer.style.display = "block";
+  if (progressBar) progressBar.style.width = "0%";
+  if (progressStatus) progressStatus.innerText = `Memulai pembatalan ${selectedCancellable.length} THR...`;
 
   try {
     const res = await fetch("/cancel-thr", {
@@ -3004,35 +4188,26 @@ async function cancelSelectedThr() {
     const data = await res.json();
 
     if (data.success) {
-      // IMPORTANT: Reload data immediately to reflect status changes
       await loadThrData();
-
-      // Clear selections
       selectedThrSet.clear();
-
-      // Uncheck all checkboxes
       const allCheckboxes = document.querySelectorAll(".chk-thr");
       allCheckboxes.forEach((chk) => {
         chk.checked = false;
       });
-
-      // Reset select all checkbox
       const selectAllCheckbox = document.getElementById("selectAllThr");
       if (selectAllCheckbox) {
         selectAllCheckbox.checked = false;
         selectAllCheckbox.indeterminate = false;
       }
-
       updateCancelThrButtonVisibility();
 
       Swal.fire({
         title: "Berhasil!",
         html: `
           <div style="text-align: left;">
-            <p>${data.message}</p>
-            <p style="margin-top: 10px; color: #16a34a;">
-              <i class="fas fa-check-circle"></i> Status THR telah berhasil dibatalkan.
-            </p>
+            <p><strong>${data.message}</strong></p>
+            ${data.messageSentCount > 0 ? `<p style="margin-top: 10px; color: #16a34a;"><i class="fas fa-check-circle"></i> ${data.messageSentCount} notifikasi berhasil terkirim</p>` : ""}
+            ${data.messageFailedCount > 0 ? `<p style="margin-top: 10px; color: #f59e0b;"><i class="fas fa-exclamation-triangle"></i> ${data.messageFailedCount} notifikasi gagal terkirim</p>` : ""}
           </div>
         `,
         icon: "success",
@@ -3047,13 +4222,26 @@ async function cancelSelectedThr() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-ban"></i> Batalkan Kirim Terpilih';
+    if (progressContainer) progressContainer.style.display = "none";
   }
 }
 
-// Cancel THR Button Listener
-const cancelThrBtn = document.getElementById("cancelSendThrSelected");
-if (cancelThrBtn) {
-  cancelThrBtn.addEventListener("click", cancelSelectedThr);
+function startThrProgressTracking() {
+  if (thrProgressInterval) {
+    clearInterval(thrProgressInterval);
+    thrProgressInterval = null;
+  }
+
+  thrProgressInterval = setInterval(async () => {
+    try {
+      const progressRes = await fetch("/thr-progress");
+      const progressData = await progressRes.json();
+      thrProgress = progressData;
+      updateThrProgressDisplay();
+    } catch (err) {
+      console.error("Gagal memantau progress THR:", err);
+    }
+  }, 1500);
 }
 
 function updateThrProgressDisplay() {
@@ -3088,15 +4276,6 @@ function updateThrProgressDisplay() {
                 <div style="font-size:1.5rem;font-weight:bold;color:#dc2626">${thrProgress.failed}</div>
               </div>
             </div>
-            <div style="background:#f8fafc;border-radius:12px;padding:15px;border:1px solid #e2e8f0">
-              <p style="margin:0;font-size:0.9rem;color:#475569">
-                ${
-                  thrProgress.failed > 0
-                    ? `<i class="fas fa-exclamation-circle" style="color:#f59e0b"></i> Ada ${thrProgress.failed} THR yang gagal dikirim.`
-                    : '<i class="fas fa-check-circle" style="color:#16a34a"></i> Semua THR berhasil terkirim sempurna!'
-                }
-              </p>
-            </div>
           </div>
         `,
         icon: thrProgress.failed > 0 ? "warning" : "success",
@@ -3104,19 +4283,16 @@ function updateThrProgressDisplay() {
       }).then(async () => {
         resetThrProgress();
         await loadThrData();
-
-        // Clear selections after completion
         selectedThrSet.clear();
-
-        // Uncheck all checkboxes
         const allCheckboxes = document.querySelectorAll(".chk-thr");
         allCheckboxes.forEach((chk) => {
           chk.checked = false;
         });
-
-        const selectAllThr = document.getElementById("selectAllThr");
-        if (selectAllThr) selectAllThr.checked = false;
-
+        const selectAllCheckbox = document.getElementById("selectAllThr");
+        if (selectAllCheckbox) {
+          selectAllCheckbox.checked = false;
+          selectAllCheckbox.indeterminate = false;
+        }
         updateCancelThrButtonVisibility();
       });
 
@@ -3130,47 +4306,484 @@ function updateThrProgressDisplay() {
   }
 }
 
-function startThrProgressTracking() {
-  if (thrProgressInterval) {
-    clearInterval(thrProgressInterval);
-    thrProgressInterval = null;
+// =============================
+// THR DUPLICATION FUNCTIONS - SAMA SEPERTI BONUS
+// =============================
+
+function initializeThrDuplicationButtons() {
+  console.log("Initializing THR duplication buttons for company:", currentCompany);
+
+  // Tombol duplikasi THR
+  const duplicateThrBtn = document.getElementById("duplicateThrBtn");
+  if (duplicateThrBtn) {
+    const newDuplicateThrBtn = duplicateThrBtn.cloneNode(true);
+    duplicateThrBtn.parentNode.replaceChild(newDuplicateThrBtn, duplicateThrBtn);
+
+    newDuplicateThrBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("✅ Duplicate THR button clicked for company:", currentCompany);
+      await duplicatePreviousYearThr();
+    });
+    console.log("✅ Duplicate THR button listener attached");
+  } else {
+    console.warn("⚠️ Duplicate THR button not found in DOM");
   }
 
-  thrProgressInterval = setInterval(async () => {
-    try {
-      const progressRes = await fetch("/thr-progress");
-      const progressData = await progressRes.json();
-      thrProgress = progressData;
-      updateThrProgressDisplay();
+  // Tombol batal duplikasi THR
+  const cancelDuplicateThrBtn = document.getElementById("cancelDuplicateThrBtn");
+  if (cancelDuplicateThrBtn) {
+    const newCancelDuplicateThrBtn = cancelDuplicateThrBtn.cloneNode(true);
+    cancelDuplicateThrBtn.parentNode.replaceChild(newCancelDuplicateThrBtn, cancelDuplicateThrBtn);
 
-      // Check if sending is complete
-      if (!thrProgress.running && thrProgress.sent + thrProgress.failed >= thrProgress.total && thrProgress.total > 0) {
-        // Clear all selected THR after sending is complete
-        selectedThrSet.clear();
-
-        // Uncheck all checkboxes
-        const allCheckboxes = document.querySelectorAll(".chk-thr");
-        allCheckboxes.forEach((chk) => {
-          chk.checked = false;
-        });
-
-        // Reset select all checkbox
-        const selectAllCheckbox = document.getElementById("selectAllThr");
-        if (selectAllCheckbox) {
-          selectAllCheckbox.checked = false;
-          selectAllCheckbox.indeterminate = false;
-        }
-
-        updateCancelThrButtonVisibility();
-        console.log("All THR selections cleared after sending complete");
-      }
-    } catch (err) {
-      console.error("Gagal memantau progress THR:", err);
-    }
-  }, 1500);
+    newCancelDuplicateThrBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("✅ Cancel duplicate THR button clicked for company:", currentCompany);
+      await cancelThrDuplicate();
+    });
+    console.log("✅ Cancel duplicate THR button listener attached");
+  } else {
+    console.warn("⚠️ Cancel duplicate THR button not found in DOM");
+  }
 }
 
-// Reset THR Checkbox Button
+async function loadAvailableThrYears() {
+  try {
+    console.log(`Loading available THR years for company: ${currentCompany}`);
+    const res = await fetch(`/thr-years?company=${currentCompany}`);
+    const data = await res.json();
+
+    if (data.success) {
+      const yearSelect = document.getElementById("thrYearSelect");
+      if (yearSelect) {
+        const currentSelection = yearSelect.value;
+
+        // Simpan nilai yang dipilih saat ini
+        yearSelect.innerHTML = '<option value="all">Semua Tahun</option>';
+
+        data.years.forEach((year) => {
+          const option = document.createElement("option");
+          option.value = year;
+          option.textContent = year;
+          yearSelect.appendChild(option);
+        });
+
+        // Kembalikan pilihan sebelumnya jika masih valid
+        if (currentSelection && (currentSelection === "all" || data.years.includes(parseInt(currentSelection)))) {
+          yearSelect.value = currentSelection;
+          currentThrYear = currentSelection === "all" ? "all" : parseInt(currentSelection);
+        } else if (currentThrYear !== "all") {
+          // Jika tahun yang dipilih sebelumnya tidak tersedia, set ke "all"
+          yearSelect.value = "all";
+          currentThrYear = "all";
+        }
+
+        console.log(`Available THR years loaded: ${data.years.join(", ")}`);
+        console.log(`Current THR year selection: ${yearSelect.value}`);
+      }
+    }
+  } catch (err) {
+    console.error("Load available THR years error:", err);
+  }
+}
+
+async function duplicatePreviousYearThr() {
+  console.log("🚀 duplicatePreviousYearThr called for company:", currentCompany);
+
+  try {
+    const currentYear = new Date().getFullYear();
+    const previousYear = currentYear - 1;
+
+    // Tampilkan konfirmasi seperti bonus
+    const result = await Swal.fire({
+      title: "Duplikasi Data THR Tahun Lalu?",
+      html: `
+        <div style="text-align: left;">
+          <p>Anda akan menduplikasi data THR dari <strong>tahun sebelumnya</strong> untuk <strong>${currentCompany === "hisana" ? "Hisana" : "Enakko"}</strong>.</p>
+          <p style="margin-top: 10px; color: #f59e0b;">
+            <i class="fas fa-info-circle"></i> Hanya data karyawan yang belum memiliki data THR di tahun ini yang akan diduplikasi.
+          </p>
+        </div>
+      `,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#2563eb",
+      confirmButtonText: "Ya, Duplikasi",
+      cancelButtonText: "Batal",
+    });
+
+    if (!result.isConfirmed) return;
+
+    Swal.fire({
+      title: "Sedang Memproses...",
+      text: "Mohon tunggu, sedang menduplikasi data THR",
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      },
+    });
+
+    console.log(`📡 Sending duplicate THR request to /duplicate-thr`);
+
+    const response = await fetch("/duplicate-thr", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ company: currentCompany }),
+    });
+
+    const data = await response.json();
+    console.log("Duplicate THR response:", data);
+    Swal.close();
+
+    if (response.ok && data.success) {
+      // Buat tampilan alert sama seperti bonus
+      let messageHtml = `
+        <div style="background:#f0fdf4;border-radius:12px;padding:15px">
+          <p>${data.message}</p>
+      `;
+
+      if (data.duplicatedCount) {
+        messageHtml += `<p style="margin-top: 10px;"><strong>${data.duplicatedCount}</strong> data THR berhasil diduplikasi</p>`;
+      }
+
+      if (data.skippedCount) {
+        messageHtml += `<p style="margin-top: 5px; color: #f59e0b;">${data.skippedCount} data THR dilewati (sudah ada di tahun ini)</p>`;
+      }
+
+      messageHtml += `</div>`;
+
+      Swal.fire({
+        title: "Berhasil!",
+        html: messageHtml,
+        icon: "success",
+        confirmButtonText: "OK",
+      });
+
+      // Reload data THR
+      await loadThrData();
+
+      // Update tombol
+      const duplicateBtn = document.getElementById("duplicateThrBtn");
+      const cancelBtn = document.getElementById("cancelDuplicateThrBtn");
+      if (duplicateBtn && cancelBtn) {
+        if (data.duplicatedCount > 0) {
+          duplicateBtn.style.display = "none";
+          cancelBtn.style.display = "inline-block";
+        } else {
+          duplicateBtn.style.display = "inline-block";
+          cancelBtn.style.display = "none";
+        }
+      }
+
+      // Mulai cek status duplikasi
+      startThrDuplicateStatusCheck();
+    } else {
+      Swal.fire({
+        title: "Gagal!",
+        text: data.message || "Terjadi kesalahan saat menduplikasi data THR",
+        icon: "error",
+        confirmButtonText: "OK",
+      });
+    }
+  } catch (err) {
+    console.error("❌ Duplicate THR data error:", err);
+    Swal.close();
+    Swal.fire({
+      title: "Error!",
+      text: err.message || "Terjadi kesalahan pada server",
+      icon: "error",
+      confirmButtonText: "OK",
+    });
+  }
+}
+
+async function cancelThrDuplicate() {
+  console.log("🚀 cancelThrDuplicate called for company:", currentCompany);
+
+  try {
+    const currentYear = new Date().getFullYear();
+
+    // Tampilkan konfirmasi seperti bonus
+    const result = await Swal.fire({
+      title: "Batalkan Duplikasi THR?",
+      html: `<p>Data THR hasil duplikasi akan dihapus permanen!</p>`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#ef4444",
+      confirmButtonText: "Ya, Batalkan",
+      cancelButtonText: "Tidak",
+    });
+
+    if (!result.isConfirmed) return;
+
+    Swal.fire({
+      title: "Sedang Memproses...",
+      text: "Mohon tunggu, sedang membatalkan duplikasi THR",
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      },
+    });
+
+    console.log(`📡 Sending cancel duplicate request to /cancel-duplicate-thr?company=${currentCompany}`);
+
+    const response = await fetch(`/cancel-duplicate-thr?company=${currentCompany}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const data = await response.json();
+    console.log("Cancel duplicate THR response:", data);
+    Swal.close();
+
+    if (response.ok && data.success) {
+      // Buat tampilan alert sama seperti bonus
+      Swal.fire({
+        title: "Berhasil!",
+        html: `<div style="background:#fef2e8;border-radius:12px;padding:15px"><p>${data.message}</p></div>`,
+        icon: "success",
+        confirmButtonText: "OK",
+      });
+
+      // Reload data THR
+      await loadThrData();
+
+      // Update tombol
+      const duplicateBtn = document.getElementById("duplicateThrBtn");
+      const cancelBtn = document.getElementById("cancelDuplicateThrBtn");
+      if (duplicateBtn && cancelBtn) {
+        duplicateBtn.style.display = "inline-block";
+        cancelBtn.style.display = "none";
+      }
+
+      // Stop cek status duplikasi
+      stopThrDuplicateStatusCheck();
+    } else {
+      Swal.fire({
+        title: "Gagal!",
+        text: data.message || "Terjadi kesalahan saat membatalkan duplikasi THR",
+        icon: "error",
+        confirmButtonText: "OK",
+      });
+    }
+  } catch (err) {
+    console.error("❌ Cancel THR duplicate error:", err);
+    Swal.close();
+    Swal.fire({
+      title: "Error!",
+      text: err.message || "Terjadi kesalahan pada server",
+      icon: "error",
+      confirmButtonText: "OK",
+    });
+  }
+}
+
+async function checkThrDuplicateStatus() {
+  try {
+    console.log("🔍 Checking THR duplicate status for company:", currentCompany);
+    const response = await fetch(`/check-thr-duplicate-status?company=${currentCompany}`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    console.log("THR duplicate status:", data);
+
+    const duplicateBtn = document.getElementById("duplicateThrBtn");
+    const cancelBtn = document.getElementById("cancelDuplicateThrBtn");
+
+    if (duplicateBtn && cancelBtn) {
+      if (data.hasRecentDuplicate) {
+        duplicateBtn.style.display = "none";
+        cancelBtn.style.display = "inline-block";
+        console.log("✅ THR - Showing cancel button (has duplicate data)");
+      } else {
+        duplicateBtn.style.display = "inline-block";
+        cancelBtn.style.display = "none";
+        console.log("✅ THR - Showing duplicate button (no duplicate data)");
+      }
+    }
+  } catch (err) {
+    console.error("❌ Check THR duplicate status error:", err);
+  }
+}
+
+function startThrDuplicateStatusCheck() {
+  console.log("Starting THR duplicate status check interval");
+  if (thrDuplicateCheckInterval) clearInterval(thrDuplicateCheckInterval);
+  thrDuplicateCheckInterval = setInterval(() => checkThrDuplicateStatus(), 5000);
+}
+
+function stopThrDuplicateStatusCheck() {
+  console.log("Stopping THR duplicate status check interval");
+  if (thrDuplicateCheckInterval) {
+    clearInterval(thrDuplicateCheckInterval);
+    thrDuplicateCheckInterval = null;
+  }
+}
+
+// =============================
+// THR EMPLOYEE SEARCH DROPDOWN
+// =============================
+async function loadThrEmployeeList() {
+  try {
+    console.log(`Loading THR employee list for company: ${currentCompany}`);
+    const res = await fetch(`/my-slip?company=${currentCompany}`);
+    const data = await res.json();
+
+    const employeeMap = new Map();
+    data.forEach((slip) => {
+      if (!employeeMap.has(slip.no_induk)) {
+        // Ambil data sesuai company
+        let nama, posisi, store;
+        if (currentCompany === "hisana") {
+          nama = slip.nama;
+          posisi = slip.posisi;
+          store = slip.store;
+        } else {
+          nama = slip.nama_karyawan || slip.nama;
+          posisi = slip.jabatan;
+          store = slip.penempatan;
+        }
+
+        employeeMap.set(slip.no_induk, {
+          no_induk: slip.no_induk,
+          nama: nama,
+          posisi: posisi,
+          store: store,
+          nohp: slip.nohp,
+        });
+      }
+    });
+
+    thrEmployeeList = Array.from(employeeMap.values());
+    console.log(`THR Employee list loaded for ${currentCompany}:`, thrEmployeeList.length, "employees");
+    return thrEmployeeList;
+  } catch (err) {
+    console.error("Load THR employee list error:", err);
+    return [];
+  }
+}
+
+function renderThrEmployeeDropdown(filterText = "") {
+  const employeeListContainer = document.getElementById("thrEmployeeList");
+  if (!employeeListContainer) return;
+
+  const filtered = thrEmployeeList.filter((emp) => emp.no_induk.toLowerCase().includes(filterText.toLowerCase()) || emp.nama.toLowerCase().includes(filterText.toLowerCase()));
+
+  if (filtered.length === 0) {
+    employeeListContainer.innerHTML = '<div class="employee-empty">Tidak ada karyawan ditemukan</div>';
+    return;
+  }
+
+  employeeListContainer.innerHTML = filtered
+    .map(
+      (emp) => `
+    <div class="employee-item" data-no-induk="${emp.no_induk}" data-nama="${emp.nama}" data-nohp="${emp.nohp}">
+      <div class="employee-no-induk">${escapeHtml(emp.no_induk)}</div>
+      <div class="employee-name">${escapeHtml(emp.nama)}</div>
+      <div class="employee-detail">${escapeHtml(emp.posisi || "")} ${emp.store ? " - " + escapeHtml(emp.store) : ""}</div>
+    </div>
+  `,
+    )
+    .join("");
+
+  document.querySelectorAll("#thrEmployeeList .employee-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      const noInduk = item.dataset.noInduk;
+      const nama = item.dataset.nama;
+      const nohp = item.dataset.nohp;
+      selectThrEmployee(noInduk, nama, nohp);
+    });
+  });
+}
+
+function selectThrEmployee(noInduk, nama, nohp) {
+  selectedThrEmployee = { no_induk: noInduk, nama: nama, nohp: nohp };
+
+  document.getElementById("thr_no_induk").value = noInduk;
+  document.getElementById("thr_nama").value = nama;
+
+  const searchInput = document.getElementById("thrEmployeeSearch");
+  if (searchInput) {
+    searchInput.value = `${noInduk} - ${nama}`;
+  }
+
+  const nohpInput = document.getElementById("thr_nohp");
+  if (nohpInput && (!nohpInput.value || nohpInput.value === "")) {
+    nohpInput.value = nohp || "";
+  }
+
+  const dropdown = document.getElementById("thrEmployeeDropdown");
+  if (dropdown) dropdown.style.display = "none";
+}
+
+function setupThrEmployeeSearch() {
+  const searchInput = document.getElementById("thrEmployeeSearch");
+  const dropdown = document.getElementById("thrEmployeeDropdown");
+  const dropdownSearch = document.getElementById("thrDropdownSearch");
+
+  if (!searchInput || !dropdown) return;
+
+  // Hapus event listener lama dengan clone
+  const newSearchInput = searchInput.cloneNode(true);
+  searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+
+  const newDropdown = dropdown.cloneNode(true);
+  dropdown.parentNode.replaceChild(newDropdown, dropdown);
+
+  newSearchInput.addEventListener("focus", async () => {
+    if (thrEmployeeList.length === 0) {
+      await loadThrEmployeeList();
+    }
+    renderThrEmployeeDropdown(newSearchInput.value.split(" - ")[0] || "");
+    newDropdown.style.display = "block";
+  });
+
+  newSearchInput.addEventListener("input", (e) => {
+    const value = e.target.value.split(" - ")[0] || e.target.value;
+    renderThrEmployeeDropdown(value);
+    newDropdown.style.display = "block";
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!newSearchInput.contains(e.target) && !newDropdown.contains(e.target)) {
+      newDropdown.style.display = "none";
+    }
+  });
+
+  const newDropdownSearch = document.getElementById("thrDropdownSearch");
+  if (newDropdownSearch) {
+    const newDropdownSearchInput = newDropdownSearch.cloneNode(true);
+    newDropdownSearch.parentNode.replaceChild(newDropdownSearchInput, newDropdownSearch);
+
+    newDropdownSearchInput.addEventListener("input", (e) => {
+      renderThrEmployeeDropdown(e.target.value);
+    });
+    newDropdownSearchInput.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  newDropdown.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+}
+
+function resetThrEmployeeSelection() {
+  selectedThrEmployee = null;
+  const searchInput = document.getElementById("thrEmployeeSearch");
+  const noIndukInput = document.getElementById("thr_no_induk");
+  const namaInput = document.getElementById("thr_nama");
+
+  if (searchInput) searchInput.value = "";
+  if (noIndukInput) noIndukInput.value = "";
+  if (namaInput) namaInput.value = "";
+}
+
+// THR Event Listeners
 document.getElementById("resetThrCheckbox")?.addEventListener("click", () => {
   if (selectedThrSet.size === 0) {
     Swal.fire({
@@ -3186,13 +4799,11 @@ document.getElementById("resetThrCheckbox")?.addEventListener("click", () => {
 
   selectedThrSet.clear();
 
-  // Reset semua checkbox individu
   const checkboxes = document.querySelectorAll(".chk-thr");
   checkboxes.forEach((chk) => {
     chk.checked = false;
   });
 
-  // Reset checkbox select all
   const selectAllThr = document.getElementById("selectAllThr");
   if (selectAllThr) {
     selectAllThr.checked = false;
@@ -3212,7 +4823,6 @@ document.getElementById("resetThrCheckbox")?.addEventListener("click", () => {
   });
 });
 
-// Year selector for THR
 document.getElementById("thrYearSelect")?.addEventListener("change", (e) => {
   const selectedYear = e.target.value;
   if (selectedYear === "all") {
@@ -3225,7 +4835,6 @@ document.getElementById("thrYearSelect")?.addEventListener("change", (e) => {
   loadThrData();
 });
 
-// Select All THR - Updated (no disabled filter)
 const selectAllThr = document.getElementById("selectAllThr");
 if (selectAllThr) {
   selectAllThr.addEventListener("change", (e) => {
@@ -3243,7 +4852,6 @@ if (selectAllThr) {
   });
 }
 
-// Pagination THR
 const prevThrPage = document.getElementById("prevThrPage");
 if (prevThrPage) {
   prevThrPage.addEventListener("click", () => {
@@ -3266,7 +4874,6 @@ if (nextThrPage) {
   });
 }
 
-// Search THR Input
 const searchThrInput = document.getElementById("searchThrInput");
 if (searchThrInput) {
   searchThrInput.addEventListener("input", () => {
@@ -3276,227 +4883,47 @@ if (searchThrInput) {
 }
 
 // =============================
-// THR DUPLICATION FUNCTIONS
+// THR MODAL BUTTONS
 // =============================
+const addThrBtn = document.getElementById("addThrBtn");
+if (addThrBtn) {
+  const newAddThrBtn = addThrBtn.cloneNode(true);
+  addThrBtn.parentNode.replaceChild(newAddThrBtn, addThrBtn);
 
-// Check THR duplicate status
-async function checkThrDuplicateStatus() {
-  try {
-    const response = await fetch(`/check-thr-duplicate-status?company=${currentCompany}`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-
-    const duplicateBtn = document.getElementById("duplicateThrBtn");
-    const cancelBtn = document.getElementById("cancelDuplicateThrBtn");
-
-    if (duplicateBtn && cancelBtn) {
-      if (data.hasRecentDuplicate) {
-        duplicateBtn.style.display = "none";
-        cancelBtn.style.display = "inline-block";
-      } else {
-        duplicateBtn.style.display = "inline-block";
-        cancelBtn.style.display = "none";
-      }
-    }
-  } catch (err) {
-    console.error("Check THR duplicate status error:", err);
-  }
-}
-
-// Start THR duplicate status check interval
-function startThrDuplicateStatusCheck() {
-  if (thrDuplicateCheckInterval) clearInterval(thrDuplicateCheckInterval);
-  thrDuplicateCheckInterval = setInterval(() => checkThrDuplicateStatus(), 5000);
-}
-
-// Stop THR duplicate status check interval
-function stopThrDuplicateStatusCheck() {
-  if (thrDuplicateCheckInterval) {
-    clearInterval(thrDuplicateCheckInterval);
-    thrDuplicateCheckInterval = null;
-  }
-}
-
-// Cancel THR duplicate
-async function cancelThrDuplicate() {
-  try {
-    const result = await Swal.fire({
-      title: "Batalkan Duplikasi THR?",
-      html: `<p>Data THR hasil duplikasi akan dihapus permanen!</p>
-             <p style="margin-top: 10px; color: #f59e0b;">
-               <i class="fas fa-exclamation-triangle"></i> Data THR yang diinput manual akan tetap dipertahankan.
-             </p>`,
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#ef4444",
-      confirmButtonText: "Ya, Batalkan",
-      cancelButtonText: "Tidak",
-    });
-
-    if (!result.isConfirmed) return;
-
-    Swal.fire({
-      title: "Sedang Memproses...",
-      allowOutsideClick: false,
-      didOpen: () => Swal.showLoading(),
-    });
-
-    const response = await fetch(`/cancel-duplicate-thr?company=${currentCompany}`, {
-      method: "POST",
-    });
-    const data = await response.json();
-    Swal.close();
-
-    if (!response.ok) {
-      Swal.fire("Gagal!", data.message || "Terjadi kesalahan", "error");
-      return;
-    }
-
-    if (data.success) {
-      Swal.fire({
-        title: "Berhasil!",
-        html: `<div style="background:#fef2e8;border-radius:12px;padding:15px">
-                 <p>${data.message}</p>
-                 ${data.manualDataCount > 0 ? `<p style="margin-top: 10px;">${data.manualDataCount} data THR input manual tetap dipertahankan.</p>` : ""}
-               </div>`,
-        icon: "success",
-        confirmButtonText: "OK",
-      });
-
-      const duplicateBtn = document.getElementById("duplicateThrBtn");
-      const cancelBtn = document.getElementById("cancelDuplicateThrBtn");
-      if (duplicateBtn && cancelBtn) {
-        duplicateBtn.style.display = "inline-block";
-        cancelBtn.style.display = "none";
-      }
-
-      await loadThrData();
-      stopThrDuplicateStatusCheck();
-    }
-  } catch (err) {
-    console.error("Cancel THR duplicate error:", err);
-    Swal.fire("Error!", err.message, "error");
-  }
-}
-
-// Duplicate THR from previous year
-const duplicateThrBtn = document.getElementById("duplicateThrBtn");
-if (duplicateThrBtn) {
-  duplicateThrBtn.addEventListener("click", async () => {
-    try {
-      const currentYear = new Date().getFullYear();
-      const previousYear = currentYear - 1;
-
-      const result = await Swal.fire({
-        title: "Duplikasi THR Tahun Lalu?",
-        html: `
-          <div style="text-align: left;">
-            <p>Anda akan menduplikasi data THR dari <strong>tahun ${previousYear}</strong> ke <strong>tahun ${currentYear}</strong> untuk ${currentCompany === "hisana" ? "Hisana" : "Enakko"}.</p>
-            <p style="margin-top: 10px; color: #f59e0b;">
-              <i class="fas fa-info-circle"></i> Pastikan data THR tahun ${previousYear} sudah lengkap sebelum melakukan duplikasi.
-            </p>
-          </div>
-        `,
-        icon: "question",
-        showCancelButton: true,
-        confirmButtonColor: "#2563eb",
-        confirmButtonText: "Ya, Duplikasi",
-        cancelButtonText: "Batal",
-      });
-
-      if (!result.isConfirmed) return;
-
-      Swal.fire({
-        title: "Sedang Memproses...",
-        text: "Mohon tunggu",
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading(),
-      });
-
-      const response = await fetch("/duplicate-thr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company: currentCompany }),
-      });
-
-      const data = await response.json();
-      Swal.close();
-
-      if (data.success) {
-        Swal.fire({
-          title: "Berhasil!",
-          html: `<div style="background:#f0fdf4;border-radius:12px;padding:15px"><p>${data.message}</p></div>`,
-          icon: "success",
-          confirmButtonText: "OK",
-        });
-
-        const duplicateBtn = document.getElementById("duplicateThrBtn");
-        const cancelBtn = document.getElementById("cancelDuplicateThrBtn");
-        if (duplicateBtn && cancelBtn) {
-          duplicateBtn.style.display = "none";
-          cancelBtn.style.display = "inline-block";
-        }
-
-        currentThrYear = currentYear;
-        const yearSelect = document.getElementById("thrYearSelect");
-        if (yearSelect) yearSelect.value = currentYear;
-        await loadThrData();
-        startThrDuplicateStatusCheck();
-      } else {
-        if (data.hasData) {
-          Swal.fire({
-            title: "Data Sudah Ada",
-            html: `
-              <div style="text-align: left;">
-                <p>${data.message}</p>
-                <p style="margin-top: 10px; color: #f59e0b;">
-                  <i class="fas fa-exclamation-triangle"></i> Silakan hapus data THR tahun ${currentYear} terlebih dahulu jika ingin menduplikasi ulang.
-                </p>
-              </div>
-            `,
-            icon: "warning",
-            confirmButtonText: "OK",
-            confirmButtonColor: "#2563eb",
-          });
-        } else {
-          Swal.fire({
-            title: "Gagal!",
-            html: `<div style="background:#fef2e8;border-radius:12px;padding:15px"><p>${data.message}</p></div>`,
-            icon: "error",
-            confirmButtonText: "OK",
-          });
-        }
-      }
-    } catch (err) {
-      console.error("Duplicate THR error:", err);
-      Swal.fire("Error!", err.message, "error");
-    }
+  newAddThrBtn.addEventListener("click", () => {
+    openThrModal();
   });
 }
-
-// Cancel Duplicate THR Button
-const cancelDuplicateThrBtn = document.getElementById("cancelDuplicateThrBtn");
-if (cancelDuplicateThrBtn) {
-  cancelDuplicateThrBtn.addEventListener("click", cancelThrDuplicate);
-}
-
-// THR Event Listeners
-const addThrBtn = document.getElementById("addThrBtn");
-if (addThrBtn) addThrBtn.addEventListener("click", () => openThrModal());
 
 const closeThrModal = document.getElementById("closeThrModal");
-if (closeThrModal)
-  closeThrModal.addEventListener("click", () => {
+if (closeThrModal) {
+  const newCloseThrModal = closeThrModal.cloneNode(true);
+  closeThrModal.parentNode.replaceChild(newCloseThrModal, closeThrModal);
+  newCloseThrModal.addEventListener("click", () => {
     const modal = document.getElementById("thrModal");
     if (modal) modal.style.display = "none";
   });
+}
 
 const cancelThrFormBtn = document.getElementById("cancelThrBtn");
-if (cancelThrFormBtn)
-  cancelThrFormBtn.addEventListener("click", () => {
+if (cancelThrFormBtn) {
+  const newCancelThrBtn = cancelThrFormBtn.cloneNode(true);
+  cancelThrFormBtn.parentNode.replaceChild(newCancelThrBtn, cancelThrFormBtn);
+  newCancelThrBtn.addEventListener("click", () => {
     const modal = document.getElementById("thrModal");
     if (modal) modal.style.display = "none";
   });
+}
+
+// =============================
+// HELPER FUNCTIONS
+// =============================
+function escapeHtml(text) {
+  if (!text) return "";
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
 
 function updateMonthYearDisplay() {
   const now = new Date();
@@ -3516,6 +4943,27 @@ function updateMonthYearDisplay() {
   if (currentYearTHRElement) currentYearTHRElement.textContent = tahun;
 }
 
+// Panggil fungsi inisialisasi setelah DOM siap
+document.addEventListener("DOMContentLoaded", () => {
+  // Inisialisasi filter
+  const { month, year } = getCurrentMonthYear();
+  currentSlipMonth = month;
+  currentSlipYear = year;
+
+  const monthSelect = document.getElementById("slipMonthSelect");
+  const yearSelect = document.getElementById("slipYearSelect");
+
+  if (monthSelect) monthSelect.value = month;
+  if (yearSelect) yearSelect.value = year;
+
+  // Setup event listeners
+  setupFilterListeners();
+  setupThrEmployeeSearch();
+
+  // Load data
+  loadData();
+});
+
 // =============================
 // WEBSOCKET & OTHER FUNCTIONS
 // =============================
@@ -3534,4 +4982,6 @@ socket.onmessage = (event) => {
   }
 };
 
+// Initialize
 loadData();
+updateMonthYearDisplay();

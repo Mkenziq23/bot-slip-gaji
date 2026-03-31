@@ -128,16 +128,16 @@ async function generateBonusPDF(data, company = "hisana") {
       }
 
       // ======================
-      // FOOTER & SIGNATURE
+      // FOOTER
       // ======================
       y = 420;
       doc.fillColor(theme.textSecondary).font("Helvetica-Oblique").fontSize(8).text(`Catatan: Bonus ini merupakan tambahan penghasilan di luar gaji pokok.`, 70, y, { width: 250 });
 
-      // Tanda Tangan
-      doc.fillColor(theme.textMain).font("Helvetica").fontSize(10);
-      doc.text("Diterima Oleh,", 400, y);
-      doc.text("________________________", 400, y + 60);
-      doc.font("Helvetica-Bold").text(namaKaryawan.toUpperCase(), 400, y + 75, { width: 130, align: "center" });
+      // // Tanda Tangan
+      // doc.fillColor(theme.textMain).font("Helvetica").fontSize(10);
+      // doc.text("Diterima Oleh,", 400, y);
+      // doc.text("________________________", 400, y + 60);
+      // doc.font("Helvetica-Bold").text(namaKaryawan.toUpperCase(), 400, y + 75, { width: 130, align: "center" });
 
       // Metadata Akhir
       doc

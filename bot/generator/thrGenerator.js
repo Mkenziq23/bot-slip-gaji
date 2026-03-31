@@ -14,7 +14,6 @@ async function generateTHRPDF(data, company = "hisana") {
         fs.mkdirSync(thrDir, { recursive: true });
       }
 
-      // Normalisasi data
       const normalized = {};
       Object.keys(data || {}).forEach((key) => {
         const newKey = key.toLowerCase().replace(/[.&]/g, "").replace(/\s+/g, "_");
@@ -30,61 +29,112 @@ async function generateTHRPDF(data, company = "hisana") {
       doc.pipe(stream);
 
       // ======================
-      // CONFIG & THEME
+      // CONFIG & THEME (Nuansa Hijau Ketupat)
       // ======================
       const theme = {
-        primary: "#10B981",
-        textMain: "#212121",
-        textSecondary: "#757575",
-        bgLight: "#D1FAE5",
-        line: "#E0E0E0",
-        success: "#059669",
+        primary: "#065F46", // Hijau Tua
+        secondary: "#10B981", // Hijau Terang
+        accent: "#FDE047", // Kuning Emas (Aksen Ketupat)
+        textMain: "#1F2937",
+        textSecondary: "#6B7280",
+        bgLight: "#ECFDF5",
+        line: "#D1FAE5",
       };
 
       const rupiah = (x) => new Intl.NumberFormat("id-ID").format(Math.abs(Number(x || 0)));
 
       // ======================
-      // HEADER DESIGN
+      // BACKGROUND DECORATION (ORNAMEN HARI RAYA)
       // ======================
-      doc.rect(0, 0, 600, 140).fill(theme.primary);
 
-      // Logo
+      // 1. Background dasar tipis
+      doc.rect(0, 0, 600, 842).fill("#F9FAFB");
+
+      // 2. Ornamen Ketupat Sederhana (Vektor) di Pojok-Pojok
+      const drawKetupat = (x, y, size) => {
+        doc.save();
+        doc.translate(x, y).rotate(45, { origin: [0, 0] });
+        // Pola anyaman ketupat
+        doc.rect(0, 0, size, size).fill(theme.secondary);
+        doc.rect(size / 2, 0, size / 2, size / 2).fill(theme.accent);
+        doc.rect(0, size / 2, size / 2, size / 2).fill(theme.accent);
+        doc.restore();
+      };
+
+      drawKetupat(540, 40, 30); // Pojok kanan atas
+      drawKetupat(50, 780, 25); // Pojok kiri bawah
+
+      // 3. Header Banner
+      doc.rect(0, 0, 600, 160).fill(theme.primary);
+
+      // Garis hiasan bawah header (Pola anyaman)
+      doc.rect(0, 155, 600, 5).fill(theme.accent);
+
+      // ======================
+      // HEADER CONTENT
+      // ======================
+      // Logo - cek path yang benar
       const assetsDir = path.join(process.cwd(), "assets");
-      const logoPath = path.join(assetsDir, company === "hisana" ? "hisanna.jpeg" : "enakko.jpeg");
-      if (fs.existsSync(logoPath)) {
-        try {
-          doc.image(logoPath, 50, 35, { width: 70 });
-        } catch (err) {
-          console.log("Logo not found or invalid:", err.message);
+      let logoPath;
+
+      if (company === "hisana") {
+        logoPath = path.join(assetsDir, "hisanna.jpeg");
+        // Cek juga kemungkinan nama file lain
+        if (!fs.existsSync(logoPath)) {
+          const alternativePath = path.join(assetsDir, "hisana.jpeg");
+          if (fs.existsSync(alternativePath)) {
+            logoPath = alternativePath;
+          }
+        }
+      } else {
+        logoPath = path.join(assetsDir, "enakko.jpeg");
+        if (!fs.existsSync(logoPath)) {
+          const alternativePath = path.join(assetsDir, "enakko.jpg");
+          if (fs.existsSync(alternativePath)) {
+            logoPath = alternativePath;
+          }
         }
       }
 
-      // Nama Perusahaan & Judul
+      if (fs.existsSync(logoPath)) {
+        try {
+          doc.image(logoPath, 50, 45, { width: 70 });
+          console.log(`✅ Logo loaded: ${logoPath}`);
+        } catch (imgErr) {
+          console.error(`❌ Failed to load logo: ${imgErr.message}`);
+        }
+      } else {
+        console.log(`⚠️ Logo not found at: ${logoPath}`);
+        // Fallback: tampilkan teks sebagai pengganti logo
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(14).text(company.toUpperCase(), 50, 65);
+      }
+
       doc
         .fillColor("#FFFFFF")
         .font("Helvetica-Bold")
-        .fontSize(22)
-        .text(company.toUpperCase(), 135, 45)
+        .fontSize(24)
+        .text(company.toUpperCase(), 135, 55)
         .font("Helvetica")
         .fontSize(10)
-        .text("Sistem Penggajian Digital Otomatis", 135, 75)
+        .fillColor(theme.line)
+        .text("Selamat Hari Raya Idul Fitri - Mohon Maaf Lahir & Batin", 135, 85)
         .font("Helvetica-Bold")
-        .fontSize(14)
-        .text("SLIP THR", 420, 55, { align: "right", width: 150 })
-        .font("Helvetica")
+        .fontSize(18)
+        .fillColor(theme.accent)
+        .text("SLIP THR", 400, 65, { align: "right", width: 150 })
         .fontSize(10)
-        .text(`Tahun ${normalized.tahun || "-"}`, 420, 80, { align: "right", width: 150 });
+        .fillColor("#FFFFFF")
+        .text(`Tahun ${normalized.tahun || "-"}`, 400, 90, { align: "right", width: 150 });
 
       // Body Container
-      doc.roundedRect(40, 120, 515, 400, 8).fill("#FFFFFF");
-      doc.lineWidth(1).strokeColor(theme.line).roundedRect(40, 120, 515, 400, 8).stroke();
+      doc.roundedRect(40, 140, 515, 450, 10).fill("#FFFFFF");
+      doc.lineWidth(1).strokeColor(theme.line).roundedRect(40, 140, 515, 450, 10).stroke();
 
       // ======================
       // INFORMASI KARYAWAN
       // ======================
-      let y = 155;
-      doc.fillColor(theme.primary).font("Helvetica-Bold").fontSize(12).text("INFORMASI KARYAWAN", 70, y);
-      y += 25;
+      let y = 180;
+      doc.fillColor(theme.primary).font("Helvetica-Bold").fontSize(12).text("DETAIL PENERIMA", 70, y);
 
       const drawRow = (label, value, xPos, yPos) => {
         doc.fillColor(theme.textSecondary).font("Helvetica").fontSize(9).text(label, xPos, yPos);
@@ -95,69 +145,64 @@ async function generateTHRPDF(data, company = "hisana") {
           .text(value, xPos, yPos + 12);
       };
 
+      y += 30;
       drawRow("NAMA LENGKAP", (normalized.nama || "-").toUpperCase(), 70, y);
       drawRow("ID KARYAWAN", normalized.no_induk || "-", 250, y);
-      drawRow("TAHUN", normalized.tahun || "-", 430, y);
+      drawRow("PERUSAHAAN", company.toUpperCase(), 430, y);
 
-      y += 40;
-      drawRow("PERUSAHAAN", company.toUpperCase(), 70, y);
-      drawRow("JENIS", "THR (Tunjangan Hari Raya)", 250, y);
-
-      // Divider Line
+      // Divider
       y += 45;
-      doc.moveTo(70, y).lineTo(525, y).lineWidth(1).strokeColor(theme.line).stroke();
-      y += 20;
+      doc.moveTo(70, y).lineTo(525, y).lineWidth(0.5).strokeColor(theme.line).stroke();
 
       // ======================
-      // RINCIAN THR
+      // RINCIAN THR (Tampilan Box Emas)
       // ======================
-      doc.fillColor(theme.primary).font("Helvetica-Bold").fontSize(12).text("RINCIAN THR", 70, y);
+      y += 30;
+      doc.fillColor(theme.primary).font("Helvetica-Bold").fontSize(12).text("NOMINAL TUNJANGAN", 70, y);
+
       y += 25;
+      doc.roundedRect(70, y, 455, 120, 8).fill(theme.bgLight);
+      doc.lineWidth(1).strokeColor(theme.secondary).roundedRect(70, y, 455, 120, 8).stroke();
 
-      // Box untuk THR
-      doc.roundedRect(70, y, 455, 100, 8).fill(theme.bgLight);
-      doc.roundedRect(70, y, 455, 100, 8).stroke();
-
-      doc.fillColor(theme.textMain).font("Helvetica").fontSize(12);
-      doc.text("Jumlah THR", 85, y + 20);
       doc
-        .fillColor(theme.success)
+        .fillColor(theme.primary)
+        .font("Helvetica")
+        .fontSize(11)
+        .text("Total Diterima (Net):", 90, y + 25);
+      doc
+        .fillColor(theme.primary)
         .font("Helvetica-Bold")
-        .fontSize(20)
-        .text(`Rp ${rupiah(normalized.jumlah_thr || 0)}`, 85, y + 50);
+        .fontSize(28)
+        .text(`Rp ${rupiah(normalized.jumlah_thr || 0)}`, 90, y + 45);
 
-      // Keterangan
       doc
         .fillColor(theme.textSecondary)
         .font("Helvetica-Oblique")
         .fontSize(9)
-        .text("Tunjangan Hari Raya (THR) merupakan kewajiban perusahaan yang diberikan menjelang hari raya keagamaan.", 85, y + 85, { width: 420 });
+        .text("Terbilang: (Sesuai dengan kebijakan perusahaan)", 90, y + 90);
 
-      // ======================
-      // FOOTER & SIGNATURE
-      // ======================
-      y = 420;
-      doc.fillColor(theme.textSecondary).font("Helvetica-Oblique").fontSize(8).text("Catatan: THR wajib diberikan minimal 7 hari sebelum hari raya.", 70, y, { width: 250 });
-
-      // Tanda Tangan
-      doc.fillColor(theme.textMain).font("Helvetica").fontSize(10);
-      doc.text("Diterima Oleh,", 400, y);
-      doc.text("________________________", 400, y + 60);
-      doc.font("Helvetica-Bold").text(namaKaryawan.toUpperCase(), 400, y + 75, {
-        width: 130,
-        align: "center",
-      });
+      // Footer Catatan
+      y += 150;
+      doc
+        .fillColor(theme.textSecondary)
+        .font("Helvetica")
+        .fontSize(8)
+        .text("Catatan:", 70, y)
+        .font("Helvetica-Oblique")
+        .text("• Tunjangan Hari Raya ini diberikan sebagai bentuk apresiasi perusahaan.", 70, y + 12)
+        .text("• Dokumen ini sah dan dihasilkan secara otomatis melalui sistem payroll.", 70, y + 22);
 
       // Metadata Akhir
       doc
         .fontSize(8)
         .fillColor("#BDC3C7")
-        .text(`ID Transaksi: ${Date.now()} | Dicetak pada: ${new Date().toLocaleString("id-ID")}`, 0, 550, { align: "center", width: 595 });
+        .text(`ID Transaksi: ${Date.now()} | Dicetak pada: ${new Date().toLocaleString("id-ID")}`, 0, 560, { align: "center", width: 595 });
 
       doc.end();
       stream.on("finish", () => resolve(filePath));
       stream.on("error", (err) => reject(err));
     } catch (err) {
+      console.error("Error generating THR PDF:", err);
       reject(err);
     }
   });
