@@ -9,6 +9,7 @@ import loginAdminRoutes from "./routes/loginAdminRoutes.js";
 import userManagementRoutes from "./routes/userManagementRoutes.js";
 import bonusRoutes from "./routes/slipBonusRoutes.js";
 import thrRoutes from "./routes/slipThrRoutes.js";
+import dataKaryawanRoutes from "./routes/dataKaryawanRoutes.js";
 
 import { startBot, getSocketByNumber, logoutBot } from "../bot/index.js";
 
@@ -73,6 +74,102 @@ app.use("/", loginAdminRoutes);
 app.use("/", userManagementRoutes);
 app.use("/", bonusRoutes);
 app.use("/", thrRoutes);
+app.use("/", dataKaryawanRoutes);
+
+// ============================
+// DASHBOARD DATA ROUTE
+// ============================
+app.get("/dashboard-data", async (req, res) => {
+  const company = req.query.company || "hisana";
+
+  // Tentukan nama tabel berdasarkan company
+  const tableKaryawan = company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
+  const tableSlipGaji = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+  const tableBonus = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
+  const tableThr = company === "hisana" ? "thr_hisana" : "thr_enakko";
+
+  console.log(`Dashboard request for company: ${company}`);
+  console.log(`Using tables: ${tableKaryawan}, ${tableSlipGaji}, ${tableBonus}, ${tableThr}`);
+
+  try {
+    // Get total karyawan
+    const [karyawanCount] = await db.query(`SELECT COUNT(*) as total FROM ${tableKaryawan}`);
+    console.log(`Total karyawan: ${karyawanCount[0]?.total || 0}`);
+
+    // Get total slip gaji
+    const [slipCount] = await db.query(`SELECT COUNT(*) as total FROM ${tableSlipGaji}`);
+    console.log(`Total slip: ${slipCount[0]?.total || 0}`);
+
+    // Get total bonus
+    const [bonusCount] = await db.query(`SELECT COUNT(*) as total FROM ${tableBonus}`);
+    console.log(`Total bonus: ${bonusCount[0]?.total || 0}`);
+
+    // Get total THR
+    const [thrCount] = await db.query(`SELECT COUNT(*) as total FROM ${tableThr}`);
+    console.log(`Total THR: ${thrCount[0]?.total || 0}`);
+
+    // Get ringkasan per karyawan
+    let karyawanRingkasan = [];
+
+    if (company === "hisana") {
+      const [rows] = await db.query(`
+        SELECT 
+          k.no_induk,
+          k.nama_lengkap as nama,
+          k.jabatan,
+          COALESCE(SUM(s.gaji_total), 0) as total_gaji,
+          COALESCE(SUM(b.jumlah_bonus), 0) as total_bonus,
+          COALESCE(SUM(t.jumlah_thr), 0) as total_thr
+        FROM ${tableKaryawan} k
+        LEFT JOIN ${tableSlipGaji} s ON k.no_induk = s.no_induk
+        LEFT JOIN ${tableBonus} b ON k.no_induk = b.no_induk
+        LEFT JOIN ${tableThr} t ON k.no_induk = t.no_induk
+        GROUP BY k.id, k.no_induk, k.nama_lengkap, k.jabatan
+        ORDER BY k.no_induk ASC
+      `);
+      karyawanRingkasan = rows;
+    } else {
+      const [rows] = await db.query(`
+        SELECT 
+          k.no_induk,
+          k.nama_lengkap as nama,
+          k.jabatan,
+          COALESCE(SUM(s.total_gaji), 0) as total_gaji,
+          COALESCE(SUM(b.jumlah_bonus), 0) as total_bonus,
+          COALESCE(SUM(t.jumlah_thr), 0) as total_thr
+        FROM ${tableKaryawan} k
+        LEFT JOIN ${tableSlipGaji} s ON k.no_induk = s.no_induk
+        LEFT JOIN ${tableBonus} b ON k.no_induk = b.no_induk
+        LEFT JOIN ${tableThr} t ON k.no_induk = t.no_induk
+        GROUP BY k.id, k.no_induk, k.nama_lengkap, k.jabatan
+        ORDER BY k.no_induk ASC
+      `);
+      karyawanRingkasan = rows;
+    }
+
+    console.log(`Returning ${karyawanRingkasan.length} karyawan records`);
+
+    res.json({
+      success: true,
+      totalKaryawan: karyawanCount[0]?.total || 0,
+      totalSlip: slipCount[0]?.total || 0,
+      totalBonus: bonusCount[0]?.total || 0,
+      totalThr: thrCount[0]?.total || 0,
+      karyawanRingkasan: karyawanRingkasan,
+    });
+  } catch (err) {
+    console.error("Dashboard data error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      totalKaryawan: 0,
+      totalSlip: 0,
+      totalBonus: 0,
+      totalThr: 0,
+      karyawanRingkasan: [],
+    });
+  }
+});
 
 // ============================
 // QR SCAN PAGE

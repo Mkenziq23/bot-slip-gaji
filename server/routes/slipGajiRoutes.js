@@ -4,6 +4,7 @@ import multer from "multer";
 import { uploadExcel } from "../uploadExcel.js";
 import kirimSlip from "../../bot/sendMessage/kirimSlipGajiHisana.js";
 import kirimSlipEnakko from "../../bot/sendMessage/kirimSlipGajiEnakko.js";
+import XLSX from "xlsx";
 import { progress } from "../progress.js";
 import { kirimPembatalanSlipHisana, kirimPembatalanSlipEnakko } from "../../bot/cancelMessage/cancelSlipGaji.js";
 
@@ -310,6 +311,9 @@ router.put("/slip/:id", async (req, res) => {
     const company = req.query.company || "hisana";
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
 
+    console.log(`[UPDATE] Request params - id: ${id}, company: ${company}`);
+    console.log(`[UPDATE] Request body:`, JSON.stringify(req.body, null, 2));
+
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
 
     if (!users.length) {
@@ -319,15 +323,20 @@ router.put("/slip/:id", async (req, res) => {
     const userId = users[0].id;
     const d = req.body;
 
-    console.log(`[UPDATE] Company: ${company}, ID: ${id}, Data:`, d);
-
     // Get current date for month/year filtering
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
     // Check if no_induk already exists for this user in current month (excluding current record)
-    const noInduk = company === "hisana" ? d.no_induk : d.no_induk;
+    const noInduk = d.no_induk;
+    if (!noInduk) {
+      return res.status(400).json({
+        success: false,
+        message: "No Induk tidak boleh kosong",
+      });
+    }
+
     const [existing] = await db.query(
       `SELECT COUNT(*) as count FROM ${tableName} 
        WHERE user_id = ? 
@@ -347,7 +356,20 @@ router.put("/slip/:id", async (req, res) => {
 
     let result;
     if (company === "hisana") {
-      // PERBAIKAN: Hisana update - hanya field yang diperlukan
+      // Validasi field yang diperlukan untuk Hisana
+      if (!d.nama) {
+        return res.status(400).json({ success: false, message: "Nama karyawan harus diisi" });
+      }
+      if (!d.posisi) {
+        return res.status(400).json({ success: false, message: "Posisi harus diisi" });
+      }
+      if (!d.store) {
+        return res.status(400).json({ success: false, message: "Store harus diisi" });
+      }
+      if (!d.nohp) {
+        return res.status(400).json({ success: false, message: "No HP harus diisi" });
+      }
+
       const query = `
         UPDATE ${tableName} SET
           no_induk = ?,
@@ -375,16 +397,16 @@ router.put("/slip/:id", async (req, res) => {
         d.posisi || "",
         d.store || "",
         d.awal_masuk || null,
-        d.kerja || 0,
-        d.gaji || 0,
-        d.iuran_bpjs_ketenagakerjaan || 0,
-        d.kerajinan || 0,
-        d.cuti || 0,
-        d.tunj_bpjs_pulsa || 0,
-        d.jumlah || 0,
-        d.um || 0,
+        parseInt(d.kerja) || 0,
+        parseFloat(d.gaji) || 0,
+        parseFloat(d.iuran_bpjs_ketenagakerjaan) || 0,
+        parseFloat(d.kerajinan) || 0,
+        parseFloat(d.cuti) || 0,
+        parseFloat(d.tunj_bpjs_pulsa) || 0,
+        parseFloat(d.jumlah) || 0,
+        parseFloat(d.um) || 0,
         d.keterangan || "",
-        d.gaji_total || 0,
+        parseFloat(d.gaji_total) || 0,
         d.nohp || "",
         id,
         userId,
@@ -395,8 +417,22 @@ router.put("/slip/:id", async (req, res) => {
 
       [result] = await db.query(query, values);
     } else {
-      // PERBAIKAN: Enakko update
+      // Enakko update
       const namaKaryawan = d.nama_karyawan || d.nama;
+
+      // Validasi field yang diperlukan untuk Enakko
+      if (!namaKaryawan) {
+        return res.status(400).json({ success: false, message: "Nama karyawan harus diisi" });
+      }
+      if (!d.tanggal_masuk) {
+        return res.status(400).json({ success: false, message: "Tanggal masuk harus diisi" });
+      }
+      if (!d.jabatan) {
+        return res.status(400).json({ success: false, message: "Jabatan harus diisi" });
+      }
+      if (!d.nohp) {
+        return res.status(400).json({ success: false, message: "No HP harus diisi" });
+      }
 
       const query = `
         UPDATE ${tableName} SET
@@ -417,7 +453,7 @@ router.put("/slip/:id", async (req, res) => {
 
       const values = [
         d.no_induk || "",
-        namaKaryawan || "",
+        namaKaryawan,
         d.tanggal_masuk || null,
         d.jabatan || "",
         d.penempatan || "",
@@ -445,12 +481,14 @@ router.put("/slip/:id", async (req, res) => {
       });
     }
 
+    console.log(`[UPDATE] Success! Affected rows: ${result.affectedRows}`);
+
     res.json({
       success: true,
       message: "Data berhasil diperbarui",
     });
   } catch (err) {
-    console.error("UPDATE ERROR:", err);
+    console.error("[UPDATE ERROR]:", err);
     res.status(500).json({
       success: false,
       message: err.sqlMessage || err.message,
@@ -504,10 +542,239 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     const company = req.query.company || req.body.company || "hisana";
     console.log(`[UPLOAD ROUTE] Company: ${company}, User: ${number}`);
 
-    // Panggil fungsi uploadExcel
+    // Panggil fungsi uploadExcel yang sudah dimodifikasi
     await uploadExcel(req, res, number, company);
   } catch (err) {
     console.error("[UPLOAD ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ========================
+// EXPORT SLIP GAJI KE EXCEL (Dengan filter bulan dan tahun)
+// ========================
+router.get("/export-slip", async (req, res) => {
+  try {
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
+
+    const company = req.query.company || "hisana";
+    const month = req.query.month;
+    const year = req.query.year;
+    const type = req.query.type; // Untuk backward compatibility
+
+    const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+
+    console.log(`[EXPORT SLIP] Company: ${company}, Month filter: ${month || "none"}, Year filter: ${year || "none"}`);
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+
+    const userId = users[0].id;
+
+    // Build query berdasarkan filter
+    let query = `SELECT * FROM ${tableName} WHERE user_id = ?`;
+    const queryParams = [userId];
+
+    let selectedMonth = null;
+    let selectedYear = null;
+
+    // Support untuk parameter type (backward compatibility)
+    if (type && type !== "all") {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+
+      if (type === "current_month") {
+        query += ` AND MONTH(created_at) = ? AND YEAR(created_at) = ?`;
+        queryParams.push(currentMonth, currentYear);
+        selectedMonth = currentMonth;
+        selectedYear = currentYear;
+        console.log(`Export type: current_month (${currentMonth}/${currentYear})`);
+      } else if (type === "current_year") {
+        query += ` AND YEAR(created_at) = ?`;
+        queryParams.push(currentYear);
+        selectedYear = currentYear;
+        console.log(`Export type: current_year (${currentYear})`);
+      }
+    } else {
+      // Gunakan filter bulan dan tahun dari parameter
+      if (month && month !== "all" && month !== "") {
+        query += ` AND MONTH(created_at) = ?`;
+        const monthInt = parseInt(month);
+        queryParams.push(monthInt);
+        selectedMonth = monthInt;
+        console.log(`Filtering by month: ${month}`);
+      }
+
+      if (year && year !== "all" && year !== "") {
+        query += ` AND YEAR(created_at) = ?`;
+        const yearInt = parseInt(year);
+        queryParams.push(yearInt);
+        selectedYear = yearInt;
+        console.log(`Filtering by year: ${year}`);
+      }
+    }
+
+    query += ` ORDER BY created_at DESC, id DESC`;
+
+    console.log(`Export query: ${query}`);
+    console.log(`Query params:`, queryParams);
+
+    const [rows] = await db.query(query, queryParams);
+
+    // Jika tidak ada data, kembalikan response JSON dengan status 404
+    if (rows.length === 0) {
+      const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+      const companyName = company === "hisana" ? "Hisana" : "Enakko";
+
+      let periodeText = "";
+      if (selectedMonth && selectedYear) {
+        periodeText = `${monthNames[selectedMonth - 1]} ${selectedYear}`;
+      } else if (selectedYear) {
+        periodeText = `tahun ${selectedYear}`;
+      } else if (selectedMonth) {
+        periodeText = `bulan ${monthNames[selectedMonth - 1]}`;
+      } else {
+        periodeText = "periode yang dipilih";
+      }
+
+      return res.status(404).json({
+        success: false,
+        message: `Mohon maaf, belum ada data slip gaji pada ${periodeText} untuk ${companyName}.`,
+        noData: true,
+        periode: periodeText,
+        company: companyName,
+      });
+    }
+
+    // Buat worksheet data
+    let ws_data = [];
+
+    if (company === "hisana") {
+      // Header untuk Hisana
+      ws_data.push(["No", "No Induk", "Nama", "Posisi", "Store", "Awal Masuk", "Kerja", "Gaji", "Iuran BPJS", "Kerajinan", "Cuti", "Tunj. BPJS & Pulsa", "Total", "UM", "Keterangan", "Gaji Total", "No HP", "Status Slip", "Tanggal Dibuat"]);
+
+      rows.forEach((item, index) => {
+        ws_data.push([
+          index + 1,
+          item.no_induk || "",
+          item.nama || "",
+          item.posisi || "",
+          item.store || "",
+          item.awal_masuk ? new Date(item.awal_masuk).toISOString().split("T")[0] : "",
+          item.kerja || 0,
+          item.gaji || 0,
+          item.iuran_bpjs_ketenagakerjaan || 0,
+          item.kerajinan || 0,
+          item.cuti || 0,
+          item.tunj_bpjs_pulsa || 0,
+          item.jumlah || 0,
+          item.um || 0,
+          item.keterangan || "",
+          item.gaji_total || 0,
+          item.nohp || "",
+          item.status_slip || "",
+          item.created_at ? new Date(item.created_at).toLocaleDateString("id-ID") : "",
+        ]);
+      });
+    } else {
+      // Header untuk Enakko
+      ws_data.push(["No", "No Induk", "Nama Karyawan", "Tanggal Masuk", "Jabatan", "Penempatan", "Gaji Utuh", "Gaji Pokok", "BPJS Kesehatan", "Insentif", "Total Gaji", "Keterangan", "No HP", "Status Slip", "Tanggal Dibuat"]);
+
+      rows.forEach((item, index) => {
+        ws_data.push([
+          index + 1,
+          item.no_induk || "",
+          item.nama_karyawan || item.nama || "",
+          item.tanggal_masuk ? new Date(item.tanggal_masuk).toISOString().split("T")[0] : "",
+          item.jabatan || "",
+          item.penempatan || "",
+          item.gaji_utuh || 0,
+          item.gaji_pokok || 0,
+          item.bpjs_kesehatan || 0,
+          item.insentif || 0,
+          item.total_gaji || 0,
+          item.keterangan || "",
+          item.nohp || "",
+          item.status_slip || "",
+          item.created_at ? new Date(item.created_at).toLocaleDateString("id-ID") : "",
+        ]);
+      });
+    }
+
+    // Buat workbook dan worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+
+    // Atur lebar kolom
+    const colWidths =
+      company === "hisana"
+        ? [
+            { wch: 5 },
+            { wch: 12 },
+            { wch: 25 },
+            { wch: 15 },
+            { wch: 15 },
+            { wch: 12 },
+            { wch: 8 },
+            { wch: 15 },
+            { wch: 15 },
+            { wch: 12 },
+            { wch: 10 },
+            { wch: 18 },
+            { wch: 12 },
+            { wch: 10 },
+            { wch: 20 },
+            { wch: 15 },
+            { wch: 15 },
+            { wch: 12 },
+            { wch: 15 },
+          ]
+        : [{ wch: 5 }, { wch: 12 }, { wch: 25 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 15 }];
+
+    ws["!cols"] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, "Slip Gaji");
+
+    // Tentukan nama file berdasarkan filter
+    const companyName = company === "hisana" ? "Hisana" : "Enakko";
+    const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    let filename = `Slip_Gaji_${companyName}`;
+
+    if (type === "current_month") {
+      const now = new Date();
+      filename += `_${monthNames[now.getMonth()]}_${now.getFullYear()}`;
+    } else if (type === "current_year") {
+      const now = new Date();
+      filename += `_Tahun_${now.getFullYear()}`;
+    } else {
+      if (selectedMonth && selectedMonth !== "all") {
+        filename += `_${monthNames[selectedMonth - 1]}`;
+      }
+      if (selectedYear && selectedYear !== "all") {
+        filename += `_${selectedYear}`;
+      }
+      if ((!selectedMonth || selectedMonth === "all") && (!selectedYear || selectedYear === "all")) {
+        filename += `_Semua_Data`;
+      }
+    }
+    filename += `.xlsx`;
+
+    // Set response headers
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+
+    // Write to response
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    res.send(buffer);
+  } catch (err) {
+    console.error("[EXPORT SLIP ERROR]:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });

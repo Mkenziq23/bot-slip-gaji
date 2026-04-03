@@ -38,18 +38,49 @@ function checkLogin(req, res) {
 }
 
 // ========================
-// VALIDATION RULES
+// GET EMPLOYEE LIST FROM DATA KARYAWAN
 // ========================
-const validateBonus = [
-  body("no_induk").notEmpty().withMessage("No Induk harus diisi").trim().escape(),
-  body("nama").notEmpty().withMessage("Nama harus diisi").trim().escape(),
-  body("periode").optional().isISO8601().withMessage("Format periode tidak valid"),
-  body("jumlah_bonus").isNumeric().withMessage("Jumlah bonus harus angka").toFloat(),
-  body("nohp")
-    .matches(/^\d{10,15}$/)
-    .withMessage("Nomor HP tidak valid")
-    .trim(),
-];
+router.get("/bonus-employees", async (req, res) => {
+  try {
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
+
+    const company = req.query.company || "hisana";
+    const tableName = company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
+
+    if (!["hisana", "enakko"].includes(company)) {
+      return res.status(400).json({ success: false, message: "Company tidak valid" });
+    }
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+
+    const userId = users[0].id;
+
+    // Ambil data karyawan hanya no_induk, nama, no_hp
+    const [employees] = await db.query(
+      `SELECT no_induk, nama_lengkap as nama, no_hp 
+       FROM ${tableName} 
+       WHERE user_id = ? 
+       ORDER BY no_induk ASC`,
+      [userId],
+    );
+
+    console.log(`[BONUS EMPLOYEES] Loaded ${employees.length} employees for ${company}`);
+
+    res.json({
+      success: true,
+      employees: employees,
+    });
+  } catch (err) {
+    console.error("[GET BONUS EMPLOYEES ERROR]:", err);
+    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+  }
+});
 
 // ========================
 // GET BONUS DATA
@@ -169,180 +200,205 @@ router.get("/bonus-years", async (req, res) => {
 // ========================
 // INSERT BONUS
 // ========================
-router.post("/bonus", validateBonus, async (req, res) => {
-  try {
-    // Check validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validasi gagal",
-        errors: errors.array(),
-      });
-    }
-
-    const number = checkLogin(req, res);
-    if (!number) return;
-
-    const company = req.query.company || "hisana";
-    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
-
-    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-    if (!users.length) {
-      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
-    }
-
-    const userId = users[0].id;
-    const d = req.body;
-
-    // Parse periode (format: YYYY-MM)
-    let bulan, tahun;
-    if (d.periode) {
-      const [year, month] = d.periode.split("-");
-      tahun = parseInt(year);
-      bulan = parseInt(month);
-
-      // Validasi bulan dan tahun
-      if (bulan < 1 || bulan > 12 || tahun < 2000 || tahun > 2100) {
+router.post(
+  "/bonus",
+  [
+    body("no_induk").notEmpty().withMessage("No Induk harus diisi").trim().escape(),
+    body("nama").notEmpty().withMessage("Nama harus diisi").trim().escape(),
+    body("periode").optional().isISO8601().withMessage("Format periode tidak valid"),
+    body("jumlah_bonus").isNumeric().withMessage("Jumlah bonus harus angka").toFloat(),
+    body("nohp")
+      .matches(/^\d{10,15}$/)
+      .withMessage("Nomor HP tidak valid")
+      .trim(),
+  ],
+  async (req, res) => {
+    try {
+      // Check validation errors
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
         return res.status(400).json({
           success: false,
-          message: "Bulan atau tahun tidak valid",
+          message: "Validasi gagal",
+          errors: errors.array(),
         });
       }
-    } else {
-      bulan = d.bulan;
-      tahun = d.tahun;
-    }
 
-    // Check if no_induk already exists for this user in current month
-    const [existing] = await db.query(
-      `SELECT COUNT(*) as count FROM ${tableName} 
+      const number = checkLogin(req, res);
+      if (!number) return;
+
+      const company = req.query.company || "hisana";
+      const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
+
+      if (!["hisana", "enakko"].includes(company)) {
+        return res.status(400).json({ success: false, message: "Company tidak valid" });
+      }
+
+      const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+      if (!users.length) {
+        return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+      }
+
+      const userId = users[0].id;
+      const d = req.body;
+
+      // Parse periode (format: YYYY-MM)
+      let bulan, tahun;
+      if (d.periode) {
+        const [year, month] = d.periode.split("-");
+        tahun = parseInt(year);
+        bulan = parseInt(month);
+
+        // Validasi bulan dan tahun
+        if (bulan < 1 || bulan > 12 || tahun < 2000 || tahun > 2100) {
+          return res.status(400).json({
+            success: false,
+            message: "Bulan atau tahun tidak valid",
+          });
+        }
+      } else {
+        bulan = d.bulan;
+        tahun = d.tahun;
+      }
+
+      // Check if no_induk already exists for this user in current month
+      const [existing] = await db.query(
+        `SELECT COUNT(*) as count FROM ${tableName} 
        WHERE user_id = ? 
        AND no_induk = ? 
        AND bulan = ? 
        AND tahun = ?`,
-      [userId, d.no_induk, bulan, tahun],
-    );
+        [userId, d.no_induk, bulan, tahun],
+      );
 
-    if (existing[0].count > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Nomor induk ${d.no_induk} sudah memiliki data bonus untuk bulan ${bulan}/${tahun}. Silakan gunakan nomor induk yang berbeda atau edit data yang sudah ada.`,
-      });
-    }
+      if (existing[0].count > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Nomor induk ${d.no_induk} sudah memiliki data bonus untuk bulan ${bulan}/${tahun}. Silakan gunakan nomor induk yang berbeda atau edit data yang sudah ada.`,
+        });
+      }
 
-    // Sanitasi input
-    const no_induk = String(d.no_induk).trim().substring(0, 50);
-    const nama = String(d.nama).trim().substring(0, 100);
-    const jumlah_bonus = Math.abs(parseFloat(d.jumlah_bonus));
-    const nohp = String(d.nohp)
-      .replace(/[^0-9]/g, "")
-      .substring(0, 15);
+      // Sanitasi input
+      const no_induk = String(d.no_induk).trim().substring(0, 50);
+      const nama = String(d.nama).trim().substring(0, 100);
+      const jumlah_bonus = Math.abs(parseFloat(d.jumlah_bonus));
+      const nohp = String(d.nohp)
+        .replace(/[^0-9]/g, "")
+        .substring(0, 15);
 
-    const query = `
+      const query = `
       INSERT INTO ${tableName}
       (user_id, no_induk, nama, bulan, tahun, jumlah_bonus, nohp, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    const values = [userId, no_induk, nama, bulan, tahun, jumlah_bonus, nohp, "belum_dikirim"];
+      const values = [userId, no_induk, nama, bulan, tahun, jumlah_bonus, nohp, "belum_dikirim"];
 
-    await db.query(query, values);
+      await db.query(query, values);
 
-    res.json({ success: true, message: "Bonus berhasil ditambahkan" });
-  } catch (err) {
-    console.error("[INSERT BONUS ERROR]:", err);
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
-  }
-});
+      res.json({ success: true, message: "Bonus berhasil ditambahkan" });
+    } catch (err) {
+      console.error("[INSERT BONUS ERROR]:", err);
+      res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+    }
+  },
+);
 
 // ========================
 // UPDATE BONUS
 // ========================
-router.put("/bonus/:id", validateBonus, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validasi gagal",
-        errors: errors.array(),
-      });
-    }
-
-    const number = checkLogin(req, res);
-    if (!number) return;
-
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) {
-      return res.status(400).json({ success: false, message: "ID tidak valid" });
-    }
-
-    const company = req.query.company || "hisana";
-    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
-
-    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-    if (!users.length) {
-      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
-    }
-
-    const userId = users[0].id;
-    const d = req.body;
-
-    // Parse periode
-    let bulan, tahun;
-    if (d.periode) {
-      const [year, month] = d.periode.split("-");
-      tahun = parseInt(year);
-      bulan = parseInt(month);
-
-      if (bulan < 1 || bulan > 12 || tahun < 2000 || tahun > 2100) {
+router.put(
+  "/bonus/:id",
+  [
+    body("no_induk").notEmpty().withMessage("No Induk harus diisi").trim().escape(),
+    body("nama").notEmpty().withMessage("Nama harus diisi").trim().escape(),
+    body("periode").optional().isISO8601().withMessage("Format periode tidak valid"),
+    body("jumlah_bonus").isNumeric().withMessage("Jumlah bonus harus angka").toFloat(),
+    body("nohp")
+      .matches(/^\d{10,15}$/)
+      .withMessage("Nomor HP tidak valid")
+      .trim(),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
         return res.status(400).json({
           success: false,
-          message: "Bulan atau tahun tidak valid",
+          message: "Validasi gagal",
+          errors: errors.array(),
         });
       }
-    } else {
-      bulan = d.bulan;
-      tahun = d.tahun;
-    }
 
-    // Check if no_induk already exists for this user in current month (excluding current record)
-    const [existing] = await db.query(
-      `SELECT COUNT(*) as count FROM ${tableName} 
+      const number = checkLogin(req, res);
+      if (!number) return;
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ success: false, message: "ID tidak valid" });
+      }
+
+      const company = req.query.company || "hisana";
+      const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
+
+      if (!["hisana", "enakko"].includes(company)) {
+        return res.status(400).json({ success: false, message: "Company tidak valid" });
+      }
+
+      const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+      if (!users.length) {
+        return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+      }
+
+      const userId = users[0].id;
+      const d = req.body;
+
+      // Parse periode
+      let bulan, tahun;
+      if (d.periode) {
+        const [year, month] = d.periode.split("-");
+        tahun = parseInt(year);
+        bulan = parseInt(month);
+
+        if (bulan < 1 || bulan > 12 || tahun < 2000 || tahun > 2100) {
+          return res.status(400).json({
+            success: false,
+            message: "Bulan atau tahun tidak valid",
+          });
+        }
+      } else {
+        bulan = d.bulan;
+        tahun = d.tahun;
+      }
+
+      // Check if no_induk already exists for this user in current month (excluding current record)
+      const [existing] = await db.query(
+        `SELECT COUNT(*) as count FROM ${tableName} 
        WHERE user_id = ? 
        AND no_induk = ? 
        AND bulan = ? 
        AND tahun = ?
        AND id != ?`,
-      [userId, d.no_induk, bulan, tahun, id],
-    );
+        [userId, d.no_induk, bulan, tahun, id],
+      );
 
-    if (existing[0].count > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Nomor induk ${d.no_induk} sudah memiliki data bonus untuk bulan ${bulan}/${tahun}. Silakan gunakan nomor induk yang berbeda.`,
-      });
-    }
+      if (existing[0].count > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Nomor induk ${d.no_induk} sudah memiliki data bonus untuk bulan ${bulan}/${tahun}. Silakan gunakan nomor induk yang berbeda.`,
+        });
+      }
 
-    // Sanitasi input
-    const no_induk = String(d.no_induk).trim().substring(0, 50);
-    const nama = String(d.nama).trim().substring(0, 100);
-    const jumlah_bonus = Math.abs(parseFloat(d.jumlah_bonus));
-    const nohp = String(d.nohp)
-      .replace(/[^0-9]/g, "")
-      .substring(0, 15);
+      // Sanitasi input
+      const no_induk = String(d.no_induk).trim().substring(0, 50);
+      const nama = String(d.nama).trim().substring(0, 100);
+      const jumlah_bonus = Math.abs(parseFloat(d.jumlah_bonus));
+      const nohp = String(d.nohp)
+        .replace(/[^0-9]/g, "")
+        .substring(0, 15);
 
-    const [result] = await db.query(
-      `
+      const [result] = await db.query(
+        `
       UPDATE ${tableName} SET
         no_induk = ?,
         nama = ?,
@@ -352,22 +408,23 @@ router.put("/bonus/:id", validateBonus, async (req, res) => {
         nohp = ?
       WHERE id = ? AND user_id = ? AND status != 'terkirim'
     `,
-      [no_induk, nama, bulan, tahun, jumlah_bonus, nohp, id, userId],
-    );
+        [no_induk, nama, bulan, tahun, jumlah_bonus, nohp, id, userId],
+      );
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Data tidak ditemukan, tidak memiliki akses, atau sudah terkirim",
-      });
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Data tidak ditemukan, tidak memiliki akses, atau sudah terkirim",
+        });
+      }
+
+      res.json({ success: true, message: "Bonus berhasil diperbarui" });
+    } catch (err) {
+      console.error("[UPDATE BONUS ERROR]:", err);
+      res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
     }
-
-    res.json({ success: true, message: "Bonus berhasil diperbarui" });
-  } catch (err) {
-    console.error("[UPDATE BONUS ERROR]:", err);
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
-  }
-});
+  },
+);
 
 // ========================
 // DELETE BONUS

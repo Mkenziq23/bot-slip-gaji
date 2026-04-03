@@ -52,6 +52,51 @@ router.get("/thr", async (req, res) => {
 });
 
 // ============================
+// GET EMPLOYEE LIST FROM DATA KARYAWAN FOR THR
+// ============================
+router.get("/thr-employees", async (req, res) => {
+  try {
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
+
+    const company = req.query.company || "hisana";
+    const tableName = company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
+
+    if (!["hisana", "enakko"].includes(company)) {
+      return res.status(400).json({ success: false, message: "Company tidak valid" });
+    }
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+
+    const userId = users[0].id;
+
+    // Ambil data karyawan hanya no_induk, nama_lengkap, no_hp
+    const [employees] = await db.query(
+      `SELECT no_induk, nama_lengkap as nama, no_hp 
+       FROM ${tableName} 
+       WHERE user_id = ? 
+       ORDER BY no_induk ASC`,
+      [userId],
+    );
+
+    console.log(`[THR EMPLOYEES] Loaded ${employees.length} employees for ${company}`);
+
+    res.json({
+      success: true,
+      employees: employees,
+    });
+  } catch (err) {
+    console.error("[GET THR EMPLOYEES ERROR]:", err);
+    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+  }
+});
+
+// ============================
 // GET THR DATA BY YEAR
 // ============================
 router.get("/thr/year/:year", async (req, res) => {

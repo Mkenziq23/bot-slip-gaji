@@ -2,449 +2,740 @@
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Payroll Dashboard Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- DataTables CSS & JS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css" />
+    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.dataTables.min.css" />
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body>
-    <nav class="navbar">
-      <div class="logo">
-        <i class="fas fa-file-invoice-dollar"></i>
-        <span>HR-Pay Dashboard</span>
-      </div>
+    <!-- Mobile Menu Toggle Button -->
+    <button class="mobile-menu-toggle" id="mobileMenuToggle">
+      <i class="fas fa-bars"></i>
+    </button>
 
-      <div style="display: flex; gap: 10px; align-items: center">
-        <!-- hanya admin & superadmin -->
-        <button id="manageUsersBtn" class="btn-manage-users" style="display: none">
-          <i class="fas fa-users"></i>
-          Manage Users
-        </button>
+    <!-- Overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-        <button id="logoutBtn" class="btn-danger">
-          <i class="fas fa-sign-out-alt"></i>
-          Logout
-        </button>
-      </div>
-    </nav>
-
-    <div class="container">
-      <div class="nav-main">
-        <!-- MENU UTAMA -->
-        <div class="nav-tabs main-menu">
-          <button id="menuHisana" class="active"><i class="fas fa-building"></i> Manage Payroll Hisana</button>
-          <button id="menuEnakko"><i class="fas fa-drumstick-bite"></i> Manage Payroll Enakko</button>
+    <div class="main-layout">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-brand">
+            <div class="brand-icon">
+              <i class="fas fa-file-invoice-dollar"></i>
+            </div>
+            <div class="brand-text">
+              <span class="brand-title">HR-PayRoll</span>
+              <span class="brand-subtitle">Payroll Management</span>
+            </div>
+          </div>
+          <button class="sidebar-close" id="sidebarClose">
+            <i class="fas fa-times"></i>
+          </button>
         </div>
 
-        <!-- SUBMENU HISANA -->
-        <div class="nav-tabs sub-menu" id="submenuHisana">
-          <button id="menuDataHisana"><i class="fas fa-database"></i> Data Slip Gaji Karyawan Hisana</button>
-          <button id="menuKirimHisana" class="active"><i class="fas fa-paper-plane"></i> Kirim Slip Gaji Karyawan Hisana</button>
-          <button id="menuBonusHisana"><i class="fas fa-paper-plane"></i> Kirim Slip Bonus Karyawan Hisanna</button>
-          <button id="menuTHRHisana"><i class="fas fa-paper-plane"></i> Kirim Slip THR Karyawan Hisanna</button>
+        <div class="sidebar-content">
+          <!-- Perusahaan Section -->
+          <div class="sidebar-section">
+            <div class="section-label">
+              <i class="fas fa-building"></i>
+              <span>Perusahaan</span>
+            </div>
+            <div class="company-selector">
+              <button id="menuHisana" class="company-btn active">
+                <i class="fas fa-store"></i>
+                <span>Hisana</span>
+              </button>
+              <button id="menuEnakko" class="company-btn">
+                <i class="fas fa-utensils"></i>
+                <span>Enakko</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <!-- Menu Hisana -->
+          <div id="submenuHisana" class="sidebar-section nav-group" style="display: block">
+            <div class="section-label">
+              <i class="fas fa-chart-line"></i>
+              <span>Menu Hisana</span>
+            </div>
+            <nav class="sidebar-nav">
+              <button id="dashboardHisana" class="nav-item">
+                <i class="fas fa-tachometer-alt"></i>
+                <span>Dashboard</span>
+              </button>
+              <div class="nav-dropdown">
+                <button class="nav-item dropdown-toggle" id="dataMasterHisanaToggle">
+                  <i class="fas fa-database"></i>
+                  <span>Data Master</span>
+                  <i class="fas fa-chevron-down dropdown-icon"></i>
+                </button>
+                <div class="dropdown-menu" id="dataMasterHisanaMenu">
+                  <button id="dataKaryawanHisana" class="dropdown-item">
+                    <i class="fas fa-users"></i>
+                    <span>Data Karyawan Hisana</span>
+                  </button>
+                </div>
+              </div>
+              <button id="menuKirimHisana" class="nav-item">
+                <i class="fas fa-paper-plane"></i>
+                <span>Kirim Slip Gaji</span>
+              </button>
+              <button id="menuBonusHisana" class="nav-item">
+                <i class="fas fa-gift"></i>
+                <span>Kirim Slip Bonus</span>
+              </button>
+              <button id="menuTHRHisana" class="nav-item">
+                <i class="fas fa-hand-holding-usd"></i>
+                <span>Kirim Slip THR</span>
+              </button>
+            </nav>
+          </div>
+
+          <!-- Menu Enakko -->
+          <div id="submenuEnakko" class="sidebar-section nav-group" style="display: none">
+            <div class="section-label">
+              <i class="fas fa-chart-line"></i>
+              <span>Menu Enakko</span>
+            </div>
+            <nav class="sidebar-nav">
+              <button id="dashboardEnakko" class="nav-item">
+                <i class="fas fa-tachometer-alt"></i>
+                <span>Dashboard</span>
+              </button>
+              <div class="nav-dropdown">
+                <button class="nav-item dropdown-toggle" id="dataMasterEnakkoToggle">
+                  <i class="fas fa-database"></i>
+                  <span>Data Master</span>
+                  <i class="fas fa-chevron-down dropdown-icon"></i>
+                </button>
+                <div class="dropdown-menu" id="dataMasterEnakkoMenu">
+                  <button id="dataKaryawanEnakko" class="dropdown-item">
+                    <i class="fas fa-users"></i>
+                    <span>Data Karyawan Enakko</span>
+                  </button>
+                </div>
+              </div>
+              <button id="menuKirimEnakko" class="nav-item">
+                <i class="fas fa-paper-plane"></i>
+                <span>Kirim Slip Gaji</span>
+              </button>
+              <button id="menuBonusEnakko" class="nav-item">
+                <i class="fas fa-gift"></i>
+                <span>Kirim Slip Bonus</span>
+              </button>
+              <button id="menuTHREnakko" class="nav-item">
+                <i class="fas fa-hand-holding-usd"></i>
+                <span>Kirim Slip THR</span>
+              </button>
+            </nav>
+          </div>
         </div>
 
-        <!-- SUBMENU ENAKKO -->
-        <div class="nav-tabs sub-menu" id="submenuEnakko" style="display: none">
-          <button id="menuDataEnakko"><i class="fas fa-database"></i> Data Slip Gaji Karyawan Enakko</button>
-          <button id="menuKirimEnakko"><i class="fas fa-paper-plane"></i> Kirim Slip Gaji Karyawan Enakko</button>
-          <button id="menuBonusEnakko"><i class="fas fa-paper-plane"></i> Kirim Slip Bonus Karyawan Enakko</button>
-          <button id="menuTHREnakko"><i class="fas fa-paper-plane"></i> Kirim Slip THR Karyawan Enakko</button>
+        <div class="sidebar-footer">
+          <button id="manageUsersBtn" class="footer-btn" style="display: none">
+            <i class="fas fa-users-cog"></i>
+            <span>Manage Users</span>
+          </button>
+          <button id="logoutBtn" class="footer-btn logout-btn">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>Logout</span>
+          </button>
         </div>
-      </div>
+      </aside>
 
-      <div id="sectionKirim" class="section active">
-        <div class="card">
-          <div class="data-header">
-            <div class="data-header-left">
-              <h3><i class="fas fa-paper-plane"></i> Kirim Slip Gaji Karyawan - <span id="currentMonthYearKirim"></span></h3>
-              <div class="data-actions">
-                <!-- <button id="addDataBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah Data</button>
-                <button id="exportBtn" class="btn-outline export-btn"><i class="fas fa-file-export"></i> Export</button>
-                <button id="downloadTemplateBtn" class="btn-outline template-btn"><i class="fas fa-file-download"></i> Download Template</button>
-                <button id="duplicateDataBtn" class="btn-outline duplicate-data-btn"><i class="fas fa-copy"></i> Duplikasi Data Bulan Lalu</button>
-                <button id="cancelDuplicateBtn" class="btn-outline cancel-data-btn" style="display: none"><i class="fas fa-undo"></i> Batal Duplikasi</button> -->
-                <div class="filter-group">
-                  <div class="filter-wrapper">
-                    <label for="slipMonthSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Bulan: </label>
-                    <select id="slipMonthSelect" class="filter-select">
-                      <option value="all">Pilih Bulan Bulan</option>
-                      <option value="1">Januari</option>
-                      <option value="2">Februari</option>
-                      <option value="3">Maret</option>
-                      <option value="4">April</option>
-                      <option value="5">Mei</option>
-                      <option value="6">Juni</option>
-                      <option value="7">Juli</option>
-                      <option value="8">Agustus</option>
-                      <option value="9">September</option>
-                      <option value="10">Oktober</option>
-                      <option value="11">November</option>
-                      <option value="12">Desember</option>
-                    </select>
+      <main class="main-content">
+        <!-- SECTION DASHBOARD -->
+        <div id="sectionDashboard" class="section">
+          <div class="card">
+            <div class="data-header">
+              <div class="data-header-left">
+                <h3><i class="fas fa-tachometer-alt"></i> Dashboard - <span id="dashboardCompanyName"></span></h3>
+              </div>
+              <div class="data-header-right">
+                <div class="search-wrapper">
+                  <i class="fas fa-search search-icon"></i>
+                  <input type="text" id="searchDashboardInput" placeholder="Cari..." class="search-input" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Statistik Cards -->
+            <div class="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; padding: 24px">
+              <div class="stat-card" style="background: linear-gradient(135deg, #2563eb, #1e40af); border-radius: 16px; padding: 20px; color: white">
+                <div class="stat-icon"><i class="fas fa-users" style="font-size: 32px; opacity: 0.8"></i></div>
+                <div class="stat-info">
+                  <div class="stat-value" id="totalKaryawanStat">0</div>
+                  <div class="stat-label">Total Karyawan</div>
+                </div>
+              </div>
+              <div class="stat-card" style="background: linear-gradient(135deg, #10b981, #059669); border-radius: 16px; padding: 20px; color: white">
+                <div class="stat-icon"><i class="fas fa-file-invoice-dollar" style="font-size: 32px; opacity: 0.8"></i></div>
+                <div class="stat-info">
+                  <div class="stat-value" id="totalSlipStat">0</div>
+                  <div class="stat-label">Total Slip Gaji</div>
+                </div>
+              </div>
+              <div class="stat-card" style="background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 16px; padding: 20px; color: white">
+                <div class="stat-icon"><i class="fas fa-gift" style="font-size: 32px; opacity: 0.8"></i></div>
+                <div class="stat-info">
+                  <div class="stat-value" id="totalBonusStat">0</div>
+                  <div class="stat-label">Total Bonus</div>
+                </div>
+              </div>
+              <div class="stat-card" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); border-radius: 16px; padding: 20px; color: white">
+                <div class="stat-icon"><i class="fas fa-hand-holding-usd" style="font-size: 32px; opacity: 0.8"></i></div>
+                <div class="stat-info">
+                  <div class="stat-value" id="totalThrStat">0</div>
+                  <div class="stat-label">Total THR</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabel Ringkasan -->
+            <div class="scrollable">
+              <table id="tableDashboard">
+                <thead>
+                  <tr>
+                    <th>No Induk</th>
+                    <th>Nama</th>
+                    <th>Jabatan</th>
+                    <th>Total Gaji</th>
+                    <th>Total Bonus</th>
+                    <th>Total THR</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="pagination-wrapper">
+              <div class="pagination">
+                <button id="prevDashboardPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
+                <span id="dashboardPageInfo" class="page-info"></span>
+                <button id="nextDashboardPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- SECTION DATA KARYAWAN -->
+        <div id="sectionDataKaryawan" class="section">
+          <div class="card">
+            <div class="data-header">
+              <div class="data-header-left">
+                <h3><i class="fas fa-users"></i> Data Karyawan - <span id="currentCompanyName"></span></h3>
+                <div class="data-actions">
+                  <button id="addKaryawanBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah Karyawan</button>
+                  <button id="exportKaryawanBtn" class="btn-outline export-btn"><i class="fas fa-file-export"></i> Export Data</button>
+                  <button id="downloadTemplateKaryawanBtn" class="btn-outline template-btn"><i class="fas fa-download"></i> Download Template</button>
+                  <button id="importKaryawanBtn" class="btn-outline import-btn"><i class="fas fa-upload"></i> Import Data</button>
+                </div>
+              </div>
+              <div class="data-header-right">
+                <div class="search-wrapper">
+                  <i class="fas fa-search search-icon"></i>
+                  <input type="text" id="searchKaryawanInput" placeholder="Cari karyawan..." class="search-input" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Form Import Excel (hidden by default) -->
+            <div id="importKaryawanForm" class="upload-section" style="display: none">
+              <h4><i class="fas fa-upload"></i> Import File Excel Karyawan</h4>
+              <form id="uploadFormKaryawan" class="upload-form">
+                <div class="file-input-wrapper">
+                  <input type="file" name="file" id="fileInputKaryawan" accept=".xlsx, .xls" required />
+                  <label for="fileInputKaryawan" class="file-label"> <i class="fas fa-folder-open"></i> Pilih File </label>
+                  <span id="fileNameKaryawan" class="file-name">Tidak ada file dipilih</span>
+                </div>
+                <button type="submit" class="btn-primary upload-btn"><i class="fas fa-cloud-upload-alt"></i> Upload Excel</button>
+                <!-- <button type="button" id="cancelImportKaryawan" class="btn-outline"><i class="fas fa-times"></i> Batal</button> -->
+              </form>
+              <p id="uploadStatusKaryawan" class="upload-status"></p>
+            </div>
+
+            <div class="scrollable">
+              <table id="tableKaryawan">
+                <thead>
+                  <tr>
+                    <th style="width: 50px">No</th>
+                    <th>No Induk</th>
+                    <th>Nama Lengkap</th>
+                    <th>NIK</th>
+                    <th>Tanggal Lahir</th>
+                    <th>Alamat Domisili</th>
+                    <th>No HP</th>
+                    <th>Email</th>
+                    <th>Posisi/Jabatan</th>
+                    <th>Cabang</th>
+                    <th>Nama Gerai</th>
+                    <th>Foto Diri</th>
+                    <th>Foto KTP</th>
+                    <th style="min-width: 100px">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="pagination-wrapper">
+              <div class="pagination">
+                <button id="prevKaryawanPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
+                <span id="karyawanPageInfo" class="page-info"></span>
+                <button id="nextKaryawanPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="sectionKirim" class="section active">
+          <div class="card">
+            <div class="data-header">
+              <div class="data-header-left">
+                <h3><i class="fas fa-paper-plane"></i> Kirim Slip Gaji Karyawan - <span id="currentMonthYearKirim"></span></h3>
+                <div class="data-actions">
+                  <!-- Menu yang dipindahkan dari sectionData -->
+                  <button id="addDataBtnKirim" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah Data</button>
+                  <div class="export-dropdown-container" style="position: relative; display: inline-block">
+                    <button id="exportBtnKirim" class="btn-outline export-btn"><i class="fas fa-file-export"></i> Export <i class="fas fa-chevron-down" style="font-size: 12px; margin-left: 5px"></i></button>
+                    <div
+                      id="exportDropdownMenu"
+                      class="export-dropdown-menu"
+                      style="
+                        display: none;
+                        position: absolute;
+                        top: 100%;
+                        right: 0;
+                        background: white;
+                        border: 1px solid #e2e8f0;
+                        border-radius: 8px;
+                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                        z-index: 1000;
+                        min-width: 200px;
+                        padding: 10px;
+                      "
+                    >
+                      <div style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #1e293b"><i class="fas fa-calendar-alt"></i> Pilih Periode</div>
+                      <div style="padding: 10px">
+                        <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 5px">Bulan</label>
+                        <select id="exportMonthSelect" class="filter-select" style="width: 100%; margin-bottom: 10px">
+                          <option value="all">Semua Bulan</option>
+                          <option value="1">Januari</option>
+                          <option value="2">Februari</option>
+                          <option value="3">Maret</option>
+                          <option value="4">April</option>
+                          <option value="5">Mei</option>
+                          <option value="6">Juni</option>
+                          <option value="7">Juli</option>
+                          <option value="8">Agustus</option>
+                          <option value="9">September</option>
+                          <option value="10">Oktober</option>
+                          <option value="11">November</option>
+                          <option value="12">Desember</option>
+                        </select>
+
+                        <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 5px">Tahun</label>
+                        <select id="exportYearSelect" class="filter-select" style="width: 100%; margin-bottom: 10px">
+                          <option value="all">Semua Tahun</option>
+                        </select>
+
+                        <button id="doExportBtn" class="btn-primary" style="width: 100%; margin-top: 10px; padding: 8px"><i class="fas fa-download"></i> Export Sekarang</button>
+                      </div>
+                    </div>
                   </div>
-                  <div class="filter-wrapper">
-                    <label for="slipYearSelect" class="filter-label"> <i class="fas fa-calendar"></i> Tahun: </label>
-                    <select id="slipYearSelect" class="filter-select">
-                      <option value="all">Semua Tahun</option>
+                  <button id="downloadTemplateBtnKirim" class="btn-outline template-btn"><i class="fas fa-file-download"></i> Download Template</button>
+                  <button id="duplicateDataBtnKirim" class="btn-outline duplicate-data-btn"><i class="fas fa-copy"></i> Duplikasi Data Bulan Lalu</button>
+                  <button id="cancelDuplicateBtnKirim" class="btn-outline cancel-data-btn" style="display: none"><i class="fas fa-undo"></i> Batal Duplikasi</button>
+                  <!-- Filter bulan dan tahun tetap di sini -->
+                  <div class="filter-group">
+                    <div class="filter-wrapper">
+                      <label for="slipMonthSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Bulan: </label>
+                      <select id="slipMonthSelect" class="filter-select">
+                        <option value="all">Pilih Bulan</option>
+                        <option value="1">Januari</option>
+                        <option value="2">Februari</option>
+                        <option value="3">Maret</option>
+                        <option value="4">April</option>
+                        <option value="5">Mei</option>
+                        <option value="6">Juni</option>
+                        <option value="7">Juli</option>
+                        <option value="8">Agustus</option>
+                        <option value="9">September</option>
+                        <option value="10">Oktober</option>
+                        <option value="11">November</option>
+                        <option value="12">Desember</option>
+                      </select>
+                    </div>
+                    <div class="filter-wrapper">
+                      <label for="slipYearSelect" class="filter-label"> <i class="fas fa-calendar"></i> Tahun: </label>
+                      <select id="slipYearSelect" class="filter-select">
+                        <option value="all">Pilih Tahun</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="data-header-right">
+                <div class="search-wrapper">
+                  <i class="fas fa-search search-icon"></i>
+                  <input type="text" id="searchInput" placeholder="Cari data karyawan..." class="search-input" />
+                </div>
+                <button id="resetCheckbox" class="btn-outline reset-btn"><i class="fas fa-undo-alt"></i> Reset</button>
+              </div>
+            </div>
+
+            <div class="upload-section">
+              <h4><i class="fas fa-upload"></i> Import File Excel</h4>
+              <form id="uploadFormKirim" class="upload-form">
+                <div class="file-input-wrapper">
+                  <input type="file" name="file" id="fileInputKirim" accept=".xlsx, .xls" required />
+                  <label for="fileInputKirim" class="file-label"> <i class="fas fa-folder-open"></i> Pilih File </label>
+                  <span id="fileNameKirim" class="file-name">Tidak ada file dipilih</span>
+                </div>
+                <button type="submit" class="btn-primary upload-btn"><i class="fas fa-cloud-upload-alt"></i> Upload Excel</button>
+              </form>
+              <p id="uploadStatus" class="upload-status"></p>
+            </div>
+
+            <div class="scrollable">
+              <table id="table">
+                <thead>
+                  <tr>
+                    <th style="width: 40px"><input type="checkbox" id="selectAllSlip" /></th>
+                    <th style="width: 50px">No</th>
+                    <th>No Induk</th>
+                    <th>Nama</th>
+                    <th>Posisi</th>
+                    <th>Store</th>
+                    <th>Awal Masuk</th>
+                    <th>Kerja</th>
+                    <th>Gaji</th>
+                    <th>Iuran BPJS</th>
+                    <th>Kerajinan</th>
+                    <th>Cuti</th>
+                    <th>Tunj. Bpjs & Pulsa</th>
+                    <th>Total</th>
+                    <th>UM</th>
+                    <th>Keterangan</th>
+                    <th>Gaji Total</th>
+                    <th>No HP</th>
+                    <th>Status Slip</th>
+                    <th style="width: 150px">Alasan Pembatalan</th>
+                    <th style="min-width: 100px">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="action-bar">
+              <div class="pagination">
+                <button id="prevPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
+                <span id="pageInfo" class="page-info"></span>
+                <button id="nextPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
+              </div>
+              <div class="action-buttons">
+                <button id="sendSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim Slip Terpilih</button>
+                <button id="cancelSendSelected" class="btn-danger cancel-send-btn" style="display: none"><i class="fas fa-ban"></i> Batalkan Kirim Terpilih</button>
+              </div>
+            </div>
+
+            <div class="progress-container" id="progressContainer" style="display: none">
+              <div class="progress-bg">
+                <div id="bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 10px; transition: width 0.3s ease"></div>
+              </div>
+              <p id="status" class="progress-status">Siap mengirim slip.</p>
+            </div>
+
+            <div class="progress-container" id="cancelSlipProgressContainer" style="display: none">
+              <div class="progress-bg">
+                <div id="cancelSlipProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #dc2626, #ef4444); border-radius: 10px; transition: width 0.3s ease"></div>
+              </div>
+              <p id="cancelSlipProgressStatus" class="progress-status">Siap membatalkan slip.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="sectionBonus" class="section">
+          <div class="card">
+            <div class="data-header">
+              <div class="data-header-left">
+                <h3><i class="fas fa-gift"></i> Kirim Slip Bonus Karyawan - <span id="currentMonthYearBonus"></span></h3>
+                <div class="data-actions">
+                  <button id="addBonusBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah Bonus</button>
+                  <button id="duplicateBonusBtn" class="btn-outline duplicate-data-btn"><i class="fas fa-copy"></i> Duplikasi Bonus Bulan Lalu</button>
+                  <button id="cancelDuplicateBonusBtn" class="btn-outline cancel-data-btn" style="display: none"><i class="fas fa-undo"></i> Batal Duplikasi Bonus</button>
+                  <div class="filter-group">
+                    <div class="filter-wrapper">
+                      <label for="bonusMonthSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Bulan: </label>
+                      <select id="bonusMonthSelect" class="filter-select">
+                        <option value="all">Pilih Bulan</option>
+                        <option value="1">Januari</option>
+                        <option value="2">Februari</option>
+                        <option value="3">Maret</option>
+                        <option value="4">April</option>
+                        <option value="5">Mei</option>
+                        <option value="6">Juni</option>
+                        <option value="7">Juli</option>
+                        <option value="8">Agustus</option>
+                        <option value="9">September</option>
+                        <option value="10">Oktober</option>
+                        <option value="11">November</option>
+                        <option value="12">Desember</option>
+                      </select>
+                    </div>
+                    <div class="filter-wrapper">
+                      <label for="bonusYearSelect" class="filter-label"> <i class="fas fa-calendar"></i> Tahun: </label>
+                      <select id="bonusYearSelect" class="filter-select">
+                        <option value="all">Pilih Tahun</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="data-header-right">
+                <div class="search-wrapper">
+                  <i class="fas fa-search search-icon"></i>
+                  <input type="text" id="searchBonusInput" placeholder="Cari data bonus..." class="search-input" />
+                </div>
+                <button id="resetBonusCheckbox" class="btn-outline reset-btn"><i class="fas fa-undo-alt"></i> Reset</button>
+              </div>
+            </div>
+
+            <div class="scrollable">
+              <table id="tableBonus">
+                <thead>
+                  <tr>
+                    <th style="width: 40px"><input type="checkbox" id="selectAllBonus" /></th>
+                    <th style="width: 50px">No</th>
+                    <th>No Induk</th>
+                    <th>Nama</th>
+                    <th style="width: 100px">Bulan</th>
+                    <th style="width: 80px">Tahun</th>
+                    <th>Jumlah Bonus</th>
+                    <th>No HP</th>
+                    <th style="width: 100px">Status</th>
+                    <th style="width: 150px">Alasan Pembatalan</th>
+                    <th style="width: 110px">Tgl Dibuat</th>
+                    <th style="width: 100px">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="action-bar">
+              <div class="pagination">
+                <button id="prevBonusPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
+                <span id="bonusPageInfo" class="page-info"></span>
+                <button id="nextBonusPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
+              </div>
+              <div class="action-buttons">
+                <button id="sendBonusSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim Bonus Terpilih</button>
+                <button id="cancelSendBonusSelected" class="btn-danger cancel-send-btn" style="display: none"><i class="fas fa-ban"></i> Batalkan Kirim Terpilih</button>
+              </div>
+            </div>
+
+            <div class="progress-container" id="bonusProgressContainer" style="display: none">
+              <div class="progress-bg">
+                <div id="bonusProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 10px; transition: width 0.3s ease"></div>
+              </div>
+              <p id="bonusProgressStatus" class="progress-status">Siap mengirim bonus.</p>
+            </div>
+
+            <div class="progress-container" id="cancelBonusProgressContainer" style="display: none">
+              <div class="progress-bg">
+                <div id="cancelBonusProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #dc2626, #ef4444); border-radius: 10px; transition: width 0.3s ease"></div>
+              </div>
+              <p id="cancelBonusProgressStatus" class="progress-status">Siap membatalkan bonus.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="sectionTHR" class="section">
+          <div class="card">
+            <div class="data-header">
+              <div class="data-header-left">
+                <h3><i class="fas fa-gift"></i> Kirim Slip THR Karyawan - <span id="currentYearTHR"></span></h3>
+                <div class="data-actions">
+                  <button id="addThrBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah THR</button>
+                  <button id="duplicateThrBtn" class="btn-outline duplicate-data-btn"><i class="fas fa-copy"></i> Duplikasi THR Tahun Lalu</button>
+                  <button id="cancelDuplicateThrBtn" class="btn-outline cancel-data-btn" style="display: none"><i class="fas fa-undo"></i> Batal Duplikasi THR</button>
+                  <div class="year-filter-wrapper">
+                    <label for="thrYearSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Tahun: </label>
+                    <select id="thrYearSelect" class="filter-select">
+                      <option value="all">Pilih Tahun</option>
                     </select>
                   </div>
                 </div>
               </div>
-            </div>
-            <div class="data-header-right">
-              <div class="search-wrapper">
-                <i class="fas fa-search search-icon"></i>
-                <input type="text" id="searchInput" placeholder="   Cari data karyawan..." class="search-input" />
-              </div>
-              <button id="resetCheckbox" class="btn-outline reset-btn"><i class="fas fa-undo-alt"></i> Reset</button>
-            </div>
-          </div>
-
-          <div class="upload-section">
-            <h4><i class="fas fa-upload"></i> Import File Excel</h4>
-            <form id="uploadFormKirim" class="upload-form">
-              <div class="file-input-wrapper">
-                <input type="file" name="file" id="fileInputKirim" accept=".xlsx, .xls" required />
-                <label for="fileInputKirim" class="file-label"> <i class="fas fa-folder-open"></i> Pilih File </label>
-                <span id="fileNameKirim" class="file-name">Tidak ada file dipilih</span>
-              </div>
-              <button type="submit" class="btn-primary upload-btn"><i class="fas fa-cloud-upload-alt"></i> Upload Excel</button>
-            </form>
-            <p id="uploadStatus" class="upload-status"></p>
-          </div>
-
-          <div class="scrollable">
-            <table id="table">
-              <thead>
-                <tr>
-                  <th style="width: 40px"><input type="checkbox" id="selectAllSlip" /></th>
-                  <th style="width: 50px">No</th>
-                  <th>No Induk</th>
-                  <th>Nama</th>
-                  <th>Posisi</th>
-                  <th>Store</th>
-                  <th>Awal Masuk</th>
-                  <th>Kerja</th>
-                  <th>Gaji</th>
-                  <th>Iuran BPJS</th>
-                  <th>Kerajinan</th>
-                  <th>Cuti</th>
-                  <th>Tunj. Bpjs & Pulsa</th>
-                  <th>Total</th>
-                  <th>UM</th>
-                  <th>Keterangan</th>
-                  <th>Gaji Total</th>
-                  <th>No HP</th>
-                  <th>Status Slip</th>
-                  <th style="width: 150px">Alasan Pembatalan</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-
-          <!-- Update action-bar section for slip gaji -->
-          <div class="action-bar" style="margin-top: 20px">
-            <div class="pagination">
-              <button id="prevPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
-              <span id="pageInfo" class="page-info"></span>
-              <button id="nextPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
-            </div>
-            <div style="display: flex; gap: 10px">
-              <button id="sendSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim Slip Terpilih</button>
-              <button id="cancelSendSelected" class="btn-danger cancel-send-btn" style="display: none"><i class="fas fa-ban"></i> Batalkan Kirim Terpilih</button>
-            </div>
-          </div>
-
-          <!-- PROGRESS BAR UNTUK KIRIM SLIP -->
-          <div class="progress-container" id="progressContainer" style="display: none">
-            <div class="progress-bg">
-              <div id="bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 10px; transition: width 0.3s ease"></div>
-            </div>
-            <p id="status" class="progress-status">Siap mengirim slip.</p>
-          </div>
-
-          <!-- PROGRESS BAR UNTUK PEMBATALAN SLIP -->
-          <div class="progress-container" id="cancelSlipProgressContainer" style="display: none">
-            <div class="progress-bg">
-              <div id="cancelSlipProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #dc2626, #ef4444); border-radius: 10px; transition: width 0.3s ease"></div>
-            </div>
-            <p id="cancelSlipProgressStatus" class="progress-status">Siap membatalkan slip.</p>
-          </div>
-        </div>
-      </div>
-
-      <div id="sectionData" class="section">
-        <div class="card">
-          <div class="data-header">
-            <div class="data-header-left">
-              <h3><i class="fas fa-database"></i> Data Slip Gaji - <span id="currentMonthYear"></span></h3>
-              <div class="data-actions">
-                <button id="addDataBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah Data</button>
-                <button id="exportBtn" class="btn-outline export-btn"><i class="fas fa-file-export"></i> Export</button>
-                <button id="downloadTemplateBtn" class="btn-outline template-btn"><i class="fas fa-file-download"></i> Download Template</button>
-                <button id="duplicateDataBtn" class="btn-outline duplicate-data-btn"><i class="fas fa-copy"></i> Duplikasi Data Bulan Lalu</button>
-                <button id="cancelDuplicateBtn" class="btn-outline cancel-data-btn" style="display: none"><i class="fas fa-undo"></i> Batal Duplikasi</button>
-              </div>
-            </div>
-            <div class="data-header-right">
-              <div class="search-wrapper">
-                <i class="fas fa-search search-icon"></i>
-                <input type="text" id="searchDataInput" placeholder="     Cari data slip..." class="search-input" />
-              </div>
-            </div>
-          </div>
-
-          <div class="upload-section">
-            <h4><i class="fas fa-upload"></i> Import File Excel</h4>
-            <form id="uploadFormData" class="upload-form">
-              <div class="file-input-wrapper">
-                <input type="file" name="file" id="fileInputData" accept=".xlsx, .xls" required />
-                <label for="fileInputData" class="file-label"> <i class="fas fa-folder-open"></i> Pilih File </label>
-                <span id="fileNameData" class="file-name">Tidak ada file dipilih</span>
-              </div>
-              <button type="submit" class="btn-primary upload-btn"><i class="fas fa-cloud-upload-alt"></i> Upload Excel</button>
-            </form>
-            <p id="uploadStatus" class="upload-status"></p>
-          </div>
-
-          <div class="scrollable">
-            <table id="tableData">
-              <thead>
-                <tr>
-                  <th>No</th>
-                  <th>No Induk</th>
-                  <th>Nama</th>
-                  <th>Posisi</th>
-                  <th>Store</th>
-                  <th>Awal Masuk</th>
-                  <th>Kerja</th>
-                  <th>Gaji</th>
-                  <th>Iuran BPJS</th>
-                  <th>Kerajinan</th>
-                  <th>Cuti</th>
-                  <th>Tunj. Bpjs & Pulsa</th>
-                  <th>Total</th>
-                  <th>UM</th>
-                  <th>Keterangan</th>
-                  <th>Gaji Total</th>
-                  <th>No HP</th>
-                  <th>Status Slip</th>
-                  <th style="min-width: 150px">Aksi</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-
-          <div class="pagination-wrapper">
-            <div class="pagination">
-              <button id="prevDataPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
-              <span id="dataPageInfo" class="page-info"></span>
-              <button id="nextDataPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Update the sectionBonus header -->
-      <div id="sectionBonus" class="section">
-        <div class="card">
-          <div class="data-header">
-            <div class="data-header-left">
-              <h3><i class="fas fa-gift"></i> Kirim Slip Bonus Karyawan - <span id="currentMonthYearBonus"></span></h3>
-              <div class="data-actions">
-                <button id="addBonusBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah Bonus</button>
-                <button id="duplicateBonusBtn" class="btn-outline duplicate-data-btn"><i class="fas fa-copy"></i> Duplikasi Bonus Bulan Lalu</button>
-                <button id="cancelDuplicateBonusBtn" class="btn-outline cancel-data-btn" style="display: none"><i class="fas fa-undo"></i> Batal Duplikasi Bonus</button>
-                <!-- FILTER DROPDOWNS - Pindahkan ke sini, di sebelah kanan button duplikasi -->
-                <div class="filter-group">
-                  <div class="filter-wrapper">
-                    <label for="bonusMonthSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Bulan: </label>
-                    <select id="bonusMonthSelect" class="filter-select">
-                      <option value="all">Semua Bulan</option>
-                      <option value="1">Januari</option>
-                      <option value="2">Februari</option>
-                      <option value="3">Maret</option>
-                      <option value="4">April</option>
-                      <option value="5">Mei</option>
-                      <option value="6">Juni</option>
-                      <option value="7">Juli</option>
-                      <option value="8">Agustus</option>
-                      <option value="9">September</option>
-                      <option value="10">Oktober</option>
-                      <option value="11">November</option>
-                      <option value="12">Desember</option>
-                    </select>
-                  </div>
-                  <div class="filter-wrapper">
-                    <label for="bonusYearSelect" class="filter-label"> <i class="fas fa-calendar"></i> Tahun: </label>
-                    <select id="bonusYearSelect" class="filter-select">
-                      <option value="all">Semua Tahun</option>
-                    </select>
-                  </div>
+              <div class="data-header-right">
+                <div class="search-wrapper">
+                  <i class="fas fa-search search-icon"></i>
+                  <input type="text" id="searchThrInput" placeholder="Cari data THR..." class="search-input" />
                 </div>
+                <button id="resetThrCheckbox" class="btn-outline reset-btn"><i class="fas fa-undo-alt"></i> Reset</button>
               </div>
             </div>
-            <div class="data-header-right">
-              <div class="search-wrapper">
-                <i class="fas fa-search search-icon"></i>
-                <input type="text" id="searchBonusInput" placeholder="    Cari data bonus..." class="search-input" />
+
+            <div class="scrollable">
+              <table id="tableTHR">
+                <thead>
+                  <tr>
+                    <th style="width: 40px"><input type="checkbox" id="selectAllThr" /></th>
+                    <th style="width: 50px">No</th>
+                    <th>No Induk</th>
+                    <th>Nama</th>
+                    <th style="width: 80px">Tahun THR</th>
+                    <th>Jumlah THR</th>
+                    <th>No HP</th>
+                    <th style="width: 100px">Status</th>
+                    <th style="width: 150px">Alasan Pembatalan</th>
+                    <th style="width: 110px">Tgl Dibuat</th>
+                    <th style="width: 100px">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="action-bar">
+              <div class="pagination">
+                <button id="prevThrPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
+                <span id="thrPageInfo" class="page-info"></span>
+                <button id="nextThrPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
               </div>
-              <button id="resetBonusCheckbox" class="btn-outline reset-btn"><i class="fas fa-undo-alt"></i> Reset</button>
+              <div class="action-buttons">
+                <button id="sendThrSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim THR Terpilih</button>
+                <button id="cancelSendThrSelected" class="btn-danger cancel-send-btn" style="display: none"><i class="fas fa-ban"></i> Batalkan Kirim Terpilih</button>
+              </div>
             </div>
-          </div>
 
-          <!-- Rest of the bonus section remains the same -->
-          <div class="scrollable">
-            <table id="tableBonus">
-              <thead>
-                <tr>
-                  <th style="width: 40px"><input type="checkbox" id="selectAllBonus" /></th>
-                  <th style="width: 50px">No</th>
-                  <th>No Induk</th>
-                  <th>Nama</th>
-                  <th style="width: 100px">Bulan</th>
-                  <th style="width: 80px">Tahun</th>
-                  <th>Jumlah Bonus</th>
-                  <th>No HP</th>
-                  <th style="width: 100px">Status</th>
-                  <th style="width: 150px">Alasan Pembatalan</th>
-                  <th style="width: 110px">Tgl Dibuat</th>
-                  <th style="width: 100px">Aksi</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
+            <div class="progress-container" id="thrProgressContainer" style="display: none">
+              <div class="progress-bg">
+                <div id="thrProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 10px; transition: width 0.3s ease"></div>
+              </div>
+              <p id="thrProgressStatus" class="progress-status">Siap mengirim THR.</p>
+            </div>
 
-          <div class="action-bar" style="margin-top: 20px">
-            <div class="pagination">
-              <button id="prevBonusPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
-              <span id="bonusPageInfo" class="page-info"></span>
-              <button id="nextBonusPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
+            <div class="progress-container" id="cancelThrProgressContainer" style="display: none">
+              <div class="progress-bg">
+                <div id="cancelThrProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #dc2626, #ef4444); border-radius: 10px; transition: width 0.3s ease"></div>
+              </div>
+              <p id="cancelThrProgressStatus" class="progress-status">Siap membatalkan THR.</p>
             </div>
-            <div style="display: flex; gap: 10px">
-              <button id="sendBonusSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim Bonus Terpilih</button>
-              <button id="cancelSendBonusSelected" class="btn-danger cancel-send-btn" style="display: none"><i class="fas fa-ban"></i> Batalkan Kirim Terpilih</button>
-            </div>
-          </div>
-
-          <!-- PROGRESS BAR UNTUK BONUS -->
-          <div class="progress-container" id="bonusProgressContainer" style="display: none">
-            <div class="progress-bg">
-              <div id="bonusProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 10px; transition: width 0.3s ease"></div>
-            </div>
-            <p id="bonusProgressStatus" class="progress-status">Siap mengirim bonus.</p>
-          </div>
-
-          <!-- PROGRESS BAR UNTUK PEMBATALAN BONUS -->
-          <div class="progress-container" id="cancelBonusProgressContainer" style="display: none">
-            <div class="progress-bg">
-              <div id="cancelBonusProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #dc2626, #ef4444); border-radius: 10px; transition: width 0.3s ease"></div>
-            </div>
-            <p id="cancelBonusProgressStatus" class="progress-status">Siap membatalkan bonus.</p>
           </div>
         </div>
-      </div>
+      </main>
+    </div>
 
-      <div id="sectionTHR" class="section">
-        <div class="card">
-          <div class="data-header">
-            <div class="data-header-left">
-              <h3><i class="fas fa-gift"></i> Kirim Slip THR Karyawan - <span id="currentYearTHR"></span></h3>
-              <div class="data-actions">
-                <button id="addThrBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah THR</button>
-                <button id="duplicateThrBtn" class="btn-outline duplicate-data-btn"><i class="fas fa-copy"></i> Duplikasi THR Tahun Lalu</button>
-                <button id="cancelDuplicateThrBtn" class="btn-outline cancel-data-btn" style="display: none"><i class="fas fa-undo"></i> Batal Duplikasi THR</button>
-                <div class="year-filter-wrapper">
-                  <label for="thrYearSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Tahun: </label>
-                  <select id="thrYearSelect" class="filter-select">
-                    <option value="all">Pilih Tahun</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div class="data-header-right">
-              <div class="search-wrapper">
-                <i class="fas fa-search search-icon"></i>
-                <input type="text" id="searchThrInput" placeholder="     Cari data THR..." class="search-input" />
-              </div>
-              <button id="resetThrCheckbox" class="btn-outline reset-btn"><i class="fas fa-undo-alt"></i> Reset</button>
-            </div>
-          </div>
-
-          <div class="scrollable">
-            <table id="tableTHR">
-              <thead>
-                <tr>
-                  <th style="width: 40px"><input type="checkbox" id="selectAllThr" /></th>
-                  <th style="width: 50px">No</th>
-                  <th>No Induk</th>
-                  <th>Nama</th>
-                  <th style="width: 80px">Tahun THR</th>
-                  <th>Jumlah THR</th>
-                  <th>No HP</th>
-                  <th style="width: 100px">Status</th>
-                  <th style="width: 150px">Alasan Pembatalan</th>
-                  <th style="width: 110px">Tgl Dibuat</th>
-                  <th style="width: 100px">Aksi</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-
-          <!-- Update the action-bar section for THR -->
-          <div class="action-bar" style="margin-top: 20px">
-            <div class="pagination">
-              <button id="prevThrPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
-              <span id="thrPageInfo" class="page-info"></span>
-              <button id="nextThrPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
-            </div>
-            <div style="display: flex; gap: 10px">
-              <button id="sendThrSelected" class="btn-success send-btn"><i class="fas fa-paper-plane"></i> Kirim THR Terpilih</button>
-              <button id="cancelSendThrSelected" class="btn-danger cancel-send-btn" style="display: none"><i class="fas fa-ban"></i> Batalkan Kirim Terpilih</button>
-            </div>
-          </div>
-
-          <!-- PROGRESS BAR UNTUK THR -->
-          <div class="progress-container" id="thrProgressContainer" style="display: none">
-            <div class="progress-bg">
-              <div id="thrProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 10px; transition: width 0.3s ease"></div>
-            </div>
-            <p id="thrProgressStatus" class="progress-status">Siap mengirim THR.</p>
-          </div>
-
-          <!-- PROGRESS BAR UNTUK PEMBATALAN THR -->
-          <div class="progress-container" id="cancelThrProgressContainer" style="display: none">
-            <div class="progress-bg">
-              <div id="cancelThrProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #dc2626, #ef4444); border-radius: 10px; transition: width 0.3s ease"></div>
-            </div>
-            <p id="cancelThrProgressStatus" class="progress-status">Siap membatalkan THR.</p>
-          </div>
+    <!-- MODAL UNTUK DATA KARYAWAN -->
+    <div id="karyawanModal" class="modal" style="display: none">
+      <div class="modalContent" style="max-width: 800px">
+        <div class="modal-header">
+          <h3 id="karyawanModalTitle">Tambah Karyawan Baru</h3>
+          <button class="modal-close" id="closeKaryawanModal">&times;</button>
         </div>
+        <form id="karyawanForm" enctype="multipart/form-data">
+          <input type="hidden" id="karyawan_id" />
+          <div class="formGrid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px">
+            <div class="formGroup">
+              <label>No Induk *</label>
+              <input type="text" id="karyawan_no_induk" required placeholder="Masukkan nomor induk karyawan" />
+              <small style="color: #64748b; font-size: 0.7rem">Nomor Induk Harus berbeda</small>
+            </div>
+            <div class="formGroup">
+              <label>Nama Lengkap *</label>
+              <input type="text" id="karyawan_nama_lengkap" required placeholder="Masukkan nama lengkap" />
+            </div>
+            <div class="formGroup">
+              <label>NIK *</label>
+              <input type="text" id="karyawan_nik" required placeholder="16 digit angka" maxlength="16" pattern="\d{16}" />
+              <small style="color: #64748b; font-size: 0.7rem">16 digit angka (contoh: 1234567890123456)</small>
+            </div>
+            <div class="formGroup">
+              <label>Tanggal Lahir *</label>
+              <input type="date" id="karyawan_tanggal_lahir" required />
+              <small style="color: #64748b; font-size: 0.7rem">Format: DD/MM/YYYY (akan otomatis terformat)</small>
+            </div>
+            <div class="formGroup">
+              <label>Alamat Domisili</label>
+              <textarea id="karyawan_alamat_domisili" rows="2" placeholder="Masukkan alamat lengkap"></textarea>
+            </div>
+            <div class="formGroup">
+              <label>No HP *</label>
+              <div style="display: flex; align-items: center; gap: 5px">
+                <span style="background: #f1f5f9; padding: 8px 12px; border-radius: 8px; border: 1px solid #e2e8f0; color: #64748b">62</span>
+                <input type="text" id="karyawan_no_hp" required placeholder="81234567890" style="flex: 1" />
+              </div>
+              <small style="color: #64748b; font-size: 0.7rem">Masukkan nomor setelah 62 (contoh: 81234567890)</small>
+            </div>
+            <div class="formGroup">
+              <label>Email *</label>
+              <input type="email" id="karyawan_email" required placeholder="contoh@email.com" />
+            </div>
+            <div class="formGroup">
+              <label>Password *</label>
+              <input type="password" id="karyawan_password" placeholder="Minimal 6 karakter" />
+              <small style="color: #64748b; font-size: 0.7rem" id="passwordHint">Minimal 6 karakter</small>
+            </div>
+            <div class="formGroup">
+              <label>Jabatan *</label>
+              <input type="text" id="karyawan_jabatan" required placeholder="Contoh: Staff, Supervisor, Manager" />
+            </div>
+            <div class="formGroup">
+              <label>Cabang</label>
+              <input type="text" id="karyawan_cabang" placeholder="Contoh: Jakarta Pusat" />
+            </div>
+            <div class="formGroup">
+              <label>Nama Gerai</label>
+              <input type="text" id="karyawan_nama_gerai" placeholder="Contoh: Hisana Thamrin" />
+            </div>
+            <div class="formGroup">
+              <label>Foto Diri</label>
+              <input type="file" id="karyawan_foto_diri" accept="image/jpeg,image/png,image/jpg,image/gif,image/webp" />
+              <input type="hidden" id="karyawan_foto_diri_url" />
+              <div id="preview_foto_diri"></div>
+              <small style="color: #64748b; font-size: 0.7rem">Maksimal 2MB (JPG, PNG, GIF, WEBP)</small>
+            </div>
+            <div class="formGroup">
+              <label>Foto KTP</label>
+              <input type="file" id="karyawan_foto_ktp" accept="image/jpeg,image/png,image/jpg,image/gif,image/webp" />
+              <input type="hidden" id="karyawan_foto_ktp_url" />
+              <div id="preview_foto_ktp"></div>
+              <small style="color: #64748b; font-size: 0.7rem">Maksimal 2MB (JPG, PNG, GIF, WEBP)</small>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-outline" id="cancelKaryawanBtn">Batal</button>
+            <button type="submit" class="btn-primary">Simpan</button>
+          </div>
+        </form>
       </div>
     </div>
 
     <!-- MODAL UNTUK DATA SLIP (DYNAMIC FORM) -->
     <div id="dataModal" style="display: none">
       <div class="modalContent">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px">
-          <h2 id="modalTitle" style="margin: 0; font-size: 1.25rem">Tambah / Edit Data Slip</h2>
-          <button id="closeModal" style="background: none; color: var(--text-muted); font-size: 1.5rem; padding: 0">&times;</button>
+        <div class="modal-header">
+          <h2 id="modalTitle">Tambah / Edit Data Slip</h2>
+          <button id="closeModal" class="modal-close">&times;</button>
         </div>
-
         <form id="dataForm">
           <input type="hidden" id="dataId" />
-          <div class="formGrid" id="formFields">
-            <!-- Dynamic fields akan diisi oleh JavaScript -->
-          </div>
-
-          <div style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 10px">
+          <div class="formGrid" id="formFields"></div>
+          <div class="modal-footer">
             <button type="button" id="cancelModalBtn" class="btn-outline">Batal</button>
             <button type="submit" class="btn-primary">Simpan Perubahan</button>
           </div>
@@ -455,11 +746,10 @@
     <!-- MODAL UNTUK BONUS -->
     <div id="bonusModal" style="display: none">
       <div class="modalContent">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px">
-          <h2 style="margin: 0; font-size: 1.25rem">Tambah / Edit Bonus</h2>
-          <button id="closeBonusModal" style="background: none; font-size: 1.5rem">&times;</button>
+        <div class="modal-header">
+          <h2>Tambah / Edit Bonus</h2>
+          <button id="closeBonusModal" class="modal-close">&times;</button>
         </div>
-
         <form id="bonusForm">
           <input type="hidden" id="bonus_id" />
           <div class="formGrid">
@@ -484,14 +774,14 @@
             <div class="formGroup">
               <label>Jumlah Bonus *</label>
               <input type="text" id="bonus_jumlah" required placeholder="Masukkan nominal bonus" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" />
-              <small style="color: #64748b; display: block; margin-top: 4px"> <i class="fas fa-info-circle"></i> Masukkan nominal berapa saja (tanpa titik atau koma) </small>
+              <small><i class="fas fa-info-circle"></i> Masukkan nominal berapa saja (tanpa titik atau koma)</small>
             </div>
             <div class="formGroup">
               <label>No HP</label>
               <input type="text" id="bonus_nohp" required placeholder="Contoh: 628123456789" />
             </div>
           </div>
-          <div style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 10px">
+          <div class="modal-footer">
             <button type="button" id="cancelBonusBtn" class="btn-outline">Batal</button>
             <button type="submit" class="btn-primary">Simpan</button>
           </div>
@@ -502,11 +792,10 @@
     <!-- MODAL UNTUK THR -->
     <div id="thrModal" style="display: none">
       <div class="modalContent">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px">
-          <h2 id="thrModalTitle" style="margin: 0; font-size: 1.25rem">Tambah / Edit THR</h2>
-          <button id="closeThrModal" style="background: none; color: var(--text-muted); font-size: 1.5rem; padding: 0">&times;</button>
+        <div class="modal-header">
+          <h2 id="thrModalTitle">Tambah / Edit THR</h2>
+          <button id="closeThrModal" class="modal-close">&times;</button>
         </div>
-
         <form id="thrForm">
           <input type="hidden" id="thr_id" />
           <div class="formGrid">
@@ -531,14 +820,14 @@
             <div class="formGroup">
               <label>Jumlah THR *</label>
               <input type="text" id="thr_jumlah_thr" required placeholder="Masukkan nominal THR" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" />
-              <small style="color: #64748b; display: block; margin-top: 4px"> <i class="fas fa-info-circle"></i> Masukkan nominal berapa saja (tanpa titik atau koma) </small>
+              <small><i class="fas fa-info-circle"></i> Masukkan nominal berapa saja (tanpa titik atau koma)</small>
             </div>
             <div class="formGroup">
               <label>No HP *</label>
               <input type="text" id="thr_nohp" required placeholder="Contoh: 628123456789" />
             </div>
           </div>
-          <div style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 10px">
+          <div class="modal-footer">
             <button type="button" id="cancelThrBtn" class="btn-outline">Batal</button>
             <button type="submit" class="btn-primary">Simpan</button>
           </div>
