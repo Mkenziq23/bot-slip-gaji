@@ -47,6 +47,7 @@ let dashboardData = {
   totalSlip: 0,
   totalBonus: 0,
   totalThr: 0,
+
   karyawanRingkasan: [],
 };
 let currentDashboardPage = 1;

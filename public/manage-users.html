@@ -10,48 +10,111 @@
     <link rel="stylesheet" href="/css/manage.css" />
   </head>
   <body>
-    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
+    <!-- Modern Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <div class="logo">
+        <div class="logo-wrapper">
           <div class="logo-icon">
-            <i class="fas fa-shield-alt"></i>
+            <i class="fas fa-chart-line"></i>
           </div>
-          <span>PAYROLL</span>
+          <div class="logo-text">
+            <span class="logo-title">Payroll System</span>
+            <span class="logo-subtitle">Admin Panel</span>
+          </div>
         </div>
-        <button class="sidebar-close" onclick="toggleSidebar()">
-          <i class="fas fa-times"></i>
+        <button class="sidebar-toggle" id="sidebarToggle">
+          <i class="fas fa-chevron-left"></i>
         </button>
       </div>
-      <nav>
-        <a href="#" class="nav-item active">
-          <i class="fas fa-users"></i>
-          <span>User Management</span>
-        </a>
-        <a href="javascript:void(0)" onclick="confirmLogout()" class="nav-item logout">
-          <i class="fas fa-sign-out-alt"></i>
-          <span>Logout</span>
-        </a>
+
+      <div class="user-profile">
+        <div class="user-avatar">
+          <img id="adminAvatar" src="" alt="Admin" />
+          <div class="user-status online"></div>
+        </div>
+        <div class="user-info">
+          <h4 id="adminUsername">Loading...</h4>
+          <p id="adminRole"><i class="fas fa-spinner fa-spin"></i> Loading...</p>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">
+            <i class="fas fa-th-large"></i>
+            <span>Main Menu</span>
+          </div>
+          <ul class="nav-list">
+            <li class="nav-item active">
+              <a
+                href="#"
+                class="nav-link"
+                onclick="
+                  switchTab('users');
+                  return false;
+                "
+              >
+                <div class="nav-icon">
+                  <i class="fas fa-users"></i>
+                </div>
+                <span class="nav-text">User HR Management</span>
+                <i class="fas fa-chevron-right nav-arrow"></i>
+              </a>
+            </li>
+            <li class="nav-item" id="adminTabNav" style="display: none">
+              <a
+                href="#"
+                class="nav-link"
+                onclick="
+                  switchTab('admins');
+                  return false;
+                "
+              >
+                <div class="nav-icon">
+                  <i class="fas fa-user-shield"></i>
+                </div>
+                <span class="nav-text">Admin Accounts</span>
+                <i class="fas fa-chevron-right nav-arrow"></i>
+              </a>
+            </li>
+          </ul>
+        </div>
       </nav>
+
+      <div class="sidebar-footer">
+        <div class="footer-divider"></div>
+        <a href="javascript:void(0)" class="logout-btn" onclick="confirmLogout()">
+          <div class="logout-icon">
+            <i class="fas fa-sign-out-alt"></i>
+          </div>
+          <span class="logout-text">Logout</span>
+          <i class="fas fa-chevron-right logout-arrow"></i>
+        </a>
+        <div class="sidebar-version">
+          <i class="fas fa-code-branch"></i>
+          <span>Version 2.0.0</span>
+        </div>
+      </div>
     </aside>
 
     <main class="main-content">
       <header>
-        <button class="hamburger" onclick="toggleSidebar()">
+        <button class="mobile-menu-btn" id="mobileMenuBtn">
           <i class="fas fa-bars"></i>
         </button>
         <h3 id="pageTitle">User Management</h3>
         <div class="header-actions">
           <div class="user-badge">
             <i class="fas fa-user-circle"></i>
-            <span>Admin</span>
+            <span id="headerAdminName">Admin</span>
           </div>
         </div>
       </header>
 
-      <div class="container">
-        <!-- Info Banner -->
+      <!-- <div class="container">
         <div id="infoBanner" class="info-banner" style="display: none">
           <div class="banner-content">
             <i class="fas fa-info-circle"></i>
@@ -60,15 +123,15 @@
               <small><i class="fas fa-shield-alt"></i> Keamanan akun adalah tanggung jawab Anda</small>
             </div>
           </div>
-        </div>
+        </div> -->
 
         <!-- Tabs -->
         <div class="tabs">
           <button class="tab-btn active" onclick="switchTab('users')">
             <i class="fas fa-user-friends"></i>
-            <span>Data Users</span>
+            <span>User HR Management</span>
           </button>
-          <button class="tab-btn" onclick="switchTab('admins')">
+          <button class="tab-btn" id="adminTabBtn" onclick="switchTab('admins')" style="display: none">
             <i class="fas fa-user-shield"></i>
             <span>Admin Accounts</span>
           </button>
@@ -116,6 +179,7 @@
                   <tr>
                     <th width="80">No</th>
                     <th>Username</th>
+                    <th>Email</th>
                     <th>Role</th>
                     <th>Dibuat Pada</th>
                     <th width="120">Aksi</th>
@@ -156,7 +220,7 @@
       </div>
     </div>
 
-    <!-- Modal Admin -->
+    <!-- Modal Admin - Tambah field email -->
     <div class="modal" id="adminModal">
       <div class="modal-content">
         <div class="modal-header">
@@ -169,6 +233,11 @@
           <div class="form-group">
             <label>Username</label>
             <input type="text" id="adminUsernameInput" placeholder="Minimal 3 karakter" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="adminEmailInput" placeholder="admin@example.com" autocomplete="off" />
+            <small>Opsional, gunakan untuk notifikasi</small>
           </div>
           <div class="form-group">
             <label>Password</label>
@@ -202,8 +271,15 @@
           <div class="form-group" id="editUsernameField" style="display: none">
             <label>Username Baru</label>
             <input type="text" id="editUsernameInput" placeholder="Minimal 3 karakter" autocomplete="off" />
-            <small>Kosongkan jika tidak ingin mengubah</small>
+            <small>Biarkan jika tidak ingin mengubah</small>
           </div>
+
+          <div class="form-group" id="editEmailField" style="display: none">
+            <label>Email Baru</label>
+            <input type="email" id="editEmailInput" placeholder="admin@example.com" autocomplete="off" />
+            <small>Biarkan jika tidak ingin mengubah</small>
+          </div>
+
           <div class="form-group" id="editRoleField" style="display: none">
             <label>Role</label>
             <select id="editRoleSelect">
@@ -211,14 +287,17 @@
               <option value="superadmin">Superadmin</option>
             </select>
           </div>
-          <div class="form-group">
+
+          <div class="form-group" id="currentPasswordField">
             <label>Password Saat Ini <span class="required">*</span></label>
             <input type="password" id="currentPasswordInput" placeholder="Masukkan password saat ini untuk verifikasi" />
+            <small>Wajib diisi untuk verifikasi keamanan</small>
           </div>
+
           <div class="form-group">
             <label>Password Baru</label>
             <input type="password" id="newPasswordInput" placeholder="Minimal 6 karakter" />
-            <small>Kosongkan jika tidak ingin mengubah</small>
+            <small>Kosongkan jika tidak ingin mengubah password</small>
           </div>
         </div>
         <div class="modal-footer">
@@ -229,5 +308,54 @@
     </div>
 
     <script src="/js/manage.js"></script>
+    <script>
+      // Sidebar toggle functionality
+      const sidebar = document.getElementById("sidebar");
+      const sidebarToggle = document.getElementById("sidebarToggle");
+      const mobileMenuBtn = document.getElementById("mobileMenuBtn");
+      const sidebarOverlay = document.getElementById("sidebarOverlay");
+
+      if (sidebarToggle) {
+        sidebarToggle.addEventListener("click", () => {
+          sidebar.classList.toggle("collapsed");
+          const icon = sidebarToggle.querySelector("i");
+          if (sidebar.classList.contains("collapsed")) {
+            icon.classList.remove("fa-chevron-left");
+            icon.classList.add("fa-chevron-right");
+          } else {
+            icon.classList.remove("fa-chevron-right");
+            icon.classList.add("fa-chevron-left");
+          }
+        });
+      }
+
+      if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener("click", () => {
+          sidebar.classList.add("mobile-open");
+          sidebarOverlay.classList.add("active");
+          document.body.style.overflow = "hidden";
+        });
+      }
+
+      if (sidebarOverlay) {
+        sidebarOverlay.addEventListener("click", () => {
+          sidebar.classList.remove("mobile-open");
+          sidebarOverlay.classList.remove("active");
+          document.body.style.overflow = "";
+        });
+      }
+
+      let resizeTimer;
+      window.addEventListener("resize", () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          if (window.innerWidth > 768) {
+            sidebar.classList.remove("mobile-open");
+            sidebarOverlay.classList.remove("active");
+            document.body.style.overflow = "";
+          }
+        }, 250);
+      });
+    </script>
   </body>
 </html>

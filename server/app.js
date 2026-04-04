@@ -5,7 +5,7 @@ import http from "http";
 import { WebSocketServer } from "ws";
 
 import slipRoutes from "./routes/slipGajiRoutes.js";
-import loginAdminRoutes from "./routes/loginAdminRoutes.js";
+import loginRoutes from "./routes/loginRoutes.js";
 import userManagementRoutes from "./routes/userManagementRoutes.js";
 import bonusRoutes from "./routes/slipBonusRoutes.js";
 import thrRoutes from "./routes/slipThrRoutes.js";
@@ -70,7 +70,7 @@ app.use(async (req, res, next) => {
 // ============================
 
 app.use("/", slipRoutes);
-app.use("/", loginAdminRoutes);
+app.use("/", loginRoutes);
 app.use("/", userManagementRoutes);
 app.use("/", bonusRoutes);
 app.use("/", thrRoutes);
@@ -176,16 +176,25 @@ app.get("/dashboard-data", async (req, res) => {
 // ============================
 
 app.get("/", async (req, res) => {
+  // Jika sudah login sebagai admin, redirect ke manage-users
+  if (req.session.admin) {
+    return res.redirect("/manage-users");
+  }
+
+  // Jika sudah login sebagai karyawan, redirect ke profile
+  if (req.session.karyawan) {
+    return res.redirect("/karyawan-profile");
+  }
+
+  // Jika sudah login via QR
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
 
     if (!user) {
       req.session.destroy(() => {
         res.clearCookie("connect.sid");
-
         return res.sendFile(path.join(process.cwd(), "public/scan.html"));
       });
-
       return;
     }
 
@@ -196,20 +205,21 @@ app.get("/", async (req, res) => {
 });
 
 // ============================
-// DASHBOARD
+// DASHBOARD (HR via QR)
 // ============================
 app.get("/dashboard", async (req, res) => {
-  // admin biasa tidak boleh dashboard (mereka hanya bisa manage-users)
-  if (req.session.admin?.role === "admin") {
-    return res.status(404).sendFile(path.join(process.cwd(), "public/404.html"));
-  }
-
-  // superadmin redirect ke manage-users
-  if (req.session.admin?.role === "superadmin") {
+  // Cek dulu apakah ini admin (harusnya tidak bisa akses dashboard)
+  if (req.session.admin) {
+    // Admin redirect ke manage-users
     return res.redirect("/manage-users");
   }
 
-  // login via QR
+  // Cek apakah ini karyawan (harusnya tidak bisa akses dashboard)
+  if (req.session.karyawan) {
+    return res.redirect("/karyawan-profile");
+  }
+
+  // Login via QR - harus ada session number
   if (!req.session.number) {
     return res.redirect("/");
   }
@@ -232,10 +242,10 @@ app.get("/dashboard", async (req, res) => {
 
   res.sendFile(path.join(process.cwd(), "public/index.html"));
 });
+
 // ============================
 // MANAGE USERS PAGE
 // ============================
-
 app.get("/manage-users", (req, res) => {
   // blok login via QR
   if (req.session.number) {
@@ -244,7 +254,7 @@ app.get("/manage-users", (req, res) => {
 
   // harus login admin
   if (!req.session.admin) {
-    return res.redirect("/admin-login");
+    return res.redirect("/login");
   }
 
   // hanya admin & superadmin boleh
@@ -422,6 +432,37 @@ wss.on("connection", async (ws, req) => {
       }
     },
   });
+});
+
+// ============================
+// CHECK SESSION ROUTE
+// ============================
+
+app.get("/api/check-session", (req, res) => {
+  if (req.session.admin) {
+    return res.json({
+      loggedIn: true,
+      type: "admin",
+      role: req.session.admin.role,
+    });
+  }
+
+  if (req.session.karyawan) {
+    return res.json({
+      loggedIn: true,
+      type: "karyawan",
+      nama: req.session.karyawan.nama_lengkap,
+    });
+  }
+
+  if (req.session.number) {
+    return res.json({
+      loggedIn: true,
+      type: "qr",
+    });
+  }
+
+  res.json({ loggedIn: false });
 });
 
 // ============================

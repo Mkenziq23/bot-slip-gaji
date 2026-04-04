@@ -25,6 +25,14 @@ function requireSuperAdmin(req, res, next) {
 }
 
 /**
+ * Helper function untuk validasi email
+ */
+function isValidEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+/**
  * =========================
  * GET CURRENT ADMIN INFO
  * =========================
@@ -45,7 +53,7 @@ router.get("/api/admin/me", requireAdmin, async (req, res) => {
 
 /**
  * =========================
- * GET USERS (Data karyawan)
+ * GET HR (Data HR)
  * =========================
  */
 router.get("/api/users", requireAdmin, async (req, res) => {
@@ -60,7 +68,7 @@ router.get("/api/users", requireAdmin, async (req, res) => {
 
 /**
  * =========================
- * CREATE USER (Data karyawan)
+ * CREATE HR (Data HR)
  * =========================
  */
 router.post("/api/users", requireAdmin, async (req, res) => {
@@ -82,7 +90,7 @@ router.post("/api/users", requireAdmin, async (req, res) => {
 
 /**
  * =========================
- * UPDATE USER (Data karyawan)
+ * UPDATE HR (Data HR)
  * =========================
  */
 router.put("/api/users/:id", requireAdmin, async (req, res) => {
@@ -105,7 +113,7 @@ router.put("/api/users/:id", requireAdmin, async (req, res) => {
 
 /**
  * =========================
- * DELETE USER (Data karyawan)
+ * DELETE HR (Data HR)
  * SUPERADMIN ONLY
  * =========================
  */
@@ -125,18 +133,12 @@ router.delete("/api/users/:id", requireSuperAdmin, async (req, res) => {
 /**
  * =========================
  * GET ALL ADMINS (Superadmin only)
- * Menggunakan tabel 'admins'
  * =========================
  */
 router.get("/api/admins", requireSuperAdmin, async (req, res) => {
   try {
-    const [rows] = await db.query("SELECT id, username, password, role, created_at FROM admins ORDER BY id DESC");
-    // Hapus password dari response untuk keamanan
-    const safeRows = rows.map((row) => {
-      const { password, ...safeRow } = row;
-      return safeRow;
-    });
-    res.json(safeRows);
+    const [rows] = await db.query("SELECT id, username, email, role, created_at FROM admins ORDER BY id DESC");
+    res.json(rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load admins" });
@@ -146,12 +148,11 @@ router.get("/api/admins", requireSuperAdmin, async (req, res) => {
 /**
  * =========================
  * CREATE NEW ADMIN (Superadmin only)
- * Menggunakan tabel 'admins'
  * =========================
  */
 router.post("/api/admins", requireSuperAdmin, async (req, res) => {
   try {
-    const { username, password, role = "admin" } = req.body;
+    const { username, email, password, role = "admin" } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ error: "Username dan password wajib diisi" });
@@ -170,15 +171,26 @@ router.post("/api/admins", requireSuperAdmin, async (req, res) => {
     }
 
     // Cek username sudah ada
-    const [existing] = await db.query("SELECT id FROM admins WHERE username = ?", [username]);
-    if (existing.length > 0) {
+    const [existingUsername] = await db.query("SELECT id FROM admins WHERE username = ?", [username]);
+    if (existingUsername.length > 0) {
       return res.status(400).json({ error: "Username sudah digunakan" });
+    }
+
+    // Cek email sudah ada (jika diisi)
+    if (email) {
+      if (!isValidEmail(email)) {
+        return res.status(400).json({ error: "Format email tidak valid" });
+      }
+      const [existingEmail] = await db.query("SELECT id FROM admins WHERE email = ?", [email]);
+      if (existingEmail.length > 0) {
+        return res.status(400).json({ error: "Email sudah digunakan" });
+      }
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await db.query("INSERT INTO admins (username, password, role) VALUES (?, ?, ?)", [username, hashedPassword, role]);
+    await db.query("INSERT INTO admins (username, email, password, role) VALUES (?, ?, ?, ?)", [username, email || null, hashedPassword, role]);
 
     res.json({ success: true, message: "Admin berhasil ditambahkan" });
   } catch (err) {
@@ -189,9 +201,10 @@ router.post("/api/admins", requireSuperAdmin, async (req, res) => {
 
 /**
  * =========================
- * UPDATE USERNAME (Untuk semua admin - bisa ubah username sendiri)
- * - Admin biasa: hanya bisa ubah username sendiri (dengan verifikasi password)
- * - Superadmin: bisa ubah username sendiri dan username admin lain (tanpa verifikasi untuk admin lain)
+ * UPDATE USERNAME
+ * - Superadmin edit akun sendiri: butuh verifikasi password
+ * - Superadmin edit akun lain: TIDAK butuh verifikasi password
+ * - Admin biasa edit sendiri: butuh verifikasi password
  * =========================
  */
 router.put("/api/admins/:id/username", requireAdmin, async (req, res) => {
@@ -216,20 +229,22 @@ router.put("/api/admins/:id/username", requireAdmin, async (req, res) => {
 
     // Cek username sudah digunakan oleh admin lain
     const [existing] = await db.query("SELECT id FROM admins WHERE username = ? AND id != ?", [username, targetAdminId]);
-
     if (existing.length > 0) {
       return res.status(400).json({ error: "Username sudah digunakan oleh admin lain" });
     }
 
-    // Jika mengubah username sendiri, verifikasi password
+    // Verifikasi password hanya jika mengubah username sendiri
     if (currentAdminId === targetAdminId) {
       if (!currentPassword) {
         return res.status(400).json({ error: "Password saat ini wajib diisi untuk verifikasi" });
       }
 
       const [admins] = await db.query("SELECT password FROM admins WHERE id = ?", [targetAdminId]);
-      const isValid = await bcrypt.compare(currentPassword, admins[0].password);
+      if (admins.length === 0) {
+        return res.status(404).json({ error: "Admin tidak ditemukan" });
+      }
 
+      const isValid = await bcrypt.compare(currentPassword, admins[0].password);
       if (!isValid) {
         return res.status(401).json({ error: "Password saat ini salah" });
       }
@@ -240,7 +255,7 @@ router.put("/api/admins/:id/username", requireAdmin, async (req, res) => {
     // Update session jika yang diubah adalah akun sendiri
     if (currentAdminId === targetAdminId) {
       req.session.admin.username = username;
-      req.session.save();
+      await req.session.save();
     }
 
     res.json({ success: true, message: "Username berhasil diupdate" });
@@ -252,22 +267,94 @@ router.put("/api/admins/:id/username", requireAdmin, async (req, res) => {
 
 /**
  * =========================
+ * UPDATE EMAIL
+ * - Superadmin edit akun sendiri: butuh verifikasi password
+ * - Superadmin edit akun lain: TIDAK butuh verifikasi password
+ * - Admin biasa edit sendiri: butuh verifikasi password
+ * =========================
+ */
+router.put("/api/admins/:id/email", requireAdmin, async (req, res) => {
+  try {
+    const { email, currentPassword } = req.body;
+    const targetAdminId = parseInt(req.params.id);
+    const currentAdminId = req.session.admin.id;
+    const currentAdminRole = req.session.admin.role;
+
+    // Validasi akses
+    if (currentAdminRole !== "superadmin" && currentAdminId !== targetAdminId) {
+      return res.status(403).json({ error: "Anda hanya bisa mengubah email sendiri" });
+    }
+
+    // Validasi format email jika diisi
+    if (email && !isValidEmail(email)) {
+      return res.status(400).json({ error: "Format email tidak valid" });
+    }
+
+    // Cek email sudah digunakan oleh admin lain (jika email tidak null)
+    if (email) {
+      const [existing] = await db.query("SELECT id FROM admins WHERE email = ? AND id != ?", [email, targetAdminId]);
+      if (existing.length > 0) {
+        return res.status(400).json({ error: "Email sudah digunakan oleh admin lain" });
+      }
+    }
+
+    // Verifikasi password hanya jika mengubah email sendiri
+    if (currentAdminId === targetAdminId) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: "Password saat ini wajib diisi untuk verifikasi" });
+      }
+
+      const [admins] = await db.query("SELECT password FROM admins WHERE id = ?", [targetAdminId]);
+      if (admins.length === 0) {
+        return res.status(404).json({ error: "Admin tidak ditemukan" });
+      }
+
+      const isValid = await bcrypt.compare(currentPassword, admins[0].password);
+      if (!isValid) {
+        return res.status(401).json({ error: "Password saat ini salah" });
+      }
+    }
+
+    await db.query("UPDATE admins SET email = ? WHERE id = ?", [email || null, targetAdminId]);
+
+    // Update session jika yang diubah adalah akun sendiri
+    if (currentAdminId === targetAdminId) {
+      req.session.admin.email = email;
+      await req.session.save();
+    }
+
+    res.json({ success: true, message: "Email berhasil diupdate" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Gagal mengupdate email" });
+  }
+});
+
+/**
+ * =========================
  * UPDATE ROLE (Superadmin only)
- * Menggunakan tabel 'admins'
+ * TIDAK PERLU verifikasi password
  * =========================
  */
 router.put("/api/admins/:id/role", requireSuperAdmin, async (req, res) => {
   try {
     const { role } = req.body;
-    const adminId = req.params.id;
+    const adminId = parseInt(req.params.id);
+    const currentAdminId = req.session.admin.id;
 
     if (!role || !["admin", "superadmin"].includes(role)) {
       return res.status(400).json({ error: "Role tidak valid" });
     }
 
-    // Cegah mengubah role sendiri menjadi admin (bisa menyebabkan kehilangan akses)
-    if (parseInt(adminId) === req.session.admin.id) {
+    // Cegah mengubah role sendiri
+    if (adminId === currentAdminId) {
       return res.status(400).json({ error: "Anda tidak dapat mengubah role sendiri" });
+    }
+
+    // Cek apakah admin dengan id tersebut ada
+    const [admins] = await db.query("SELECT id FROM admins WHERE id = ?", [adminId]);
+    if (admins.length === 0) {
+      return res.status(404).json({ error: "Admin tidak ditemukan" });
     }
 
     await db.query("UPDATE admins SET role = ? WHERE id = ?", [role, adminId]);
@@ -282,8 +369,9 @@ router.put("/api/admins/:id/role", requireSuperAdmin, async (req, res) => {
 /**
  * =========================
  * UPDATE PASSWORD
- * - Semua admin bisa update password sendiri (dengan verifikasi password lama)
- * - Superadmin bisa update password admin lain (tanpa verifikasi password lama)
+ * - Superadmin edit akun sendiri: butuh verifikasi password lama
+ * - Superadmin edit akun lain: TIDAK butuh verifikasi password lama
+ * - Admin biasa edit sendiri: butuh verifikasi password lama
  * =========================
  */
 router.put("/api/admins/:id/password", requireAdmin, async (req, res) => {
@@ -308,15 +396,14 @@ router.put("/api/admins/:id/password", requireAdmin, async (req, res) => {
 
     // Ambil data admin yang akan diupdate
     const [admins] = await db.query("SELECT password FROM admins WHERE id = ?", [targetAdminId]);
-
     if (admins.length === 0) {
       return res.status(404).json({ error: "Admin tidak ditemukan" });
     }
 
-    // Jika mengubah password sendiri, verifikasi password lama
+    // Verifikasi password lama hanya jika mengubah password sendiri
     if (currentAdminId === targetAdminId) {
       if (!currentPassword) {
-        return res.status(400).json({ error: "Password saat ini wajib diisi" });
+        return res.status(400).json({ error: "Password saat ini wajib diisi untuk verifikasi" });
       }
 
       const isValid = await bcrypt.compare(currentPassword, admins[0].password);
@@ -339,15 +426,15 @@ router.put("/api/admins/:id/password", requireAdmin, async (req, res) => {
 /**
  * =========================
  * DELETE ADMIN (Superadmin only)
- * Menggunakan tabel 'admins'
  * =========================
  */
 router.delete("/api/admins/:id", requireSuperAdmin, async (req, res) => {
   try {
-    const adminId = req.params.id;
+    const adminId = parseInt(req.params.id);
+    const currentAdminId = req.session.admin.id;
 
     // Cegah menghapus diri sendiri
-    if (parseInt(adminId) === req.session.admin.id) {
+    if (adminId === currentAdminId) {
       return res.status(400).json({ error: "Anda tidak dapat menghapus akun sendiri" });
     }
 

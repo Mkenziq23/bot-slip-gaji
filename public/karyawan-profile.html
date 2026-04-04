@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Profile Karyawan | Payroll System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="/public/css/karyawan-profile.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <div class="logo">
+          <h1><i class="fas fa-chalkboard-user"></i> Payroll System</h1>
+          <p>Portal Informasi Gaji Karyawan</p>
+        </div>
+        <button class="logout-btn" onclick="handleLogout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+      </div>
+
+      <div id="profileContent">
+        <div class="loading">
+          <div class="spinner"></div>
+          <p>Memuat data profile...</p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let profileData = null;
+
+      async function loadProfile() {
+        try {
+          const res = await fetch("/api/karyawan/profile");
+          const data = await res.json();
+
+          if (!data.success) {
+            throw new Error(data.message);
+          }
+
+          profileData = data;
+          renderProfile(data);
+        } catch (err) {
+          console.error("Error loading profile:", err);
+          Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: "Gagal memuat data profile. Silakan login kembali.",
+            confirmButtonColor: "#667eea",
+          }).then(() => {
+            window.location.href = "/login";
+          });
+        }
+      }
+
+      function renderProfile(data) {
+        const profile = data.profile;
+        const container = document.getElementById("profileContent");
+
+        container.innerHTML = `
+                <div class="profile-card">
+                    <div class="profile-header">
+                        <div class="profile-avatar">
+                            <i class="fas fa-user-circle"></i>
+                        </div>
+                        <h2>${escapeHtml(profile.nama_lengkap)}</h2>
+                        <p>${escapeHtml(profile.jabatan)}</p>
+                    </div>
+                    <div class="profile-body">
+                        <div class="info-section">
+                            <div class="info-title">
+                                <i class="fas fa-id-card"></i> Data Diri
+                            </div>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <i class="fas fa-hashtag"></i>
+                                    <div>
+                                        <div class="info-label">No Induk</div>
+                                        <div class="info-value">${escapeHtml(profile.no_induk)}</div>
+                                    </div>
+                                </div>
+                                <div class="info-item">
+                                    <i class="fas fa-id-card"></i>
+                                    <div>
+                                        <div class="info-label">NIK</div>
+                                        <div class="info-value">${escapeHtml(profile.nik || "-")}</div>
+                                    </div>
+                                </div>
+                                <div class="info-item">
+                                    <i class="fas fa-envelope"></i>
+                                    <div>
+                                        <div class="info-label">Email</div>
+                                        <div class="info-value">${escapeHtml(profile.email || "-")}</div>
+                                    </div>
+                                </div>
+                                <div class="info-item">
+                                    <i class="fas fa-phone"></i>
+                                    <div>
+                                        <div class="info-label">No HP</div>
+                                        <div class="info-value">${escapeHtml(profile.no_hp || "-")}</div>
+                                    </div>
+                                </div>
+                                <div class="info-item">
+                                    <i class="fas fa-calendar"></i>
+                                    <div>
+                                        <div class="info-label">Tanggal Lahir</div>
+                                        <div class="info-value">${formatDate(profile.tanggal_lahir)}</div>
+                                    </div>
+                                </div>
+                                <div class="info-item">
+                                    <i class="fas fa-map-marker-alt"></i>
+                                    <div>
+                                        <div class="info-label">Alamat</div>
+                                        <div class="info-value">${escapeHtml(profile.alamat_domisili || "-")}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="info-section">
+                            <div class="info-title">
+                                <i class="fas fa-briefcase"></i> Data Perusahaan
+                            </div>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <i class="fas fa-building"></i>
+                                    <div>
+                                        <div class="info-label">Cabang</div>
+                                        <div class="info-value">${escapeHtml(profile.cabang || "-")}</div>
+                                    </div>
+                                </div>
+                                <div class="info-item">
+                                    <i class="fas fa-store"></i>
+                                    <div>
+                                        <div class="info-label">Nama Gerai</div>
+                                        <div class="info-value">${escapeHtml(profile.nama_gerai || "-")}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="salary-section">
+                            <div class="info-title">
+                                <i class="fas fa-money-bill-wave"></i> Data Penggajian
+                            </div>
+                            <div class="salary-tabs">
+                                <button class="tab-btn active" onclick="showTab('slip')">Slip Gaji</button>
+                                <button class="tab-btn" onclick="showTab('bonus')">Bonus</button>
+                                <button class="tab-btn" onclick="showTab('thr')">THR</button>
+                            </div>
+                            <div id="slipTab" class="tab-content active">
+                                ${renderSlipGaji(data.slip_gaji)}
+                            </div>
+                            <div id="bonusTab" class="tab-content">
+                                ${renderBonus(data.bonus)}
+                            </div>
+                            <div id="thrTab" class="tab-content">
+                                ${renderThr(data.thr)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+      }
+
+      function renderSlipGaji(slipList) {
+        if (!slipList || slipList.length === 0) {
+          return `
+                    <div class="empty-state">
+                        <i class="fas fa-folder-open"></i>
+                        <p>Belum ada data slip gaji</p>
+                    </div>
+                `;
+        }
+
+        return slipList
+          .map(
+            (slip) => `
+                <div class="salary-card">
+                    <div class="salary-header">
+                        <span class="salary-date"><i class="fas fa-calendar"></i> ${formatDate(slip.tanggal)}</span>
+                        <span class="salary-amount">Rp ${formatRupiah(slip.gaji_total || slip.total_gaji)}</span>
+                    </div>
+                    <div class="salary-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Gaji Pokok</span>
+                            <span class="detail-value">Rp ${formatRupiah(slip.gaji_pokok)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Tunjangan</span>
+                            <span class="detail-value">Rp ${formatRupiah(slip.tunjangan)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Potongan</span>
+                            <span class="detail-value">Rp ${formatRupiah(slip.potongan)}</span>
+                        </div>
+                    </div>
+                </div>
+            `,
+          )
+          .join("");
+      }
+
+      function renderBonus(bonusList) {
+        if (!bonusList || bonusList.length === 0) {
+          return `
+                    <div class="empty-state">
+                        <i class="fas fa-gift"></i>
+                        <p>Belum ada data bonus</p>
+                    </div>
+                `;
+        }
+
+        return bonusList
+          .map(
+            (bonus) => `
+                <div class="salary-card">
+                    <div class="salary-header">
+                        <span class="salary-date"><i class="fas fa-calendar"></i> ${formatDate(bonus.tanggal)}</span>
+                        <span class="salary-amount">Rp ${formatRupiah(bonus.jumlah_bonus)}</span>
+                    </div>
+                    <div class="salary-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Keterangan</span>
+                            <span class="detail-value">${escapeHtml(bonus.keterangan || "-")}</span>
+                        </div>
+                    </div>
+                </div>
+            `,
+          )
+          .join("");
+      }
+
+      function renderThr(thrList) {
+        if (!thrList || thrList.length === 0) {
+          return `
+                    <div class="empty-state">
+                        <i class="fas fa-star-of-life"></i>
+                        <p>Belum ada data THR</p>
+                    </div>
+                `;
+        }
+
+        return thrList
+          .map(
+            (thr) => `
+                <div class="salary-card">
+                    <div class="salary-header">
+                        <span class="salary-date"><i class="fas fa-calendar"></i> ${formatDate(thr.tanggal)}</span>
+                        <span class="salary-amount">Rp ${formatRupiah(thr.jumlah_thr)}</span>
+                    </div>
+                    <div class="salary-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Keterangan</span>
+                            <span class="detail-value">${escapeHtml(thr.keterangan || "THR Keagamaan")}</span>
+                        </div>
+                    </div>
+                </div>
+            `,
+          )
+          .join("");
+      }
+
+      function showTab(tab) {
+        // Update tab buttons
+        document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.remove("active"));
+        event.target.classList.add("active");
+
+        // Show selected tab
+        document.getElementById("slipTab").classList.remove("active");
+        document.getElementById("bonusTab").classList.remove("active");
+        document.getElementById("thrTab").classList.remove("active");
+        document.getElementById(`${tab}Tab`).classList.add("active");
+      }
+
+      function formatDate(dateString) {
+        if (!dateString) return "-";
+        const date = new Date(dateString);
+        return date.toLocaleDateString("id-ID", {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+        });
+      }
+
+      function formatRupiah(amount) {
+        if (!amount) return "0";
+        return new Intl.NumberFormat("id-ID").format(amount);
+      }
+
+      function escapeHtml(text) {
+        if (!text) return "-";
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+      async function handleLogout() {
+        const result = await Swal.fire({
+          title: "Konfirmasi Logout",
+          text: "Apakah Anda yakin ingin logout?",
+          icon: "question",
+          showCancelButton: true,
+          confirmButtonColor: "#f56565",
+          cancelButtonColor: "#667eea",
+          confirmButtonText: "Ya, Logout",
+          cancelButtonText: "Batal",
+        });
+
+        if (result.isConfirmed) {
+          window.location.href = "/logout";
+        }
+      }
+
+      // Load profile on page load
+      loadProfile();
+    </script>
+  </body>
+</html>
