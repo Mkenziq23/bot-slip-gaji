@@ -64,7 +64,7 @@
                 <i class="fas fa-chevron-right nav-arrow"></i>
               </a>
             </li>
-            <li class="nav-item" id="adminTabNav" style="display: none">
+            <li class="nav-item">
               <a
                 href="#"
                 class="nav-link"
@@ -76,7 +76,7 @@
                 <div class="nav-icon">
                   <i class="fas fa-user-shield"></i>
                 </div>
-                <span class="nav-text">Admin Accounts</span>
+                <span class="nav-text">Manage Accounts</span>
                 <i class="fas fa-chevron-right nav-arrow"></i>
               </a>
             </li>
@@ -114,80 +114,68 @@
         </div>
       </header>
 
-      <!-- <div class="container">
-        <div id="infoBanner" class="info-banner" style="display: none">
-          <div class="banner-content">
-            <i class="fas fa-info-circle"></i>
-            <div>
-              <strong>Informasi Akun:</strong> Anda dapat mengubah username dan password dengan mengklik tombol <i class="fas fa-edit"></i> pada baris akun Anda di tab "Admin Accounts".
-              <small><i class="fas fa-shield-alt"></i> Keamanan akun adalah tanggung jawab Anda</small>
-            </div>
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('users')">
+          <i class="fas fa-user-friends"></i>
+          <span>User HR Management</span>
+        </button>
+        <button class="tab-btn" onclick="switchTab('admins')">
+          <i class="fas fa-user-shield"></i>
+          <span>Manage Accounts</span>
+        </button>
+      </div>
+
+      <!-- Tab Users -->
+      <div id="usersTab" class="tab-content active">
+        <div class="card">
+          <div class="card-header">
+            <h4><i class="fas fa-users"></i> Daftar HR Account</h4>
+            <button class="btn btn-primary" id="addUserBtn" onclick="openUserModal()">
+              <i class="fas fa-plus"></i>
+              <span>Tambah User</span>
+            </button>
           </div>
-        </div> -->
-
-        <!-- Tabs -->
-        <div class="tabs">
-          <button class="tab-btn active" onclick="switchTab('users')">
-            <i class="fas fa-user-friends"></i>
-            <span>User HR Management</span>
-          </button>
-          <button class="tab-btn" id="adminTabBtn" onclick="switchTab('admins')" style="display: none">
-            <i class="fas fa-user-shield"></i>
-            <span>Admin Accounts</span>
-          </button>
-        </div>
-
-        <!-- Tab Users -->
-        <div id="usersTab" class="tab-content active">
-          <div class="card">
-            <div class="card-header">
-              <h4><i class="fas fa-users"></i> Daftar User Aktif</h4>
-              <button class="btn btn-primary" onclick="openUserModal()">
-                <i class="fas fa-plus"></i>
-                <span>Tambah User</span>
-              </button>
-            </div>
-            <div class="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th width="80">No</th>
-                    <th>Nama Lengkap</th>
-                    <th>WhatsApp</th>
-                    <th width="120">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody id="userTableBody"></tbody>
-              </table>
-            </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th width="80">No</th>
+                  <th>Nama Lengkap</th>
+                  <th>WhatsApp</th>
+                  <th width="120">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="userTableBody"></tbody>
+            </table>
           </div>
         </div>
+      </div>
 
-        <!-- Tab Admins -->
-        <div id="adminsTab" class="tab-content">
-          <div class="card">
-            <div class="card-header">
-              <h4><i class="fas fa-user-shield"></i> Daftar Admin Accounts</h4>
-              <button class="btn btn-primary" onclick="openAdminModal()" id="addAdminBtn">
-                <i class="fas fa-plus"></i>
-                <span>Tambah Admin</span>
-              </button>
-            </div>
-            <div class="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th width="80">No</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Dibuat Pada</th>
-                    <th width="120">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody id="adminTableBody"></tbody>
-              </table>
-            </div>
+      <!-- Tab Admins -->
+      <div id="adminsTab" class="tab-content">
+        <div class="card">
+          <div class="card-header">
+            <h4><i class="fas fa-user-shield"></i> Manage Accounts</h4>
+            <button class="btn btn-primary" id="addAdminBtn" onclick="openAdminModal()">
+              <i class="fas fa-plus"></i>
+              <span>Tambah Admin</span>
+            </button>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th width="80">No</th>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Dibuat Pada</th>
+                  <th width="120">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="adminTableBody"></tbody>
+            </table>
           </div>
         </div>
       </div>

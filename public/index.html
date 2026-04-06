@@ -8,13 +8,19 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet Geocoder untuk pencarian alamat -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+
     <!-- DataTables CSS & JS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css" />
     <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.dataTables.min.css" />
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
-    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/dashboard.css" />
   </head>
   <body>
     <!-- Mobile Menu Toggle Button -->
@@ -85,6 +91,10 @@
                     <i class="fas fa-users"></i>
                     <span>Data Karyawan Hisana</span>
                   </button>
+                  <button id="dataLokasiHisana" class="dropdown-item">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Lokasi Store Hisana</span>
+                  </button>
                 </div>
               </div>
               <button id="menuKirimHisana" class="nav-item">
@@ -123,6 +133,10 @@
                   <button id="dataKaryawanEnakko" class="dropdown-item">
                     <i class="fas fa-users"></i>
                     <span>Data Karyawan Enakko</span>
+                  </button>
+                  <button id="dataLokasiEnakko" class="dropdown-item">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Lokasi Store Enakko</span>
                   </button>
                 </div>
               </div>
@@ -213,7 +227,7 @@
                     <th>Total Gaji</th>
                     <th>Total Bonus</th>
                     <th>Total THR</th>
-                    <th>Status</th>
+                    <!-- <th>Status</th> -->
                   </tr>
                 </thead>
                 <tbody></tbody>
@@ -294,6 +308,55 @@
                 <button id="prevKaryawanPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
                 <span id="karyawanPageInfo" class="page-info"></span>
                 <button id="nextKaryawanPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION LOKASI STORE -->
+        <div id="sectionLokasiStore" class="section">
+          <div class="card">
+            <div class="data-header">
+              <div class="data-header-left">
+                <h3><i class="fas fa-map-marker-alt"></i> Lokasi Store - <span id="lokasiStoreCompanyName"></span></h3>
+                <div class="data-actions">
+                  <button id="addLokasiBtn" class="btn-primary add-data-btn"><i class="fas fa-plus"></i> Tambah Lokasi</button>
+                  <button id="refreshMapBtn" class="btn-outline"><i class="fas fa-sync-alt"></i> Refresh Peta</button>
+                </div>
+              </div>
+              <div class="data-header-right">
+                <div class="search-wrapper">
+                  <i class="fas fa-search search-icon"></i>
+                  <input type="text" id="searchLokasiInput" placeholder="Cari lokasi..." class="search-input" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Google Maps Container -->
+            <div id="mapContainer" style="height: 400px; width: 100%; border-radius: 12px; margin-bottom: 20px; overflow: hidden; border: 1px solid #e2e8f0"></div>
+
+            <!-- Daftar Lokasi -->
+            <div class="scrollable">
+              <table id="tableLokasi">
+                <thead>
+                  <tr>
+                    <th style="width: 50px">No</th>
+                    <th>Nama Store</th>
+                    <th>Alamat</th>
+                    <th>Latitude</th>
+                    <th>Longitude</th>
+                    <th style="min-width: 120px">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="pagination-wrapper">
+              <div class="pagination">
+                <button id="prevLokasiPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-left"></i></button>
+                <span id="lokasiPageInfo" class="page-info"></span>
+                <button id="nextLokasiPage" class="btn-outline pagination-btn"><i class="fas fa-chevron-right"></i></button>
               </div>
             </div>
           </div>
@@ -640,6 +703,8 @@
       </main>
     </div>
 
+    <!-- MODAL -->
+
     <!-- MODAL UNTUK DATA KARYAWAN -->
     <div id="karyawanModal" class="modal" style="display: none">
       <div class="modalContent" style="max-width: 800px">
@@ -719,6 +784,53 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn-outline" id="cancelKaryawanBtn">Batal</button>
+            <button type="submit" class="btn-primary">Simpan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL LOKASI STORE -->
+    <div id="lokasiModal" class="modal" style="display: none">
+      <div class="modalContent" style="max-width: 800px">
+        <div class="modal-header">
+          <h3 id="lokasiModalTitle">Tambah Lokasi Store</h3>
+          <button class="modal-close" id="closeLokasiModal">&times;</button>
+        </div>
+        <form id="lokasiForm">
+          <input type="hidden" id="lokasi_id" />
+          <div class="formGrid" style="grid-template-columns: repeat(2, 1fr); gap: 15px">
+            <div class="formGroup" style="grid-column: span 2">
+              <label>Cari Lokasi</label>
+              <div class="search-location-container">
+                <input type="text" id="locationSearchInput" class="location-search-input" placeholder="Cari alamat, nama tempat..." autocomplete="off" />
+                <div id="locationSearchDropdown" class="location-dropdown" style="display: none"></div>
+              </div>
+            </div>
+            <div class="formGroup" style="grid-column: span 2">
+              <label>Pilih Lokasi di Peta</label>
+              <div id="modalMapContainer" style="height: 300px; width: 100%; border-radius: 12px; border: 1px solid #e2e8f0"></div>
+              <small><i class="fas fa-info-circle"></i> Klik pada peta atau drag marker untuk menentukan titik koordinat</small>
+            </div>
+            <div class="formGroup">
+              <label>Nama Store *</label>
+              <input type="text" id="lokasi_nama" required placeholder="Contoh: Hisana Thamrin, Enakko Malang" />
+            </div>
+            <div class="formGroup">
+              <label>Alamat *</label>
+              <textarea id="lokasi_alamat" rows="2" required placeholder="Alamat lengkap store"></textarea>
+            </div>
+            <div class="formGroup">
+              <label>Latitude *</label>
+              <input type="text" id="lokasi_lat" required readonly style="background: #f8fafc" />
+            </div>
+            <div class="formGroup">
+              <label>Longitude *</label>
+              <input type="text" id="lokasi_lng" required readonly style="background: #f8fafc" />
+            </div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 15px; border-top: 1px solid #e2e8f0">
+            <button type="button" class="btn-outline" id="cancelLokasiBtn">Batal</button>
             <button type="submit" class="btn-primary">Simpan</button>
           </div>
         </form>

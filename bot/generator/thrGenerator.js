@@ -175,13 +175,13 @@ async function generateTHRPDF(data, company = "hisana") {
         .fontSize(28)
         .text(`Rp ${rupiah(normalized.jumlah_thr || 0)}`, 90, y + 45);
 
-      doc
-        .fillColor(theme.textSecondary)
-        .font("Helvetica-Oblique")
-        .fontSize(9)
-        .text("Terbilang: (Sesuai dengan kebijakan perusahaan)", 90, y + 90);
+      // doc
+      //   .fillColor(theme.textSecondary)
+      //   .font("Helvetica-Oblique")
+      //   .fontSize(9)
+      //   .text("Terbilang: (Sesuai dengan kebijakan perusahaan)", 90, y + 90);
 
-      // Footer Catatan
+      // // Footer Catatan
       y += 150;
       doc
         .fillColor(theme.textSecondary)

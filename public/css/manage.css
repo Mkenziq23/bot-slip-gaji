@@ -966,3 +966,244 @@ tr:hover td {
   width: 44px;
   height: 44px;
 }
+
+/* Enhanced Table Styles */
+.table-wrapper {
+  overflow-x: auto;
+  border-radius: 20px;
+}
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+th {
+  text-align: left;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #475569;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+th:first-child {
+  border-top-left-radius: 16px;
+}
+
+th:last-child {
+  border-top-right-radius: 16px;
+}
+
+td {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+tr {
+  transition: all 0.2s ease;
+}
+
+tr:hover td {
+  background: linear-gradient(90deg, #faf9fe 0%, #ffffff 100%);
+}
+
+/* User Table Specific */
+.user-wa {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #dcfce7;
+  padding: 6px 14px;
+  border-radius: 40px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #166534;
+}
+
+.user-wa i {
+  font-size: 0.9rem;
+  color: #22c55e;
+}
+
+.user-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.user-avatar-sm {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Admin Table Enhanced */
+.admin-username {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-avatar-sm {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 40px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.3px;
+}
+
+.role-badge.superadmin {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.role-badge.admin {
+  background: linear-gradient(135deg, #e0f2fe, #bae6fd);
+  color: #075985;
+  border: 1px solid #7dd3fc;
+}
+
+.role-badge i {
+  font-size: 0.8rem;
+}
+
+.email-cell {
+  font-family: "Monaco", "Courier New", monospace;
+  font-size: 0.8rem;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  padding: 4px 10px;
+  border-radius: 30px;
+}
+
+.email-cell i {
+  color: #94a3b8;
+  font-size: 0.7rem;
+}
+
+.date-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.date-cell i {
+  color: #94a3b8;
+  font-size: 0.7rem;
+}
+
+/* Enhanced Action Buttons */
+.action-group {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-icon i {
+  font-size: 0.85rem;
+}
+
+.btn-icon:hover {
+  transform: translateY(-2px);
+}
+
+.btn-edit {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.btn-edit:hover {
+  background: #4f46e5;
+  color: white;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+.btn-danger {
+  background: #fef2f2;
+  color: #ef4444;
+}
+
+.btn-danger:hover {
+  background: #ef4444;
+  color: white;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+/* Responsive Table Enhancements */
+@media (max-width: 768px) {
+  td {
+    padding: 14px 16px;
+  }
+
+  td::before {
+    font-weight: 700;
+    font-size: 0.7rem;
+    color: #64748b;
+    text-transform: uppercase;
+  }
+
+  .user-wa,
+  .email-cell,
+  .date-cell,
+  .role-badge {
+    padding: 4px 12px;
+    font-size: 0.75rem;
+  }
+
+  .user-avatar-sm,
+  .admin-avatar-sm {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+  }
+}

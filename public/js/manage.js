@@ -71,7 +71,7 @@ function toggleSidebar() {
 async function confirmLogout() {
   const result = await Swal.fire({
     title: "Konfirmasi Keluar",
-    text: "Apakah Anda yakin ingin mengakhiri sesi ini?",
+    text: "Apakah Anda yakin ingin melakukan logout?",
     icon: "question",
     showCancelButton: true,
     confirmButtonColor: "#6366f1",
@@ -125,22 +125,54 @@ async function loadUsers() {
     const res = await fetch("/api/users");
     const users = await res.json();
     const tbody = document.getElementById("userTableBody");
+    const isSuperadmin = currentAdminRole === "superadmin";
+
     tbody.innerHTML = users
-      .map(
-        (u, index) => `
+      .map((u, index) => {
+        // Get initials for avatar
+        const initials = u.nama
+          ? u.nama
+              .split(" ")
+              .map((n) => n[0])
+              .slice(0, 2)
+              .join("")
+              .toUpperCase()
+          : "U";
+
+        return `
         <tr>
-          <td data-label="No"><span style="font-weight:700; color:#4f46e5;">${index + 1}</span></td>
-          <td data-label="Nama Lengkap"><strong>${escapeHtml(u.nama || "-")}</strong></td>
-          <td data-label="WhatsApp"><code style="background:#f1f5f9; padding:4px 10px; border-radius:20px;">${escapeHtml(u.nomor_wa)}</code></td>
+          <td data-label="No">
+            <span style="font-weight:700; color:#4f46e5; background:#eef2ff; padding:4px 12px; border-radius:30px; display:inline-block;">${index + 1}</span>
+          </td>
+          <td data-label="Nama Lengkap">
+            <div class="user-name">
+              <div class="user-avatar-sm">${escapeHtml(initials)}</div>
+              <strong>${escapeHtml(u.nama || "-")}</strong>
+            </div>
+          </td>
+          <td data-label="WhatsApp">
+            <span class="user-wa">
+              <i class="fab fa-whatsapp"></i>
+              ${escapeHtml(u.nomor_wa)}
+            </span>
+          </td>
           <td data-label="Aksi">
             <div class="action-group">
-              <button class="btn btn-icon btn-edit" onclick="prepareEditUser(${u.id}, '${escapeHtml(u.nama)}', '${escapeHtml(u.nomor_wa)}')"><i class="fas fa-pen"></i></button>
-              ${currentAdminRole === "superadmin" ? `<button class="btn btn-icon btn-danger" onclick="deleteUser(${u.id}, '${escapeHtml(u.nama)}')"><i class="fas fa-trash"></i></button>` : ""}
+              <button class="btn btn-icon btn-edit" onclick="prepareEditUser(${u.id}, '${escapeHtml(u.nama)}', '${escapeHtml(u.nomor_wa)}')" title="Edit User">
+                <i class="fas fa-pen"></i>
+              </button>
+              ${
+                isSuperadmin
+                  ? `<button class="btn btn-icon btn-danger" onclick="deleteUser(${u.id}, '${escapeHtml(u.nama)}')" title="Hapus User">
+                <i class="fas fa-trash"></i>
+              </button>`
+                  : ""
+              }
             </div>
           </td>
         </tr>
-      `,
-      )
+      `;
+      })
       .join("");
   } catch (err) {
     console.error(err);
@@ -148,6 +180,186 @@ async function loadUsers() {
   }
 }
 
+// ============= ADMIN MANAGEMENT =============
+async function loadAdmins() {
+  const tbody = document.getElementById("adminTableBody");
+  const isSuperadmin = currentAdminRole === "superadmin";
+  const addAdminBtn = document.getElementById("addAdminBtn");
+  const addUserBtn = document.getElementById("addUserBtn");
+
+  // Sembunyikan/tampilkan tombol berdasarkan role
+  if (addAdminBtn) {
+    addAdminBtn.style.display = isSuperadmin ? "flex" : "none";
+  }
+
+  if (addUserBtn) {
+    addUserBtn.style.display = isSuperadmin ? "flex" : "none";
+  }
+
+  try {
+    let admins = [];
+
+    if (isSuperadmin) {
+      // Superadmin: ambil semua data admin
+      const res = await fetch("/api/admins");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      admins = await res.json();
+
+      if (!Array.isArray(admins)) {
+        admins = [];
+      }
+    } else {
+      // Admin biasa: ambil data sendiri dengan detail lengkap
+      const res = await fetch("/api/admin/me");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      const currentAdmin = await res.json();
+
+      // Validasi data yang diterima
+      if (currentAdmin && currentAdmin.id) {
+        admins = [
+          {
+            id: currentAdmin.id,
+            username: currentAdmin.username || "Unknown",
+            email: currentAdmin.email || "-",
+            role: currentAdmin.role || "admin",
+            created_at: currentAdmin.created_at || new Date().toISOString(),
+          },
+        ];
+      } else {
+        throw new Error("Data admin tidak lengkap");
+      }
+    }
+
+    // Jika tidak ada data
+    if (admins.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align:center; padding:48px;">
+            <i class="fas fa-user-shield" style="font-size:48px; color:#94a3b8; margin-bottom:16px; display:block;"></i>
+            <p style="color:#475569;">Tidak ada data admin</p>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    // Render tabel
+    tbody.innerHTML = admins
+      .map((admin, index) => {
+        // Format tanggal dengan aman
+        let createdDate = "-";
+        if (admin.created_at) {
+          try {
+            const date = new Date(admin.created_at);
+            if (!isNaN(date.getTime())) {
+              createdDate = date.toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              });
+            }
+          } catch (e) {
+            console.warn("Error formatting date:", e);
+            createdDate = "-";
+          }
+        }
+
+        // Escape HTML untuk keamanan
+        const username = escapeHtml(admin.username);
+        const email = escapeHtml(admin.email || "-");
+        const role = admin.role === "superadmin" ? "Superadmin" : "Admin";
+        const roleClass = admin.role === "superadmin" ? "superadmin" : "admin";
+        const roleIcon = admin.role === "superadmin" ? "fa-crown" : "fa-user-shield";
+
+        // Get initials for avatar
+        const initials = username.substring(0, 2).toUpperCase();
+
+        // Tentukan tombol aksi yang ditampilkan
+        let actionButtons = `
+        <div class="action-group">
+          <button class="btn btn-icon btn-edit" onclick="openEditAdminModal(${admin.id}, '${username}', '${email}', '${admin.role}')" title="Edit Akun">
+            <i class="fas fa-key"></i>
+          </button>
+      `;
+
+        // Tombol hapus hanya untuk superadmin dan bukan akun sendiri
+        if (isSuperadmin && admin.id !== currentAdminId) {
+          actionButtons += `
+          <button class="btn btn-icon btn-danger" onclick="deleteAdmin(${admin.id}, '${username}', '${admin.role}')" title="Hapus Admin">
+            <i class="fas fa-trash"></i>
+          </button>
+        `;
+        }
+
+        actionButtons += `</div>`;
+
+        return `
+        <tr>
+          <td data-label="No">
+            <span style="font-weight:700; color:#4f46e5; background:#eef2ff; padding:4px 12px; border-radius:30px; display:inline-block;">${index + 1}</span>
+          </td>
+          <td data-label="Username">
+            <div class="admin-username">
+              <div class="admin-avatar-sm">${initials}</div>
+              <strong>${username}</strong>
+            </div>
+          </td>
+          <td data-label="Email">
+            <span class="email-cell">
+              <i class="fas fa-envelope"></i>
+              ${email}
+            </span>
+          </td>
+          <td data-label="Role">
+            <span class="role-badge ${roleClass}">
+              <i class="fas ${roleIcon}"></i> ${role}
+            </span>
+          </td>
+          <td data-label="Dibuat Pada">
+            <span class="date-cell">
+              <i class="fas fa-calendar-alt"></i>
+              ${createdDate}
+            </span>
+          </td>
+          <td data-label="Aksi">
+            ${actionButtons}
+          </td>
+        </tr>
+      `;
+      })
+      .join("");
+
+    // Tambahkan efek visual jika perlu
+    if (!isSuperadmin && admins.length === 1) {
+      console.log("Menampilkan data admin sendiri:", admins[0].username);
+    }
+  } catch (err) {
+    console.error("Error loading admins:", err);
+
+    // Tampilkan pesan error di tabel
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align:center; padding:48px; color:#ef4444;">
+          <i class="fas fa-exclamation-triangle" style="font-size:48px; margin-bottom:16px; display:block;"></i>
+          <p style="font-weight:600; margin-bottom:8px;">Gagal memuat data admin</p>
+          <small style="color:#94a3b8;">${err.message}</small>
+          <div style="margin-top:16px;">
+            <button class="btn btn-secondary" onclick="loadAdmins()" style="padding:8px 16px;">
+              <i class="fas fa-sync-alt"></i> Coba Lagi
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+
+    // Tampilkan alert error
+    await showAlert("error", "Error", `Gagal memuat data admin: ${err.message}`);
+  }
+}
 async function deleteUser(id, nama) {
   const result = await Swal.fire({
     title: "Hapus User?",
@@ -230,38 +442,170 @@ async function saveUser() {
 
 // ============= ADMIN MANAGEMENT =============
 async function loadAdmins() {
-  if (currentAdminRole !== "superadmin") {
-    const tbody = document.getElementById("adminTableBody");
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:48px;"><i class="fas fa-lock" style="font-size:48px; color:#94a3b8; margin-bottom:16px; display:block;"></i><p style="color:#475569;">🔒 Akses terbatas. Hanya Superadmin yang dapat mengelola admin accounts.</p></td></tr>`;
-    return;
+  const tbody = document.getElementById("adminTableBody");
+  const isSuperadmin = currentAdminRole === "superadmin";
+  const addAdminBtn = document.getElementById("addAdminBtn");
+  const addUserBtn = document.getElementById("addUserBtn");
+
+  // Sembunyikan/tampilkan tombol berdasarkan role
+  if (addAdminBtn) {
+    addAdminBtn.style.display = isSuperadmin ? "flex" : "none";
+  }
+
+  if (addUserBtn) {
+    addUserBtn.style.display = isSuperadmin ? "flex" : "none";
   }
 
   try {
-    const res = await fetch("/api/admins");
-    if (!res.ok) throw new Error();
-    const admins = await res.json();
-    const tbody = document.getElementById("adminTableBody");
-    tbody.innerHTML = admins
-      .map(
-        (admin, index) => `
+    let admins = [];
+
+    if (isSuperadmin) {
+      // Superadmin: ambil semua data admin
+      const res = await fetch("/api/admins");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      admins = await res.json();
+
+      if (!Array.isArray(admins)) {
+        admins = [];
+      }
+    } else {
+      // Admin biasa: ambil data sendiri dengan detail lengkap
+      const res = await fetch("/api/admin/me");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      const currentAdmin = await res.json();
+
+      // Validasi data yang diterima
+      if (currentAdmin && currentAdmin.id) {
+        admins = [
+          {
+            id: currentAdmin.id,
+            username: currentAdmin.username || "Unknown",
+            email: currentAdmin.email || "-",
+            role: currentAdmin.role || "admin",
+            created_at: currentAdmin.created_at || new Date().toISOString(),
+          },
+        ];
+      } else {
+        throw new Error("Data admin tidak lengkap");
+      }
+    }
+
+    // Jika tidak ada data
+    if (admins.length === 0) {
+      tbody.innerHTML = `
         <tr>
-          <td data-label="No"><span style="font-weight:700; color:#4f46e5;">${index + 1}</span></td>
-          <td data-label="Username"><strong>${escapeHtml(admin.username)}</strong></td>
-          <td data-label="Email"><span style="color:#475569;">${escapeHtml(admin.email || "-")}</span></td>
-          <td data-label="Role"><span class="role-badge ${admin.role === "superadmin" ? "superadmin" : "admin"}"><i class="fas ${admin.role === "superadmin" ? "fa-crown" : "fa-user-shield"}"></i> ${admin.role === "superadmin" ? "Superadmin" : "Admin"}</span></td>
-          <td data-label="Dibuat Pada">${new Date(admin.created_at).toLocaleDateString("id-ID")}</td>
-          <td data-label="Aksi">
-            <div class="action-group">
-              <button class="btn btn-icon btn-edit" onclick="openEditAdminModal(${admin.id}, '${escapeHtml(admin.username)}', '${escapeHtml(admin.email || "")}', '${admin.role}')"><i class="fas fa-key"></i></button>
-              ${admin.id !== currentAdminId ? `<button class="btn btn-icon btn-danger" onclick="deleteAdmin(${admin.id}, '${escapeHtml(admin.username)}', '${escapeHtml(admin.role)}')"><i class="fas fa-trash"></i></button>` : ""}
-            </div>
+          <td colspan="6" style="text-align:center; padding:48px;">
+            <i class="fas fa-user-shield" style="font-size:48px; color:#94a3b8; margin-bottom:16px; display:block;"></i>
+            <p style="color:#475569;">Tidak ada data admin</p>
           </td>
         </tr>
-      `,
-      )
+      `;
+      return;
+    }
+
+    // Render tabel
+    tbody.innerHTML = admins
+      .map((admin, index) => {
+        // Format tanggal dengan aman
+        let createdDate = "-";
+        if (admin.created_at) {
+          try {
+            const date = new Date(admin.created_at);
+            if (!isNaN(date.getTime())) {
+              createdDate = date.toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              });
+            }
+          } catch (e) {
+            console.warn("Error formatting date:", e);
+            createdDate = "-";
+          }
+        }
+
+        // Escape HTML untuk keamanan
+        const username = escapeHtml(admin.username);
+        const email = escapeHtml(admin.email || "-");
+        const role = admin.role === "superadmin" ? "Superadmin" : "Admin";
+        const roleClass = admin.role === "superadmin" ? "superadmin" : "admin";
+        const roleIcon = admin.role === "superadmin" ? "fa-crown" : "fa-user-shield";
+
+        // Tentukan tombol aksi yang ditampilkan
+        let actionButtons = `
+        <div class="action-group">
+          <button class="btn btn-icon btn-edit" onclick="openEditAdminModal(${admin.id}, '${username}', '${email}', '${admin.role}')" title="Edit Akun">
+            <i class="fas fa-key"></i>
+          </button>
+      `;
+
+        // Tombol hapus hanya untuk superadmin dan bukan akun sendiri
+        if (isSuperadmin && admin.id !== currentAdminId) {
+          actionButtons += `
+          <button class="btn btn-icon btn-danger" onclick="deleteAdmin(${admin.id}, '${username}', '${admin.role}')" title="Hapus Admin">
+            <i class="fas fa-trash"></i>
+          </button>
+        `;
+        }
+
+        actionButtons += `</div>`;
+
+        return `
+        <tr>
+          <td data-label="No">
+            <span style="font-weight:700; color:#4f46e5;">${index + 1}</span>
+          </td>
+          <td data-label="Username">
+            <strong>${username}</strong>
+          </td>
+          <td data-label="Email">
+            <span style="color:#475569; font-family: monospace;">${email}</span>
+          </td>
+          <td data-label="Role">
+            <span class="role-badge ${roleClass}">
+              <i class="fas ${roleIcon}"></i> ${role}
+            </span>
+          </td>
+          <td data-label="Dibuat Pada">
+            <span style="color:#64748b;">${createdDate}</span>
+          </td>
+          <td data-label="Aksi">
+            ${actionButtons}
+          </td>
+        </tr>
+      `;
+      })
       .join("");
+
+    // Tambahkan efek visual jika perlu
+    if (!isSuperadmin && admins.length === 1) {
+      console.log("Menampilkan data admin sendiri:", admins[0].username);
+    }
   } catch (err) {
-    await showAlert("error", "Error", "Gagal memuat data admin");
+    console.error("Error loading admins:", err);
+
+    // Tampilkan pesan error di tabel
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align:center; padding:48px; color:#ef4444;">
+          <i class="fas fa-exclamation-triangle" style="font-size:48px; margin-bottom:16px; display:block;"></i>
+          <p style="font-weight:600; margin-bottom:8px;">Gagal memuat data admin</p>
+          <small style="color:#94a3b8;">${err.message}</small>
+          <div style="margin-top:16px;">
+            <button class="btn btn-secondary" onclick="loadAdmins()" style="padding:8px 16px;">
+              <i class="fas fa-sync-alt"></i> Coba Lagi
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+
+    // Tampilkan alert error
+    await showAlert("error", "Error", `Gagal memuat data admin: ${err.message}`);
   }
 }
 
@@ -373,7 +717,13 @@ function openEditAdminModal(id, username, email, role) {
       currentPasswordField.style.display = "block";
     }
   } else {
-    // Admin biasa edit sendiri, tampilkan field password saat ini
+    // Admin biasa hanya bisa edit sendiri
+    editUsernameField.style.display = "block";
+    document.getElementById("editUsernameInput").value = username;
+
+    editEmailField.style.display = "block";
+    document.getElementById("editEmailInput").value = email || "";
+
     currentPasswordField.style.display = "block";
   }
 
@@ -473,8 +823,8 @@ async function updateAdminCredentials() {
       successMessages.push(`Email berhasil diubah dari "${oldEmailText}" menjadi "${newEmailText}"`);
     }
 
-    // Update role (TIDAK PERLU password)
-    if (newRole !== null && !isOwnAccount && newRole && newRole !== editTargetAdminRole) {
+    // Update role (TIDAK PERLU password) - hanya superadmin yang bisa
+    if (newRole !== null && isSuperadmin && !isOwnAccount && newRole && newRole !== editTargetAdminRole) {
       const roleRes = await fetch(`/api/admins/${editTargetAdminId}/role`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -607,39 +957,17 @@ async function checkRoleAccess() {
     // Update profile with real data
     updateAdminProfile(data.username, data.role);
 
-    // Show/hide admin management based on role
-    const addAdminBtn = document.getElementById("addAdminBtn");
-    const adminTabBtn = document.getElementById("adminTabBtn");
-    const adminTabNav = document.getElementById("adminTabNav");
+    // Jika bukan superadmin, load hanya data sendiri di tab admins
+    if (currentAdminRole !== "superadmin") {
+      const addAdminBtn = document.getElementById("addAdminBtn");
+      const addUserBtn = document.getElementById("addUserBtn");
 
-    if (data.role === "superadmin") {
-      if (addAdminBtn) addAdminBtn.style.display = "flex";
-      if (adminTabBtn) adminTabBtn.style.display = "flex";
-      if (adminTabNav) adminTabNav.style.display = "block";
-
-      // Show info banner for superadmin
-      const infoBanner = document.getElementById("infoBanner");
-      if (infoBanner) {
-        infoBanner.style.display = "block";
-        setTimeout(() => {
-          infoBanner.style.display = "none";
-        }, 5000);
-      }
-    } else {
       if (addAdminBtn) addAdminBtn.style.display = "none";
-      if (adminTabBtn) adminTabBtn.style.display = "none";
-      if (adminTabNav) adminTabNav.style.display = "none";
-
-      // Make sure we're on users tab
-      const adminsTab = document.getElementById("adminsTab");
-      const usersTab = document.getElementById("usersTab");
-      if (adminsTab) adminsTab.classList.remove("active");
-      if (usersTab) usersTab.classList.add("active");
-
-      const tabs = document.querySelectorAll(".tab-btn");
-      if (tabs[0]) tabs[0].classList.add("active");
-      if (tabs[1]) tabs[1].classList.remove("active");
+      if (addUserBtn) addUserBtn.style.display = "none";
     }
+
+    // Load users setelah role diketahui
+    loadUsers();
   } catch (err) {
     console.error("Error checking role access:", err);
     updateAdminProfile("Admin", "admin");
@@ -660,7 +988,6 @@ function isValidEmail(email) {
 // ============= INIT =============
 document.addEventListener("DOMContentLoaded", () => {
   checkRoleAccess();
-  loadUsers();
 
   window.onclick = function (event) {
     if (event.target.classList.contains("modal")) {

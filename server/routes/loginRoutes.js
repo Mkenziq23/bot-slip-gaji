@@ -95,14 +95,55 @@ router.post("/login", async (req, res) => {
   }
 
   // Jika bukan admin, coba login sebagai Karyawan
-  let [karyawanRows] = await db.query("SELECT *, 'hisana' as company FROM data_karyawan_hisana WHERE no_induk = ? OR email = ?", [username, username]);
+  // Untuk Hisana
+  let [karyawanRows] = await db.query(
+    `SELECT 
+      id, 
+      user_id, 
+      no_induk, 
+      nama_lengkap, 
+      email, 
+      password, 
+      jabatan, 
+      cabang, 
+      nama_gerai,
+      'hisana' as company 
+    FROM data_karyawan_hisana 
+    WHERE no_induk = ? OR email = ?`,
+    [username, username],
+  );
 
+  // Jika tidak ditemukan di Hisana, coba di Enakko
   if (karyawanRows.length === 0) {
-    [karyawanRows] = await db.query("SELECT *, 'enakko' as company FROM data_karyawan_enakko WHERE no_induk = ? OR email = ?", [username, username]);
+    [karyawanRows] = await db.query(
+      `SELECT 
+        id, 
+        user_id, 
+        no_induk, 
+        nama_lengkap, 
+        email, 
+        password, 
+        jabatan, 
+        cabang, 
+        nama_gerai,
+        'enakko' as company 
+      FROM data_karyawan_enakko 
+      WHERE no_induk = ? OR email = ?`,
+      [username, username],
+    );
   }
+
+  console.log("Karyawan query result:", karyawanRows); // Debug log
 
   if (karyawanRows.length > 0) {
     const karyawan = karyawanRows[0];
+
+    console.log("Found karyawan:", {
+      id: karyawan.id,
+      nama_lengkap: karyawan.nama_lengkap,
+      company: karyawan.company,
+      hasPassword: !!karyawan.password,
+    });
 
     if (!karyawan.password) {
       return res.json({
@@ -114,6 +155,7 @@ router.post("/login", async (req, res) => {
     const match = await bcrypt.compare(password, karyawan.password);
 
     if (match) {
+      // Simpan ke session
       req.session.karyawan = {
         id: karyawan.id,
         user_id: karyawan.user_id,
@@ -123,24 +165,33 @@ router.post("/login", async (req, res) => {
         jabatan: karyawan.jabatan,
         cabang: karyawan.cabang,
         nama_gerai: karyawan.nama_gerai,
-        company: karyawan.company,
+        company: karyawan.company, // 'hisana' atau 'enakko'
       };
 
-      req.session.save(() =>
+      console.log("Session karyawan saved:", req.session.karyawan); // Debug log
+
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.json({ success: false, message: "Gagal menyimpan session" });
+        }
+
         res.json({
           success: true,
           type: "karyawan",
           nama: karyawan.nama_lengkap,
           redirect: "/karyawan-profile",
-        }),
-      );
+        });
+      });
       return;
+    } else {
+      console.log("Password mismatch for karyawan:", karyawan.nama_lengkap);
     }
   }
 
   res.json({
     success: false,
-    message: "Username/Email/No Induk atau password salah",
+    message: "No Induk/Email atau password salah",
   });
 });
 
@@ -151,48 +202,6 @@ router.post("/login", async (req, res) => {
  */
 router.get("/karyawan-profile", requireKaryawan, async (req, res) => {
   res.sendFile(path.join(process.cwd(), "public/karyawan-profile.html"));
-});
-
-/**
- * ==========================
- * Get Data Karyawan untuk Profile
- * ==========================
- */
-router.get("/api/karyawan/profile", requireKaryawan, async (req, res) => {
-  const karyawan = req.session.karyawan;
-  const company = karyawan.company;
-  const tableName = company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
-
-  try {
-    const [rows] = await db.query(`SELECT * FROM ${tableName} WHERE id = ?`, [karyawan.id]);
-
-    if (!rows.length) {
-      return res.status(404).json({ success: false, message: "Data tidak ditemukan" });
-    }
-
-    const profileData = { ...rows[0] };
-    delete profileData.password;
-
-    const slipTable = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
-    const [slipRows] = await db.query(`SELECT * FROM ${slipTable} WHERE no_induk = ? ORDER BY tanggal DESC LIMIT 12`, [karyawan.no_induk]);
-
-    const bonusTable = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-    const [bonusRows] = await db.query(`SELECT * FROM ${bonusTable} WHERE no_induk = ? ORDER BY tanggal DESC LIMIT 12`, [karyawan.no_induk]);
-
-    const thrTable = company === "hisana" ? "thr_hisana" : "thr_enakko";
-    const [thrRows] = await db.query(`SELECT * FROM ${thrTable} WHERE no_induk = ? ORDER BY tanggal DESC LIMIT 12`, [karyawan.no_induk]);
-
-    res.json({
-      success: true,
-      profile: profileData,
-      slip_gaji: slipRows,
-      bonus: bonusRows,
-      thr: thrRows,
-    });
-  } catch (err) {
-    console.error("Error fetching karyawan profile:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
 });
 
 /**

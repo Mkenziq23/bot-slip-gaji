@@ -3053,3 +3053,476 @@ textarea:focus {
     font-size: 36px;
   }
 }
+
+/* ============================================ */
+/* LOKASI STORE SPECIFIC STYLES - FULL FIXED */
+/* ============================================ */
+
+/* Map Container Styles */
+#mapContainer,
+#modalMapContainer {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  min-height: 400px;
+}
+
+/* Loading indicator for map */
+.map-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 400px;
+  background: #f8fafc;
+  color: #64748b;
+  gap: 10px;
+}
+
+.map-loading i {
+  margin-right: 8px;
+  font-size: 1rem;
+}
+
+/* Location Table Styles */
+#tableLokasi {
+  min-width: 800px;
+}
+
+#tableLokasi td {
+  vertical-align: middle;
+}
+
+#tableLokasi .btn-outline {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+#tableLokasi .btn-outline:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+  transform: translateY(-1px);
+}
+
+#tableLokasi .btn-outline i {
+  font-size: 0.85rem;
+}
+
+/* ============================================ */
+/* MODAL LOKASI STORE - COMPLETE FIXED */
+/* ============================================ */
+
+/* Modal Container */
+#lokasiModal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Modal Content */
+#lokasiModal .modalContent {
+  background: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  animation: modalFadeIn 0.2s ease;
+}
+
+/* Modal Header */
+#lokasiModal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 16px 16px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+#lokasiModal .modal-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+#lokasiModal .modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #94a3b8;
+  transition: color 0.2s;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+#lokasiModal .modal-close:hover {
+  background: #f1f5f9;
+  color: #ef4444;
+}
+
+/* Modal Footer */
+#lokasiModal .modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 0 0 16px 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+/* Modal Form Grid */
+#lokasiModal .formGrid {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+/* Form Group */
+#lokasiModal .formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#lokasiModal .formGroup label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+#lokasiModal .formGroup input,
+#lokasiModal .formGroup textarea {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  outline: none;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+#lokasiModal .formGroup input:focus,
+#lokasiModal .formGroup textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+#lokasiModal .formGroup input[readonly] {
+  background: #f8fafc;
+  cursor: not-allowed;
+}
+
+#lokasiModal textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+/* Full width for map and search */
+#lokasiModal .formGroup[style*="grid-column: span 2"] {
+  grid-column: span 2;
+}
+
+/* Modal Animation */
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ============================================ */
+/* LOCATION SEARCH DROPDOWN */
+/* ============================================ */
+
+.search-location-container {
+  position: relative;
+  width: 100%;
+}
+
+.location-search-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.location-search-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.location-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.location-dropdown-item {
+  padding: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.2s ease;
+}
+
+.location-dropdown-item:hover {
+  background: #f8fafc;
+}
+
+.location-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.location-dropdown-name {
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.location-dropdown-address {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ============================================ */
+/* EMPTY STATE */
+/* ============================================ */
+
+.empty-state-lokasi {
+  text-align: center;
+  padding: 40px;
+}
+
+.empty-state-lokasi i {
+  font-size: 48px;
+  color: #cbd5e1;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.empty-state-lokasi p {
+  color: #64748b;
+  margin-bottom: 20px;
+}
+
+/* ============================================ */
+/* MODAL MAP CONTAINER */
+/* ============================================ */
+
+#modalMapContainer {
+  height: 300px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+/* Small info text */
+#lokasiModal small {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+#lokasiModal small i {
+  margin-right: 4px;
+}
+
+/* ============================================ */
+/* RESPONSIVE FOR LOKASI STORE */
+/* ============================================ */
+
+@media (max-width: 768px) {
+  #lokasiModal .formGrid {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 16px;
+  }
+
+  #lokasiModal .formGroup[style*="grid-column: span 2"] {
+    grid-column: span 1;
+  }
+
+  #lokasiModal .modalContent {
+    max-width: 95%;
+    max-height: 85vh;
+  }
+
+  #mapContainer,
+  #modalMapContainer {
+    height: 300px !important;
+    min-height: 300px;
+  }
+
+  .map-loading {
+    min-height: 300px;
+  }
+
+  #tableLokasi {
+    min-width: 600px;
+  }
+
+  #tableLokasi td,
+  #tableLokasi th {
+    padding: 8px;
+    font-size: 0.75rem;
+  }
+
+  #lokasiModal .modal-header {
+    padding: 12px 16px;
+  }
+
+  #lokasiModal .modal-header h3 {
+    font-size: 1rem;
+  }
+
+  #lokasiModal .modal-footer {
+    padding: 12px 16px;
+  }
+
+  #lokasiModal .formGroup label {
+    font-size: 0.75rem;
+  }
+
+  #lokasiModal .formGroup input,
+  #lokasiModal .formGroup textarea {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 480px) {
+  #lokasiModal .formGrid {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .location-search-input {
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+
+  .location-dropdown-item {
+    padding: 10px;
+  }
+
+  .location-dropdown-name {
+    font-size: 13px;
+  }
+
+  .location-dropdown-address {
+    font-size: 11px;
+  }
+}
+/* ============================================ */
+/* SATELLITE MAP STYLES */
+/* ============================================ */
+
+/* Map container enhancement */
+#mapContainer,
+#modalMapContainer {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  background: #1a1a2e;
+  min-height: 400px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Map loading state */
+.map-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 400px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: #ffffff;
+  gap: 10px;
+}
+
+.map-loading i {
+  font-size: 1.5rem;
+  color: #3b82f6;
+}
+
+/* Custom marker shadow for better visibility on satellite */
+.custom-marker {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+/* Map attribution styling */
+.leaflet-control-attribution {
+  background: rgba(0, 0, 0, 0.7) !important;
+  color: #fff !important;
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+}
+
+.leaflet-control-attribution {
+  display: none !important;
+}
+
+.leaflet-control-attribution a {
+  color: #3b82f6 !important;
+}
+
+/* Zoom control styling */
+.leaflet-control-zoom a {
+  background: rgba(0, 0, 0, 0.7) !important;
+  color: white !important;
+  border: none !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: rgba(37, 99, 235, 0.8) !important;
+}

@@ -4,12 +4,15 @@ import session from "express-session";
 import http from "http";
 import { WebSocketServer } from "ws";
 
+import dashboardDataRoutes from "./routes/dashboardDataRoutes.js";
 import slipRoutes from "./routes/slipGajiRoutes.js";
 import loginRoutes from "./routes/loginRoutes.js";
 import userManagementRoutes from "./routes/userManagementRoutes.js";
 import bonusRoutes from "./routes/slipBonusRoutes.js";
 import thrRoutes from "./routes/slipThrRoutes.js";
 import dataKaryawanRoutes from "./routes/dataKaryawanRoutes.js";
+import karyawanProfileRoutes from "./routes/karyawanProfileRoutes.js";
+import lokasiStoreRoutes from "./routes/LokasiStoreRoutes.js";
 
 import { startBot, getSocketByNumber, logoutBot } from "../bot/index.js";
 
@@ -69,107 +72,15 @@ app.use(async (req, res, next) => {
 // ROUTES
 // ============================
 
+app.use("/", dashboardDataRoutes);
 app.use("/", slipRoutes);
 app.use("/", loginRoutes);
 app.use("/", userManagementRoutes);
 app.use("/", bonusRoutes);
 app.use("/", thrRoutes);
 app.use("/", dataKaryawanRoutes);
-
-// ============================
-// DASHBOARD DATA ROUTE
-// ============================
-app.get("/dashboard-data", async (req, res) => {
-  const company = req.query.company || "hisana";
-
-  // Tentukan nama tabel berdasarkan company
-  const tableKaryawan = company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
-  const tableSlipGaji = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
-  const tableBonus = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-  const tableThr = company === "hisana" ? "thr_hisana" : "thr_enakko";
-
-  console.log(`Dashboard request for company: ${company}`);
-  console.log(`Using tables: ${tableKaryawan}, ${tableSlipGaji}, ${tableBonus}, ${tableThr}`);
-
-  try {
-    // Get total karyawan
-    const [karyawanCount] = await db.query(`SELECT COUNT(*) as total FROM ${tableKaryawan}`);
-    console.log(`Total karyawan: ${karyawanCount[0]?.total || 0}`);
-
-    // Get total slip gaji
-    const [slipCount] = await db.query(`SELECT COUNT(*) as total FROM ${tableSlipGaji}`);
-    console.log(`Total slip: ${slipCount[0]?.total || 0}`);
-
-    // Get total bonus
-    const [bonusCount] = await db.query(`SELECT COUNT(*) as total FROM ${tableBonus}`);
-    console.log(`Total bonus: ${bonusCount[0]?.total || 0}`);
-
-    // Get total THR
-    const [thrCount] = await db.query(`SELECT COUNT(*) as total FROM ${tableThr}`);
-    console.log(`Total THR: ${thrCount[0]?.total || 0}`);
-
-    // Get ringkasan per karyawan
-    let karyawanRingkasan = [];
-
-    if (company === "hisana") {
-      const [rows] = await db.query(`
-        SELECT 
-          k.no_induk,
-          k.nama_lengkap as nama,
-          k.jabatan,
-          COALESCE(SUM(s.gaji_total), 0) as total_gaji,
-          COALESCE(SUM(b.jumlah_bonus), 0) as total_bonus,
-          COALESCE(SUM(t.jumlah_thr), 0) as total_thr
-        FROM ${tableKaryawan} k
-        LEFT JOIN ${tableSlipGaji} s ON k.no_induk = s.no_induk
-        LEFT JOIN ${tableBonus} b ON k.no_induk = b.no_induk
-        LEFT JOIN ${tableThr} t ON k.no_induk = t.no_induk
-        GROUP BY k.id, k.no_induk, k.nama_lengkap, k.jabatan
-        ORDER BY k.no_induk ASC
-      `);
-      karyawanRingkasan = rows;
-    } else {
-      const [rows] = await db.query(`
-        SELECT 
-          k.no_induk,
-          k.nama_lengkap as nama,
-          k.jabatan,
-          COALESCE(SUM(s.total_gaji), 0) as total_gaji,
-          COALESCE(SUM(b.jumlah_bonus), 0) as total_bonus,
-          COALESCE(SUM(t.jumlah_thr), 0) as total_thr
-        FROM ${tableKaryawan} k
-        LEFT JOIN ${tableSlipGaji} s ON k.no_induk = s.no_induk
-        LEFT JOIN ${tableBonus} b ON k.no_induk = b.no_induk
-        LEFT JOIN ${tableThr} t ON k.no_induk = t.no_induk
-        GROUP BY k.id, k.no_induk, k.nama_lengkap, k.jabatan
-        ORDER BY k.no_induk ASC
-      `);
-      karyawanRingkasan = rows;
-    }
-
-    console.log(`Returning ${karyawanRingkasan.length} karyawan records`);
-
-    res.json({
-      success: true,
-      totalKaryawan: karyawanCount[0]?.total || 0,
-      totalSlip: slipCount[0]?.total || 0,
-      totalBonus: bonusCount[0]?.total || 0,
-      totalThr: thrCount[0]?.total || 0,
-      karyawanRingkasan: karyawanRingkasan,
-    });
-  } catch (err) {
-    console.error("Dashboard data error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message,
-      totalKaryawan: 0,
-      totalSlip: 0,
-      totalBonus: 0,
-      totalThr: 0,
-      karyawanRingkasan: [],
-    });
-  }
-});
+app.use("/", karyawanProfileRoutes);
+app.use("/api/lokasi-store", lokasiStoreRoutes);
 
 // ============================
 // QR SCAN PAGE
@@ -308,6 +219,217 @@ app.post("/set-number", async (req, res) => {
 
     res.status(500).json({
       success: false,
+    });
+  }
+});
+
+// ============================
+// OTP STORAGE (DATABASE VERSION)
+// ============================
+
+// Cleanup expired OTPs every minute
+setInterval(async () => {
+  try {
+    await db.query("DELETE FROM otp_codes WHERE expires_at < NOW()");
+    console.log("[OTP] Cleaned up expired OTPs");
+  } catch (err) {
+    console.error("[OTP] Cleanup error:", err);
+  }
+}, 60000);
+
+// Generate random 6-digit OTP
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Request OTP endpoint
+app.post("/request-otp", async (req, res) => {
+  const { phoneNumber } = req.body;
+
+  console.log(`[OTP] Request received for ${phoneNumber}`);
+
+  if (!phoneNumber) {
+    return res.status(400).json({
+      success: false,
+      message: "Nomor WhatsApp diperlukan",
+    });
+  }
+
+  // Validate phone number format
+  const phoneRegex = /^62[0-9]{10,13}$/;
+  if (!phoneRegex.test(phoneNumber)) {
+    return res.status(400).json({
+      success: false,
+      message: "Format nomor tidak valid. Gunakan format 62xxxxxxxxxxx",
+    });
+  }
+
+  // Check if user exists in database
+  const user = await getUserIfExists(phoneNumber);
+  if (!user) {
+    return res.status(403).json({
+      success: false,
+      message: "Nomor WhatsApp tidak terdaftar. Hubungi admin untuk pendaftaran.",
+    });
+  }
+
+  // Check for existing valid OTP (not expired and not used)
+  const [existingOTP] = await db.query(
+    `SELECT * FROM otp_codes 
+     WHERE nomor_wa = ? 
+     AND expires_at > NOW() 
+     AND is_used = FALSE 
+     ORDER BY created_at DESC 
+     LIMIT 1`,
+    [phoneNumber],
+  );
+
+  if (existingOTP.length > 0) {
+    const expiresAt = new Date(existingOTP[0].expires_at);
+    const now = new Date();
+    const timeLeft = Math.ceil((expiresAt - now) / 1000);
+
+    if (timeLeft > 0 && timeLeft < 300) {
+      return res.status(429).json({
+        success: false,
+        message: `Tunggu ${timeLeft} detik sebelum meminta kode baru`,
+      });
+    }
+  }
+
+  // Generate and store OTP
+  const otp = generateOTP();
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+  try {
+    // Delete old OTPs for this number
+    await db.query(`UPDATE otp_codes SET is_used = TRUE WHERE nomor_wa = ? AND is_used = FALSE`, [phoneNumber]);
+
+    // Insert new OTP to database
+    await db.query(
+      `INSERT INTO otp_codes (nomor_wa, otp_code, attempts, expires_at, is_used) 
+       VALUES (?, ?, 0, ?, FALSE)`,
+      [phoneNumber, otp, expiresAt],
+    );
+
+    console.log(`[OTP] OTP ${otp} stored for ${phoneNumber}`);
+    res.json({
+      success: true,
+      message: `Kode OTP: ${otp} (cek console server untuk kode)`,
+      otp: otp, // Kirim OTP ke frontend untuk testing (opsional)
+    });
+  } catch (error) {
+    console.error("[OTP] Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan sistem, silakan coba lagi",
+    });
+  }
+});
+
+// Verify OTP endpoint
+app.post("/verify-otp", async (req, res) => {
+  const { phoneNumber, otpCode } = req.body;
+
+  console.log(`[OTP] Verify request for ${phoneNumber} with code ${otpCode}`);
+
+  if (!phoneNumber || !otpCode) {
+    return res.status(400).json({
+      success: false,
+      message: "Nomor WhatsApp dan kode OTP diperlukan",
+    });
+  }
+
+  try {
+    // Get OTP from database
+    const [otpRecords] = await db.query(
+      `SELECT * FROM otp_codes 
+       WHERE nomor_wa = ? 
+       AND otp_code = ? 
+       AND is_used = FALSE 
+       AND expires_at > NOW()
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [phoneNumber, otpCode],
+    );
+
+    if (otpRecords.length === 0) {
+      // Check if OTP exists but expired or used
+      const [expiredOTP] = await db.query(
+        `SELECT * FROM otp_codes 
+         WHERE nomor_wa = ? 
+         AND otp_code = ? 
+         ORDER BY created_at DESC 
+         LIMIT 1`,
+        [phoneNumber, otpCode],
+      );
+
+      if (expiredOTP.length > 0) {
+        if (expiredOTP[0].is_used) {
+          return res.status(400).json({
+            success: false,
+            message: "Kode OTP sudah digunakan. Silakan minta kode baru.",
+          });
+        } else if (new Date(expiredOTP[0].expires_at) < new Date()) {
+          return res.status(400).json({
+            success: false,
+            message: "Kode OTP telah kadaluarsa. Silakan minta kode baru.",
+          });
+        }
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: "Kode OTP tidak valid",
+      });
+    }
+
+    const otpRecord = otpRecords[0];
+
+    // Check attempts (max 5 attempts)
+    if (otpRecord.attempts >= 5) {
+      await db.query(`UPDATE otp_codes SET is_used = TRUE WHERE id = ?`, [otpRecord.id]);
+
+      return res.status(400).json({
+        success: false,
+        message: "Terlalu banyak percobaan gagal. Silakan minta kode baru.",
+      });
+    }
+
+    // Verify OTP
+    if (otpRecord.otp_code !== otpCode) {
+      await db.query(`UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?`, [otpRecord.id]);
+
+      const remaining = 5 - (otpRecord.attempts + 1);
+      return res.status(400).json({
+        success: false,
+        message: `Kode OTP salah. Sisa percobaan: ${remaining}`,
+      });
+    }
+
+    // OTP verified successfully - mark as used
+    await db.query(`UPDATE otp_codes SET is_used = TRUE WHERE id = ?`, [otpRecord.id]);
+
+    // Check if user exists again
+    const user = await getUserIfExists(phoneNumber);
+    if (!user) {
+      return res.status(403).json({
+        success: false,
+        message: "Nomor WhatsApp tidak terdaftar",
+      });
+    }
+
+    console.log(`[OTP] User ${phoneNumber} verified successfully`);
+
+    res.json({
+      success: true,
+      message: "Verifikasi berhasil",
+    });
+  } catch (error) {
+    console.error("[OTP] Verify error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan sistem, silakan coba lagi",
     });
   }
 });

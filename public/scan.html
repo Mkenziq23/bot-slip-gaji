@@ -5,370 +5,63 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sistem Login Payroll</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
-    <style>
-      :root {
-        --brand-color: #2563eb;
-        --brand-dark: #1e40af;
-        --success-color: #16a34a;
-        --bg-gradient: linear-gradient(135deg, #1e40af 0%, #1e293b 100%);
-        --text-main: #2c3e50;
-      }
-
-      body {
-        font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        background: #f0f2f5;
-        background-image: var(--bg-gradient);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        margin: 0;
-        overflow: hidden;
-      }
-
-      .qr-card {
-        background: #ffffff;
-        padding: 40px;
-        border-radius: 24px;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-        text-align: center;
-        width: 100%;
-        max-width: 400px;
-        position: relative;
-        z-index: 10;
-        transition: transform 0.3s ease;
-      }
-
-      .qr-card:hover {
-        transform: translateY(-5px);
-      }
-
-      h2 {
-        color: var(--text-main);
-        margin: 0 0 10px 0;
-        font-size: 24px;
-        font-weight: 700;
-      }
-
-      p.instruction {
-        color: #64748b;
-        margin-bottom: 30px;
-        font-size: 14px;
-        line-height: 1.5;
-      }
-
-      .qr-wrapper {
-        background: #f8fafc;
-        padding: 20px;
-        border-radius: 16px;
-        border: 2px dashed #e2e8f0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 260px;
-        margin-bottom: 25px;
-        position: relative;
-      }
-
-      canvas#qr {
-        display: none;
-        max-width: 100% !important;
-        height: auto !important;
-        border-radius: 8px;
-      }
-
-      /* Spinner Loading */
-      .spinner {
-        width: 45px;
-        height: 45px;
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid var(--brand-color);
-        border-radius: 50%;
-        animation: spin 1s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
-      }
-
-      @keyframes spin {
-        0% {
-          transform: rotate(0deg);
-        }
-        100% {
-          transform: rotate(360deg);
-        }
-      }
-
-      /* Status Container */
-      #status {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        padding: 10px 24px;
-        border-radius: 50px;
-        font-size: 13px;
-        font-weight: 600;
-        background: #f1f5f9;
-        color: #64748b;
-        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      }
-
-      /* Icon Centang (Hidden by default) */
-      .checkmark-icon {
-        display: none;
-        width: 20px;
-        height: 20px;
-        color: var(--success-color);
-        stroke-dasharray: 100;
-        stroke-dashoffset: 100;
-      }
-
-      /* State: Connected / Berhasil */
-      #status.connected {
-        background: #dcfce7;
-        color: #166534;
-        padding-left: 18px;
-      }
-
-      #status.connected .checkmark-icon {
-        display: block;
-        animation:
-          scaleIn 0.3s forwards,
-          drawCheck 0.5s 0.2s forwards;
-      }
-
-      @keyframes scaleIn {
-        from {
-          transform: scale(0);
-          opacity: 0;
-        }
-        to {
-          transform: scale(1);
-          opacity: 1;
-        }
-      }
-
-      @keyframes drawCheck {
-        to {
-          stroke-dashoffset: 0;
-        }
-      }
-
-      /* Background Decoration */
-      .bg-circles {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 1;
-        overflow: hidden;
-      }
-
-      .circle {
-        position: absolute;
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 50%;
-      }
-    </style>
+    <link rel="stylesheet" href="/css/scan.css" />
   </head>
-
   <body>
-    <div class="bg-circles">
-      <div class="circle" style="width: 400px; height: 400px; top: -150px; left: -100px"></div>
-      <div class="circle" style="width: 300px; height: 300px; bottom: -100px; right: -50px"></div>
-    </div>
+    <div class="login-card">
+      <h2><i class="fas fa-file-invoice-dollar"></i> Payroll System</h2>
+      <div class="subtitle">PT Hisana & PT Enakko</div>
 
-    <div class="qr-card">
-      <div id="brand-area">
-        <h2>Payroll System</h2>
-      </div>
-      <p class="instruction">Otorisasi akses melalui WhatsApp.<br />Scan QR Code untuk melanjutkan login.</p>
-
-      <div class="qr-wrapper">
-        <div id="loading" class="spinner"></div>
-        <canvas id="qr"></canvas>
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('qr', this)">Login With QR Code</button>
+        <button class="tab-btn" onclick="switchTab('otp', this)">Login With Number</button>
       </div>
 
-      <div id="status">
-        <svg class="checkmark-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
-        <span id="status-text">Menghubungkan ke Server...</span>
+      <!-- Tab QR -->
+      <div id="qr-tab" class="tab-content active">
+        <p style="text-align: center; margin-bottom: 20px; color: #64748b">Scan QR Code dengan WhatsApp</p>
+        <div class="qr-wrapper">
+          <div id="loading" class="spinner"></div>
+          <canvas id="qr"></canvas>
+        </div>
       </div>
+
+      <!-- Tab OTP -->
+      <div id="otp-tab" class="tab-content">
+        <div id="otp-message"></div>
+
+        <div class="form-group">
+          <label><i class="fab fa-whatsapp"></i> Nomor WhatsApp</label>
+          <div class="phone-input-wrapper">
+            <span class="phone-prefix">+62</span>
+            <input type="tel" id="phone-number" placeholder="81234567890" autocomplete="off" />
+          </div>
+          <div class="info-text">Masukkan 10-13 digit setelah 62 (contoh: 81234567890)</div>
+        </div>
+
+        <button class="btn btn-primary" id="action-btn" onclick="handleAction()"><i class="fas fa-paper-plane"></i> Minta Kode OTP</button>
+
+        <div id="otp-section" style="display: none; margin-top: 20px">
+          <div class="otp-display">
+            <div><i class="fas fa-info-circle"></i> Kode OTP Anda</div>
+            <div class="code" id="displayed-otp">------</div>
+            <div class="info-text"><i class="fas fa-clock"></i> Berlaku 2 menit</div>
+          </div>
+
+          <div class="form-group">
+            <label><i class="fas fa-key"></i> Masukkan Kode OTP</label>
+            <div class="otp-input-group">
+              <input type="text" id="otp-code" placeholder="000000" maxlength="6" autocomplete="off" />
+            </div>
+          </div>
+          <div id="timer" class="timer"></div>
+        </div>
+      </div>
+
+      <div id="status">Menghubungkan ke Server...</div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
-
-    <script>
-      const qrCanvas = document.getElementById("qr");
-      const statusBox = document.getElementById("status");
-      const statusText = document.getElementById("status-text");
-      const loading = document.getElementById("loading");
-
-      let ws;
-
-      function connectWS() {
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        ws = new WebSocket(`${protocol}//${location.host}`);
-
-        /*
-    ============================
-    WS CONNECTED
-    ============================
-    */
-        ws.onopen = () => {
-          console.log("WS connected");
-          statusText.innerText = "Menunggu QR...";
-        };
-
-        /*
-    ============================
-    RECEIVE MESSAGE
-    ============================
-    */
-        ws.onmessage = async (event) => {
-          const data = JSON.parse(event.data);
-
-          /*
-      ============================
-      QR RECEIVED
-      ============================
-      */
-          if (data.qr) {
-            loading.style.display = "none";
-
-            qrCanvas.style.display = "block";
-
-            QRCode.toCanvas(qrCanvas, data.qr, {
-              width: 250,
-              margin: 2,
-              color: {
-                dark: "#1e293b",
-                light: "#f8fafc",
-              },
-            });
-
-            statusText.innerText = "Silakan Scan Sekarang";
-          }
-
-          /*
-      ============================
-      LOGIN SUCCESS
-      ============================
-      */
-          if (data.status === "connected") {
-            statusBox.classList.add("connected");
-
-            statusText.innerText = "Login Berhasil";
-
-            qrCanvas.style.opacity = "0.3";
-
-            try {
-              const res = await fetch("/set-number", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  number: data.number,
-                }),
-              });
-
-              const result = await res.json();
-
-              if (result.success) {
-                setTimeout(() => {
-                  window.location.href = "/dashboard";
-                }, 1200);
-              } else {
-                statusText.innerText = "Gagal menyimpan session";
-
-                statusBox.classList.remove("connected");
-              }
-            } catch (err) {
-              console.error(err);
-
-              statusText.innerText = "Gagal terhubung ke server";
-            }
-          }
-
-          /*
-      ============================
-      USER NOT REGISTERED
-      ============================
-      */
-          if (data.status === "not_registered") {
-            console.log("User belum terdaftar");
-
-            statusBox.classList.remove("connected");
-
-            statusText.innerText = "Nomor belum terdaftar";
-
-            qrCanvas.style.opacity = "0.3";
-
-            setTimeout(() => {
-              window.location.href = "/404.html";
-            }, 1500);
-          }
-
-          /*
-      ============================
-      FORCE LOGOUT
-      ============================
-      */
-          if (data.status === "force_logout") {
-            console.log("Force logout dari server");
-
-            statusBox.classList.remove("connected");
-
-            statusText.innerText = "Session berakhir, silakan login ulang";
-
-            qrCanvas.style.display = "none";
-
-            loading.style.display = "block";
-
-            setTimeout(connectWS, 2000);
-          }
-        };
-
-        /*
-    ============================
-    WS DISCONNECTED
-    ============================
-    */
-        ws.onclose = () => {
-          console.log("WS disconnected");
-
-          statusBox.classList.remove("connected");
-
-          statusText.innerText = "Menghubungkan ulang...";
-
-          loading.style.display = "block";
-
-          qrCanvas.style.display = "none";
-
-          setTimeout(connectWS, 2000);
-        };
-
-        /*
-    ============================
-    WS ERROR
-    ============================
-    */
-        ws.onerror = () => {
-          console.log("WS error");
-
-          statusText.innerText = "Koneksi bermasalah, mencoba ulang...";
-
-          ws.close();
-        };
-      }
-
-      /*
-  ============================
-  START CONNECTION
-  ============================
-  */
-      connectWS();
-    </script>
+    <script src="/js/scan.js"></script>
   </body>
 </html>

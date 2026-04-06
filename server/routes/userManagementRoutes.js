@@ -39,11 +39,22 @@ function isValidEmail(email) {
  */
 router.get("/api/admin/me", requireAdmin, async (req, res) => {
   try {
+    // Ambil data lengkap termasuk email dari database
+    const [admins] = await db.query("SELECT id, username, email, role, created_at FROM admins WHERE id = ?", [req.session.admin.id]);
+
+    if (admins.length === 0) {
+      return res.status(404).json({ error: "Admin not found" });
+    }
+
+    const admin = admins[0];
+
     res.json({
       loggedIn: true,
-      id: req.session.admin.id,
-      username: req.session.admin.username,
-      role: req.session.admin.role,
+      id: admin.id,
+      username: admin.username,
+      email: admin.email,
+      role: admin.role,
+      created_at: admin.created_at,
     });
   } catch (err) {
     console.error(err);

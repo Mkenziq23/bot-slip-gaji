@@ -172,7 +172,6 @@ function renderDashboardTable() {
       <td class="money">${rupiah(totalGaji)}</td>
       <td class="money">${rupiah(totalBonus)}</td>
       <td class="money">${rupiah(totalThr)}</td>
-      <td><span class="status-badge success">Aktif</span></td>
     `;
     tbody.appendChild(tr);
   });
@@ -1311,6 +1310,8 @@ function showDataKaryawanSection(company) {
     return;
   }
 
+  // JANGAN tutup dropdown Data Master - biarkan tetap terbuka
+
   // Update active state di sidebar untuk Data Master dropdown
   if (company === "hisana") {
     const hisanaToggle = document.getElementById("dataMasterHisanaToggle");
@@ -1342,11 +1343,10 @@ function showDataKaryawanSection(company) {
     }
   }
 
-  // Update active class untuk nav-item
+  // Update active class untuk nav-item - HAPUS active dari semua nav-item
   document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.remove("active"));
 
-  // Jangan remove active dari dropdown toggle, biarkan tetap active
-  // Hanya update active untuk menu yang dipilih
+  // Set active untuk menu Data Karyawan yang dipilih
   const dataKaryawanBtn = company === "hisana" ? document.getElementById("dataKaryawanHisana") : document.getElementById("dataKaryawanEnakko");
   if (dataKaryawanBtn) {
     dataKaryawanBtn.classList.add("active");
@@ -1438,6 +1438,1046 @@ function setupDataKaryawanHandlers() {
     console.log("✅ Data Karyawan Enakko button registered");
   } else {
     console.warn("⚠️ dataKaryawanEnakko not found");
+  }
+}
+
+// =============================
+// LOKASI STORE FUNCTIONS - WITH LEAFLET (NO API KEY) - FULLY FIXED
+// =============================
+let lokasiData = [];
+let currentLokasiPage = 1;
+const pageSizeLokasi = 10;
+let currentLokasiCompany = "hisana";
+let mainMap = null;
+let modalMap = null;
+let mainMarkers = [];
+let selectedMarker = null;
+let geocoder = null;
+
+// Initialize Leaflet Map (No API Key Required!)
+function initMainMap() {
+  const mapContainer = document.getElementById("mapContainer");
+  if (!mapContainer) {
+    console.warn("Map container not found");
+    return;
+  }
+
+  // Clear container
+  mapContainer.innerHTML = "";
+
+  // Center: Jakarta
+  const defaultCenter = [-6.2088, 106.8456];
+
+  try {
+    // Initialize Leaflet map
+    mainMap = L.map(mapContainer).setView(defaultCenter, 11);
+
+    // Satelite layer with SHORT attribution
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Esri", // Very short attribution
+      maxZoom: 19,
+      minZoom: 3,
+    }).addTo(mainMap);
+
+    // Labels overlay with short attribution
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
+      attribution: "OSM",
+      subdomains: "abcd",
+      maxZoom: 19,
+      minZoom: 3,
+    }).addTo(mainMap);
+
+    console.log("✅ Main map initialized with Satellite view");
+    updateMapMarkers();
+  } catch (err) {
+    console.error("Error initializing main map:", err);
+    mapContainer.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; background: #fef2e8; border-radius: 12px; padding: 20px;">
+        <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #ef4444; margin-bottom: 10px;"></i>
+        <p style="color: #64748b;">Gagal memuat peta: ${err.message}</p>
+        <button class="btn-primary" onclick="retryLoadMap()" style="margin-top: 10px;">
+          <i class="fas fa-sync-alt"></i> Coba Lagi
+        </button>
+      </div>
+    `;
+  }
+}
+
+// Update map markers from lokasiData
+function updateMapMarkers() {
+  if (!mainMap) {
+    console.warn("Main map not ready for markers");
+    return;
+  }
+
+  // Clear existing markers
+  if (mainMarkers.length > 0) {
+    mainMarkers.forEach((marker) => {
+      if (marker && marker.remove) marker.remove();
+    });
+    mainMarkers = [];
+  }
+
+  if (!lokasiData || lokasiData.length === 0) {
+    console.log("No location data to display on map");
+    return;
+  }
+
+  const bounds = L.latLngBounds();
+  let validMarkers = 0;
+
+  // Custom icon with better visibility on satellite
+  const storeIcon = L.icon({
+    iconUrl: "https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png",
+    shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+    className: "custom-marker",
+  });
+
+  // Add new markers
+  lokasiData.forEach((lokasi) => {
+    const lat = parseFloat(lokasi.latitude);
+    const lng = parseFloat(lokasi.longitude);
+
+    if (isNaN(lat) || isNaN(lng)) {
+      console.warn(`Invalid coordinates for ${lokasi.nama_store}: ${lokasi.latitude}, ${lokasi.longitude}`);
+      return;
+    }
+
+    const position = [lat, lng];
+    validMarkers++;
+
+    try {
+      // Create marker with enhanced popup
+      const marker = L.marker(position, { icon: storeIcon })
+        .bindPopup(
+          `
+          <div style="padding: 8px; min-width: 200px;">
+            <h4 style="margin: 0 0 8px 0; color: #1e293b; font-size: 14px;">🏪 ${escapeHtml(lokasi.nama_store)}</h4>
+            <p style="margin: 0 0 5px 0; font-size: 11px; color: #64748b;">
+              <i class="fas fa-location-dot"></i> ${escapeHtml(lokasi.alamat.substring(0, 100))}${escapeHtml(lokasi.alamat.length > 100 ? "..." : "")}
+            </p>
+            <hr style="margin: 5px 0;">
+            <p style="margin: 0; font-size: 10px; color: #94a3b8;">
+              📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}
+            </p>
+            <button onclick="centerMapOnLocation(${lat}, ${lng}, '${escapeHtml(lokasi.nama_store)}')" 
+                    style="margin-top: 8px; padding: 4px 8px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; width: 100%;">
+              <i class="fas fa-crosshairs"></i> Pusatkan Peta
+            </button>
+          </div>
+        `,
+          { maxWidth: 300 },
+        )
+        .addTo(mainMap);
+
+      mainMarkers.push(marker);
+      bounds.extend(position);
+    } catch (err) {
+      console.error(`Error creating marker for ${lokasi.nama_store}:`, err);
+    }
+  });
+
+  console.log(`✅ Added ${validMarkers} markers to satellite map`);
+
+  // Fit bounds to show all markers
+  if (mainMarkers.length > 0 && validMarkers > 0) {
+    mainMap.fitBounds(bounds);
+    if (mainMarkers.length === 1) {
+      mainMap.setZoom(16);
+    }
+  }
+}
+
+// Initialize Modal Map for Add/Edit
+function initModalMap(lat, lng) {
+  console.log(`🗺️ Initializing modal satellite map at: ${lat}, ${lng}`);
+
+  const mapContainer = document.getElementById("modalMapContainer");
+  if (!mapContainer) {
+    console.error("❌ Modal map container not found!");
+    return;
+  }
+
+  mapContainer.innerHTML = '<div class="map-loading"><i class="fas fa-spinner fa-spin"></i> Memuat peta satelit...</div>';
+
+  const defaultCenter = [lat, lng];
+
+  try {
+    if (typeof L === "undefined") {
+      console.error("❌ Leaflet not loaded!");
+      mapContainer.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: #fef2e8; border-radius: 12px; padding: 20px;">
+          <p style="color: #64748b;">Leaflet library not loaded. Please refresh the page.</p>
+        </div>
+      `;
+      return;
+    }
+
+    mapContainer.innerHTML = "";
+
+    if (modalMap) {
+      modalMap.remove();
+      modalMap = null;
+    }
+
+    modalMap = L.map(mapContainer).setView(defaultCenter, 15);
+
+    // Satelite layer with SHORT attribution
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Esri",
+      maxZoom: 19,
+    }).addTo(modalMap);
+
+    // Labels overlay with short attribution
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
+      attribution: "OSM",
+      subdomains: "abcd",
+      maxZoom: 19,
+    }).addTo(modalMap);
+
+    // Add draggable marker
+    const redIcon = L.icon({
+      iconUrl: "https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+      shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41],
+      className: "custom-marker",
+    });
+
+    selectedMarker = L.marker(defaultCenter, { draggable: true, icon: redIcon }).bindPopup("<strong>📍 Drag untuk memindahkan lokasi</strong>").addTo(modalMap);
+
+    selectedMarker.openPopup();
+
+    // Update form when marker is dragged
+    selectedMarker.on("dragend", function (e) {
+      const position = e.target.getLatLng();
+      const newLat = position.lat;
+      const newLng = position.lng;
+
+      document.getElementById("lokasi_lat").value = newLat.toFixed(6);
+      document.getElementById("lokasi_lng").value = newLng.toFixed(6);
+
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLat}&lon=${newLng}&accept-language=id`)
+        .then((response) => response.json())
+        .then((data) => {
+          if (data && data.display_name) {
+            document.getElementById("lokasi_alamat").value = data.display_name;
+          }
+        })
+        .catch((err) => console.error("Reverse geocode error:", err));
+    });
+
+    modalMap.on("click", function (e) {
+      const newLat = e.latlng.lat;
+      const newLng = e.latlng.lng;
+
+      selectedMarker.setLatLng([newLat, newLng]);
+      document.getElementById("lokasi_lat").value = newLat.toFixed(6);
+      document.getElementById("lokasi_lng").value = newLng.toFixed(6);
+
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLat}&lon=${newLng}&accept-language=id`)
+        .then((response) => response.json())
+        .then((data) => {
+          if (data && data.display_name) {
+            document.getElementById("lokasi_alamat").value = data.display_name;
+          }
+        })
+        .catch((err) => console.error("Reverse geocode error:", err));
+    });
+
+    setTimeout(() => {
+      if (modalMap) {
+        modalMap.invalidateSize();
+      }
+    }, 100);
+
+    console.log("✅ Modal map initialized with Satellite view");
+  } catch (err) {
+    console.error("❌ Error initializing modal map:", err);
+    mapContainer.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 300px; background: #fef2e8; border-radius: 12px; padding: 20px;">
+        <i class="fas fa-exclamation-triangle" style="font-size: 32px; color: #ef4444; margin-bottom: 10px;"></i>
+        <p style="color: #64748b; font-size: 12px;">Gagal memuat peta satelit: ${err.message}</p>
+        <button class="btn-primary" onclick="retryModalMap()" style="margin-top: 10px; padding: 5px 10px; font-size: 12px;">
+          <i class="fas fa-sync-alt"></i> Coba Lagi
+        </button>
+      </div>
+    `;
+  }
+}
+
+window.retryModalMap = function () {
+  console.log("🔄 Retrying modal map...");
+  const latInput = document.getElementById("lokasi_lat");
+  const lngInput = document.getElementById("lokasi_lng");
+
+  let lat = -6.2088;
+  let lng = 106.8456;
+
+  if (latInput && latInput.value) {
+    lat = parseFloat(latInput.value);
+  }
+  if (lngInput && lngInput.value) {
+    lng = parseFloat(lngInput.value);
+  }
+
+  if (isNaN(lat)) lat = -6.2088;
+  if (isNaN(lng)) lng = 106.8456;
+
+  initModalMap(lat, lng);
+};
+
+// Setup Location Search using Nominatim API
+function setupLocationSearch() {
+  const searchInput = document.getElementById("locationSearchInput");
+  if (!searchInput) return;
+
+  // Remove existing listeners
+  const newSearchInput = searchInput.cloneNode(true);
+  searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+
+  let debounceTimer;
+
+  newSearchInput.addEventListener("input", (e) => {
+    clearTimeout(debounceTimer);
+    const query = e.target.value;
+
+    if (query.length < 3) {
+      const dropdown = document.getElementById("locationSearchDropdown");
+      if (dropdown) dropdown.style.display = "none";
+      return;
+    }
+
+    debounceTimer = setTimeout(() => {
+      // Use Nominatim API for geocoding (free, no API key)
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1&accept-language=id`)
+        .then((response) => response.json())
+        .then((data) => {
+          const dropdown = document.getElementById("locationSearchDropdown");
+          if (!dropdown) return;
+
+          if (data && data.length > 0) {
+            dropdown.innerHTML = data
+              .map(
+                (item) => `
+              <div class="location-dropdown-item" data-lat="${item.lat}" data-lon="${item.lon}">
+                <div class="location-dropdown-name">${escapeHtml(item.display_name.split(",")[0])}</div>
+                <div class="location-dropdown-address">${escapeHtml(item.display_name.substring(0, 100))}...</div>
+              </div>
+            `,
+              )
+              .join("");
+            dropdown.style.display = "block";
+
+            // Add click handlers
+            document.querySelectorAll(".location-dropdown-item").forEach((item) => {
+              item.addEventListener("click", () => {
+                const lat = parseFloat(item.dataset.lat);
+                const lon = parseFloat(item.dataset.lon);
+                const name = item.querySelector(".location-dropdown-name")?.innerText || "";
+                const address = item.querySelector(".location-dropdown-address")?.innerText || "";
+
+                // Update form
+                document.getElementById("lokasi_nama").value = name;
+                document.getElementById("lokasi_alamat").value = address;
+                document.getElementById("lokasi_lat").value = lat.toFixed(6);
+                document.getElementById("lokasi_lng").value = lon.toFixed(6);
+
+                // Update map
+                if (modalMap && selectedMarker) {
+                  modalMap.setView([lat, lon], 17);
+                  selectedMarker.setLatLng([lat, lon]);
+                }
+
+                dropdown.style.display = "none";
+                newSearchInput.value = name;
+              });
+            });
+          } else {
+            dropdown.style.display = "none";
+          }
+        })
+        .catch((err) => {
+          console.error("Geocoding error:", err);
+          const dropdown = document.getElementById("locationSearchDropdown");
+          if (dropdown) dropdown.style.display = "none";
+        });
+    }, 500);
+  });
+
+  // Close dropdown when clicking outside
+  document.addEventListener("click", (e) => {
+    const dropdown = document.getElementById("locationSearchDropdown");
+    if (dropdown && !newSearchInput.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.style.display = "none";
+    }
+  });
+}
+
+// Center map on specific location
+window.centerMapOnLocation = (lat, lng, name) => {
+  if (!mainMap) {
+    console.warn("Main map not ready");
+    Swal.fire("Info", "Peta sedang dimuat, silakan tunggu sebentar", "info");
+    setTimeout(() => {
+      if (mainMap) {
+        centerMapOnLocation(lat, lng, name);
+      }
+    }, 1000);
+    return;
+  }
+
+  const position = [parseFloat(lat), parseFloat(lng)];
+
+  if (isNaN(position[0]) || isNaN(position[1])) {
+    Swal.fire("Error", "Koordinat tidak valid", "error");
+    return;
+  }
+
+  mainMap.setView(position, 18);
+
+  // Find and bounce the marker
+  const marker = mainMarkers.find((m) => {
+    const markerPos = m.getLatLng();
+    return Math.abs(markerPos.lat - position[0]) < 0.0001 && Math.abs(markerPos.lng - position[1]) < 0.0001;
+  });
+
+  if (marker) {
+    marker.openPopup();
+    // Simple bounce effect
+    const originalIcon = marker.options.icon;
+    marker.setIcon(
+      L.icon({
+        iconUrl: "https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
+      }),
+    );
+    setTimeout(() => {
+      marker.setIcon(originalIcon);
+    }, 1000);
+  }
+};
+
+// Retry load map function
+window.retryLoadMap = function () {
+  console.log("🔄 Retrying main map...");
+  const mapContainer = document.getElementById("mapContainer");
+  if (mapContainer) {
+    mapContainer.innerHTML = '<div class="map-loading"><i class="fas fa-spinner fa-spin"></i> Memuat peta...</div>';
+  }
+  initMainMap();
+};
+
+// Load Lokasi Data
+async function loadLokasiData() {
+  try {
+    console.log(`📡 Loading lokasi data for company: ${currentLokasiCompany}`);
+
+    const tbody = document.querySelector("#tableLokasi tbody");
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align: center; padding: 40px;">
+            <i class="fas fa-spinner fa-spin" style="font-size: 32px; color: #2563eb;"></i>
+            <p style="margin-top: 10px; color: #64748b;">Memuat data lokasi...</p>
+          </td>
+        </tr>
+      `;
+    }
+
+    const res = await fetch(`/api/lokasi-store?company=${currentLokasiCompany}`);
+
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+
+    lokasiData = await res.json();
+    console.log(`✅ Loaded ${lokasiData.length} lokasi records`);
+
+    renderLokasiTable();
+    updateMapMarkers();
+  } catch (err) {
+    console.error("❌ Load lokasi data error:", err);
+    const tbody = document.querySelector("#tableLokasi tbody");
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align: center; padding: 40px;">
+            <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #ef4444; margin-bottom: 10px; display: block;"></i>
+            <p style="color: #64748b;">Gagal memuat data lokasi: ${err.message}</p>
+            <button class="btn-primary" onclick="loadLokasiData()" style="margin-top: 10px;">
+              <i class="fas fa-sync-alt"></i> Coba Lagi
+            </button>
+          </td>
+        </tr>
+      `;
+    }
+  }
+}
+
+// Render Lokasi Table
+function renderLokasiTable() {
+  const tbody = document.querySelector("#tableLokasi tbody");
+  if (!tbody) return;
+
+  const query = document.getElementById("searchLokasiInput")?.value.toLowerCase() || "";
+  const filtered = lokasiData.filter((d) => d.nama_store?.toLowerCase().includes(query) || d.alamat?.toLowerCase().includes(query));
+
+  const totalPages = Math.ceil(filtered.length / pageSizeLokasi);
+  if (currentLokasiPage > totalPages && totalPages > 0) currentLokasiPage = totalPages;
+  if (currentLokasiPage < 1) currentLokasiPage = 1;
+
+  const start = (currentLokasiPage - 1) * pageSizeLokasi;
+  const pageData = filtered.slice(start, start + pageSizeLokasi);
+
+  if (pageData.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align: center; padding: 40px;">
+          <i class="fas fa-map-marker-alt" style="font-size: 48px; color: #cbd5e1; margin-bottom: 10px; display: block;"></i>
+          <p style="color: #64748b;">${filtered.length === 0 && lokasiData.length === 0 ? "Belum ada data lokasi store" : "Tidak ada data yang sesuai dengan pencarian"}</p>
+          ${
+            lokasiData.length === 0
+              ? `
+            <button class="btn-primary" onclick="openLokasiModal()" style="margin-top: 10px;">
+              <i class="fas fa-plus"></i> Tambah Lokasi Pertama
+            </button>
+          `
+              : ""
+          }
+        </td>
+      </tr>
+    `;
+    const lokasiPageInfo = document.getElementById("lokasiPageInfo");
+    if (lokasiPageInfo) lokasiPageInfo.innerText = `Halaman 0 dari 0`;
+    return;
+  }
+
+  tbody.innerHTML = "";
+  pageData.forEach((item, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="text-center" style="width: 50px;">${start + i + 1}</td>
+      <td style="font-weight: 600;">${escapeHtml(item.nama_store)}</td>
+      <td style="max-width: 350px; word-break: break-word; white-space: normal;">${escapeHtml(item.alamat)}</td>
+      <td class="text-center">${item.latitude}</td>
+      <td class="text-center">${item.longitude}</td>
+      <td class="text-center" style="white-space: nowrap;">
+        <button class="btn-primary" style="padding: 5px 10px; margin-right: 5px;" onclick='openLokasiModalById(${item.id})' title="Edit">
+          <i class="fas fa-edit"></i>
+        </button>
+        <button class="btn-danger" style="padding: 5px 10px; margin-right: 5px;" onclick='deleteLokasi(${item.id})' title="Hapus">
+          <i class="fas fa-trash"></i>
+        </button>
+        <button class="btn-outline" style="padding: 5px 10px;" onclick='centerMapOnLocation(${item.latitude}, ${item.longitude}, "${escapeHtml(item.nama_store)}")' title="Lokasi di Peta">
+          <i class="fas fa-crosshairs"></i>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  const lokasiPageInfo = document.getElementById("lokasiPageInfo");
+  if (lokasiPageInfo) {
+    lokasiPageInfo.innerText = `Halaman ${currentLokasiPage} dari ${totalPages || 1}`;
+  }
+}
+
+// Open Lokasi Modal
+function openLokasiModal(item = null) {
+  console.log("🔵 Opening lokasi modal, item:", item);
+
+  const modal = document.getElementById("lokasiModal");
+  if (!modal) {
+    console.error("❌ Lokasi modal not found in DOM!");
+    Swal.fire("Error", "Modal tidak ditemukan", "error");
+    return;
+  }
+
+  const form = document.getElementById("lokasiForm");
+  if (!form) {
+    console.error("❌ Lokasi form not found!");
+    Swal.fire("Error", "Form tidak ditemukan", "error");
+    return;
+  }
+
+  // Reset form
+  form.reset();
+  document.getElementById("lokasi_id").value = "";
+  document.getElementById("locationSearchInput").value = "";
+  document.getElementById("lokasi_lat").value = "";
+  document.getElementById("lokasi_lng").value = "";
+  document.getElementById("lokasi_nama").value = "";
+  document.getElementById("lokasi_alamat").value = "";
+
+  // Clear map container
+  const mapContainer = document.getElementById("modalMapContainer");
+  if (mapContainer) {
+    mapContainer.innerHTML = '<div class="map-loading"><i class="fas fa-spinner fa-spin"></i> Memuat peta...</div>';
+  }
+
+  if (item) {
+    // Mode Edit
+    console.log("✏️ Edit mode for ID:", item.id);
+    document.getElementById("lokasiModalTitle").innerText = "✏️ Edit Lokasi Store";
+    document.getElementById("lokasi_id").value = item.id;
+    document.getElementById("lokasi_nama").value = item.nama_store || "";
+    document.getElementById("lokasi_alamat").value = item.alamat || "";
+    document.getElementById("lokasi_lat").value = item.latitude || "";
+    document.getElementById("lokasi_lng").value = item.longitude || "";
+
+    // Initialize modal map with existing location
+    setTimeout(() => {
+      const lat = parseFloat(item.latitude) || -7.977275;
+      const lng = parseFloat(item.longitude) || 112.633028;
+      initModalMap(lat, lng);
+    }, 200);
+  } else {
+    // Mode Tambah
+    console.log("➕ Add mode");
+    document.getElementById("lokasiModalTitle").innerText = "📍 Tambah Lokasi Store Baru";
+
+    // Initialize modal map with default center (Jakarta)
+    setTimeout(() => {
+      initModalMap(-7.977275, 112.633028);
+    }, 200);
+  }
+
+  // Tampilkan modal - pastikan display = flex
+  modal.style.display = "flex";
+  console.log("✅ Modal displayed with flex");
+
+  // Setup location search after modal is shown
+  setTimeout(() => {
+    setupLocationSearch();
+  }, 100);
+}
+
+window.openLokasiModalById = (id) => {
+  const item = lokasiData.find((d) => d.id == id);
+  if (item) {
+    openLokasiModal(item);
+  } else {
+    Swal.fire("Error", "Data lokasi tidak ditemukan", "error");
+  }
+};
+
+// Delete Lokasi
+window.deleteLokasi = async (id) => {
+  const result = await Swal.fire({
+    title: "Apakah Anda yakin?",
+    text: "Data lokasi ini akan dihapus secara permanen!",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#ef4444",
+    confirmButtonText: "Ya, hapus!",
+    cancelButtonText: "Batal",
+  });
+
+  if (!result.isConfirmed) return;
+
+  try {
+    const res = await fetch(`/api/lokasi-store/${id}?company=${currentLokasiCompany}`, { method: "DELETE" });
+    const resultData = await res.json();
+
+    if (resultData.success) {
+      Swal.fire("Berhasil!", "Data lokasi berhasil dihapus.", "success");
+      await loadLokasiData();
+    } else {
+      Swal.fire("Gagal!", resultData.message || "Data tidak ditemukan.", "error");
+    }
+  } catch (err) {
+    console.error(err);
+    Swal.fire("Error!", "Server error: " + err.message, "error");
+  }
+};
+
+// Show Lokasi Store Section
+function showLokasiStoreSection(company) {
+  console.log(`📍 Showing Lokasi Store section for company: ${company}`);
+
+  currentLokasiCompany = company;
+  currentLokasiPage = 1;
+
+  const companyNameSpan = document.getElementById("lokasiStoreCompanyName");
+  if (companyNameSpan) {
+    companyNameSpan.textContent = company === "hisana" ? "Hisana" : "Enakko";
+  }
+
+  // Sembunyikan semua section
+  document.querySelectorAll(".section").forEach((s) => s.classList.remove("active"));
+
+  // Tampilkan Lokasi Store section
+  const targetSection = document.getElementById("sectionLokasiStore");
+  if (targetSection) {
+    targetSection.classList.add("active");
+    console.log("✅ Lokasi Store section activated");
+  } else {
+    console.error("❌ Lokasi Store section not found!");
+    return;
+  }
+
+  // JANGAN tutup dropdown Data Master - biarkan tetap terbuka
+  // Hapus panggilan closeAllDataMasterDropdowns() dari sini
+
+  // Update active state di sidebar untuk Data Master dropdown
+  if (company === "hisana") {
+    const hisanaToggle = document.getElementById("dataMasterHisanaToggle");
+    const hisanaMenu = document.getElementById("dataMasterHisanaMenu");
+    if (hisanaToggle && hisanaMenu) {
+      hisanaToggle.classList.add("active");
+      hisanaMenu.classList.add("show");
+    }
+
+    const enakkoToggle = document.getElementById("dataMasterEnakkoToggle");
+    const enakkoMenu = document.getElementById("dataMasterEnakkoMenu");
+    if (enakkoToggle && enakkoMenu) {
+      enakkoToggle.classList.remove("active");
+      enakkoMenu.classList.remove("show");
+    }
+  } else {
+    const enakkoToggle = document.getElementById("dataMasterEnakkoToggle");
+    const enakkoMenu = document.getElementById("dataMasterEnakkoMenu");
+    if (enakkoToggle && enakkoMenu) {
+      enakkoToggle.classList.add("active");
+      enakkoMenu.classList.add("show");
+    }
+
+    const hisanaToggle = document.getElementById("dataMasterHisanaToggle");
+    const hisanaMenu = document.getElementById("dataMasterHisanaMenu");
+    if (hisanaToggle && hisanaMenu) {
+      hisanaToggle.classList.remove("active");
+      hisanaMenu.classList.remove("show");
+    }
+  }
+
+  // Update active class untuk nav-item - HAPUS active dari semua nav-item
+  document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.remove("active"));
+
+  // Set active untuk menu Lokasi Store yang dipilih
+  const dataLokasiBtn = company === "hisana" ? document.getElementById("dataLokasiHisana") : document.getElementById("dataLokasiEnakko");
+  if (dataLokasiBtn) {
+    dataLokasiBtn.classList.add("active");
+  }
+
+  // Pastikan dropdown toggle tetap active (tidak diubah)
+  const dataMasterToggle = company === "hisana" ? document.getElementById("dataMasterHisanaToggle") : document.getElementById("dataMasterEnakkoToggle");
+  if (dataMasterToggle) {
+    dataMasterToggle.classList.add("active");
+  }
+
+  // Load data
+  loadLokasiData();
+
+  // Initialize map
+  if (!mainMap) {
+    setTimeout(initMainMap, 300);
+  } else {
+    setTimeout(() => {
+      if (mainMap) {
+        mainMap.invalidateSize();
+        updateMapMarkers();
+      }
+    }, 300);
+  }
+
+  // Reset search input
+  const searchInput = document.getElementById("searchLokasiInput");
+  if (searchInput) {
+    searchInput.value = "";
+  }
+}
+
+// Setup Lokasi Store Form Handler
+function setupLokasiFormHandler() {
+  const lokasiForm = document.getElementById("lokasiForm");
+  if (!lokasiForm) {
+    console.error("Lokasi form not found");
+    return;
+  }
+
+  const newLokasiForm = lokasiForm.cloneNode(true);
+  lokasiForm.parentNode.replaceChild(newLokasiForm, lokasiForm);
+
+  newLokasiForm.onsubmit = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const id = document.getElementById("lokasi_id").value;
+    const nama = document.getElementById("lokasi_nama").value.trim();
+    const alamat = document.getElementById("lokasi_alamat").value.trim();
+    const lat = document.getElementById("lokasi_lat").value;
+    const lng = document.getElementById("lokasi_lng").value;
+
+    if (!nama) {
+      Swal.fire("Error", "Nama Store wajib diisi", "error");
+      return;
+    }
+    if (!alamat) {
+      Swal.fire("Error", "Alamat wajib diisi", "error");
+      return;
+    }
+    if (!lat || !lng) {
+      Swal.fire("Error", "Pilih lokasi di peta terlebih dahulu", "error");
+      return;
+    }
+
+    const payload = {
+      nama_store: nama,
+      alamat: alamat,
+      latitude: parseFloat(lat),
+      longitude: parseFloat(lng),
+    };
+
+    const method = id ? "PUT" : "POST";
+    const url = id ? `/api/lokasi-store/${id}?company=${currentLokasiCompany}` : `/api/lokasi-store?company=${currentLokasiCompany}`;
+
+    Swal.fire({
+      title: id ? "Menyimpan perubahan..." : "Menambahkan lokasi...",
+      text: "Mohon tunggu sebentar",
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      },
+    });
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await res.json();
+      Swal.close();
+
+      if (result.success) {
+        const modal = document.getElementById("lokasiModal");
+        if (modal) modal.style.display = "none";
+
+        newLokasiForm.reset();
+        document.getElementById("lokasi_id").value = "";
+
+        await loadLokasiData();
+
+        Swal.fire({
+          title: "Berhasil!",
+          text: id ? "Data lokasi berhasil diperbarui." : "Data lokasi berhasil ditambahkan.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false,
+        });
+      } else {
+        Swal.fire("Gagal", result.message || "Tidak dapat menyimpan data.", "error");
+      }
+    } catch (err) {
+      console.error("Submit error:", err);
+      Swal.close();
+      Swal.fire("Error", `Terjadi kesalahan: ${err.message}`, "error");
+    }
+  };
+}
+
+// Setup Lokasi Modal Buttons
+function setupLokasiModalButtons() {
+  const closeBtn = document.getElementById("closeLokasiModal");
+  if (closeBtn) {
+    const newCloseBtn = closeBtn.cloneNode(true);
+    closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+    newCloseBtn.onclick = () => {
+      const modal = document.getElementById("lokasiModal");
+      if (modal) modal.style.display = "none";
+    };
+  }
+
+  const cancelBtn = document.getElementById("cancelLokasiBtn");
+  if (cancelBtn) {
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+    newCancelBtn.onclick = () => {
+      const modal = document.getElementById("lokasiModal");
+      if (modal) modal.style.display = "none";
+    };
+  }
+}
+
+// Setup Lokasi Event Handlers
+function setupLokasiEventHandlers() {
+  const addBtn = document.getElementById("addLokasiBtn");
+  if (addBtn) {
+    const newAddBtn = addBtn.cloneNode(true);
+    addBtn.parentNode.replaceChild(newAddBtn, addBtn);
+    newAddBtn.onclick = () => {
+      openLokasiModal();
+    };
+  }
+
+  const refreshBtn = document.getElementById("refreshMapBtn");
+  if (refreshBtn) {
+    const newRefreshBtn = refreshBtn.cloneNode(true);
+    refreshBtn.parentNode.replaceChild(newRefreshBtn, refreshBtn);
+    newRefreshBtn.onclick = () => {
+      if (mainMap) {
+        mainMap.invalidateSize();
+        updateMapMarkers();
+        Swal.fire({
+          title: "Refresh",
+          text: "Peta telah diperbarui",
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false,
+        });
+      } else {
+        initMainMap();
+        Swal.fire({
+          title: "Info",
+          text: "Memuat ulang peta...",
+          icon: "info",
+          timer: 1500,
+          showConfirmButton: false,
+        });
+      }
+    };
+  }
+
+  const searchInput = document.getElementById("searchLokasiInput");
+  if (searchInput) {
+    const newSearchInput = searchInput.cloneNode(true);
+    searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+    newSearchInput.oninput = () => {
+      currentLokasiPage = 1;
+      renderLokasiTable();
+    };
+  }
+
+  const prevPage = document.getElementById("prevLokasiPage");
+  if (prevPage) {
+    const newPrevPage = prevPage.cloneNode(true);
+    prevPage.parentNode.replaceChild(newPrevPage, prevPage);
+    newPrevPage.onclick = () => {
+      if (currentLokasiPage > 1) {
+        currentLokasiPage--;
+        renderLokasiTable();
+      }
+    };
+  }
+
+  const nextPage = document.getElementById("nextLokasiPage");
+  if (nextPage) {
+    const newNextPage = nextPage.cloneNode(true);
+    nextPage.parentNode.replaceChild(newNextPage, nextPage);
+    newNextPage.onclick = () => {
+      const query = document.getElementById("searchLokasiInput")?.value.toLowerCase() || "";
+      const filtered = lokasiData.filter((d) => d.nama_store?.toLowerCase().includes(query) || d.alamat?.toLowerCase().includes(query));
+      if (currentLokasiPage * pageSizeLokasi < filtered.length) {
+        currentLokasiPage++;
+        renderLokasiTable();
+      }
+    };
+  }
+}
+
+// Setup Lokasi Store Menu Handlers
+// Setup Lokasi Store Menu Handlers - FIXED (Dropdown tetap terbuka)
+function setupLokasiStoreHandlers() {
+  // Hisana
+  const dataLokasiHisana = document.getElementById("dataLokasiHisana");
+  if (dataLokasiHisana) {
+    const newBtn = dataLokasiHisana.cloneNode(true);
+    dataLokasiHisana.parentNode.replaceChild(newBtn, dataLokasiHisana);
+    newBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Update current company
+      currentLokasiCompany = "hisana";
+      currentCompany = "hisana";
+
+      // Tampilkan section Lokasi Store
+      showLokasiStoreSection("hisana");
+
+      // Update active class untuk dropdown items
+      document.querySelectorAll(".dropdown-item").forEach((item) => item.classList.remove("active"));
+      newBtn.classList.add("active");
+
+      // Pastikan dropdown toggle tetap active (TIDAK ditutup)
+      const hisanaToggle = document.getElementById("dataMasterHisanaToggle");
+      if (hisanaToggle) {
+        hisanaToggle.classList.add("active");
+      }
+
+      // Pastikan dropdown menu tetap terbuka (TIDAK ditutup)
+      const hisanaMenu = document.getElementById("dataMasterHisanaMenu");
+      if (hisanaMenu) {
+        hisanaMenu.classList.add("show");
+      }
+
+      // Tutup dropdown Enakko jika terbuka
+      const enakkoToggle = document.getElementById("dataMasterEnakkoToggle");
+      const enakkoMenu = document.getElementById("dataMasterEnakkoMenu");
+      if (enakkoToggle && enakkoMenu) {
+        enakkoToggle.classList.remove("active");
+        enakkoMenu.classList.remove("show");
+      }
+
+      console.log("✅ Lokasi Hisana button registered - dropdown tetap terbuka");
+    };
+    console.log("✅ Lokasi Hisana button registered");
+  }
+
+  // Enakko
+  const dataLokasiEnakko = document.getElementById("dataLokasiEnakko");
+  if (dataLokasiEnakko) {
+    const newBtn = dataLokasiEnakko.cloneNode(true);
+    dataLokasiEnakko.parentNode.replaceChild(newBtn, dataLokasiEnakko);
+    newBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Update current company
+      currentLokasiCompany = "enakko";
+      currentCompany = "enakko";
+
+      // Tampilkan section Lokasi Store
+      showLokasiStoreSection("enakko");
+
+      // Update active class untuk dropdown items
+      document.querySelectorAll(".dropdown-item").forEach((item) => item.classList.remove("active"));
+      newBtn.classList.add("active");
+
+      // Pastikan dropdown toggle tetap active (TIDAK ditutup)
+      const enakkoToggle = document.getElementById("dataMasterEnakkoToggle");
+      if (enakkoToggle) {
+        enakkoToggle.classList.add("active");
+      }
+
+      // Pastikan dropdown menu tetap terbuka (TIDAK ditutup)
+      const enakkoMenu = document.getElementById("dataMasterEnakkoMenu");
+      if (enakkoMenu) {
+        enakkoMenu.classList.add("show");
+      }
+
+      // Tutup dropdown Hisana jika terbuka
+      const hisanaToggle = document.getElementById("dataMasterHisanaToggle");
+      const hisanaMenu = document.getElementById("dataMasterHisanaMenu");
+      if (hisanaToggle && hisanaMenu) {
+        hisanaToggle.classList.remove("active");
+        hisanaMenu.classList.remove("show");
+      }
+
+      console.log("✅ Lokasi Enakko button registered - dropdown tetap terbuka");
+    };
+    console.log("✅ Lokasi Enakko button registered");
   }
 }
 
@@ -2266,6 +3306,7 @@ function switchMainMenu(company) {
 
   closeAllDataMasterDropdowns();
   currentCompany = company;
+  currentLokasiCompany = company;
 
   checkedSet.clear();
   selectedBonusSet.clear();
@@ -5537,6 +6578,15 @@ document.addEventListener("DOMContentLoaded", () => {
   setupKaryawanModalButtons();
   setupImagePreview();
   setupKaryawanEventHandlers();
+
+  setupLokasiFormHandler();
+  setupLokasiModalButtons();
+  setupLokasiEventHandlers();
+  setupLokasiStoreHandlers();
+
+  if (document.getElementById("sectionLokasiStore")?.classList.contains("active")) {
+    setTimeout(initMainMap, 500);
+  }
 
   initDataMasterDropdown();
   setupEmployeeSearch();
