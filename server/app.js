@@ -12,6 +12,7 @@ import bonusRoutes from "./routes/slipBonusRoutes.js";
 import thrRoutes from "./routes/slipThrRoutes.js";
 import dataKaryawanRoutes from "./routes/dataKaryawanRoutes.js";
 import karyawanProfileRoutes from "./routes/karyawanProfileRoutes.js";
+import absensiKaryawanRoutes from "./routes/absensiKaryawanRoutes.js";
 import lokasiStoreRoutes from "./routes/LokasiStoreRoutes.js";
 
 import { startBot, getSocketByNumber, logoutBot } from "../bot/index.js";
@@ -80,6 +81,7 @@ app.use("/", bonusRoutes);
 app.use("/", thrRoutes);
 app.use("/", dataKaryawanRoutes);
 app.use("/", karyawanProfileRoutes);
+app.use("/", absensiKaryawanRoutes);
 app.use("/api/lokasi-store", lokasiStoreRoutes);
 
 // ============================

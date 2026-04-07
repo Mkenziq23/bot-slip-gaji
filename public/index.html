@@ -267,6 +267,10 @@
             <!-- Form Import Excel (hidden by default) -->
             <div id="importKaryawanForm" class="upload-section" style="display: none">
               <h4><i class="fas fa-upload"></i> Import File Excel Karyawan</h4>
+              <div class="alert alert-info" style="background: #e0f2fe; border-radius: 8px; padding: 10px; margin-bottom: 15px">
+                <i class="fas fa-info-circle"></i>
+                <strong>Petunjuk:</strong> Gunakan template yang sudah disediakan. Pastikan kolom "Nama Store / Gerai" sesuai dengan data lokasi store yang sudah terdaftar.
+              </div>
               <form id="uploadFormKaryawan" class="upload-form">
                 <div class="file-input-wrapper">
                   <input type="file" name="file" id="fileInputKaryawan" accept=".xlsx, .xls" required />
@@ -274,7 +278,6 @@
                   <span id="fileNameKaryawan" class="file-name">Tidak ada file dipilih</span>
                 </div>
                 <button type="submit" class="btn-primary upload-btn"><i class="fas fa-cloud-upload-alt"></i> Upload Excel</button>
-                <!-- <button type="button" id="cancelImportKaryawan" class="btn-outline"><i class="fas fa-times"></i> Batal</button> -->
               </form>
               <p id="uploadStatusKaryawan" class="upload-status"></p>
             </div>
@@ -292,8 +295,8 @@
                     <th>No HP</th>
                     <th>Email</th>
                     <th>Posisi/Jabatan</th>
-                    <th>Cabang</th>
                     <th>Nama Gerai</th>
+                    <th>Cabang (Aalamt Store)</th>
                     <th>Foto Diri</th>
                     <th>Foto KTP</th>
                     <th style="min-width: 100px">Aksi</th>
@@ -759,14 +762,19 @@
               <label>Jabatan *</label>
               <input type="text" id="karyawan_jabatan" required placeholder="Contoh: Staff, Supervisor, Manager" />
             </div>
-            <div class="formGroup">
-              <label>Cabang</label>
-              <input type="text" id="karyawan_cabang" placeholder="Contoh: Jakarta Pusat" />
+
+            <!-- GANTI: Lokasi Store Dropdown -->
+            <div class="formGroup" style="grid-column: span 2">
+              <label>Lokasi Store / Gerai *</label>
+              <div id="karyawan_lokasi_store_container">
+                <!-- Dropdown akan diisi oleh JavaScript -->
+                <select id="karyawan_lokasi_store_id" class="form-control" required style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0">
+                  <option value="">Memuat data lokasi...</option>
+                </select>
+              </div>
+              <small style="color: #64748b; font-size: 0.7rem">Pilih lokasi store yang sudah didaftarkan</small>
             </div>
-            <div class="formGroup">
-              <label>Nama Gerai</label>
-              <input type="text" id="karyawan_nama_gerai" placeholder="Contoh: Hisana Thamrin" />
-            </div>
+
             <div class="formGroup">
               <label>Foto Diri</label>
               <input type="file" id="karyawan_foto_diri" accept="image/jpeg,image/png,image/jpg,image/gif,image/webp" />

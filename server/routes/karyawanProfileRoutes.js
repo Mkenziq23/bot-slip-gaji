@@ -18,6 +18,11 @@ function requireKaryawan(req, res, next) {
   next();
 }
 
+// Helper function untuk mendapatkan nama tabel lokasi store
+function getLokasiStoreTableName(company) {
+  return company === "hisana" ? "lokasi_store_hisana" : "lokasi_store_enakko";
+}
+
 /**
  * GET /api/karyawan/profile
  * Mendapatkan data profil karyawan yang sedang login
@@ -43,25 +48,30 @@ router.get("/api/karyawan/profile", requireKaryawan, async (req, res) => {
     }
 
     const tableName = company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
-    console.log(`Table name: ${tableName}`);
+    const lokasiTable = getLokasiStoreTableName(company);
 
-    // Ambil data karyawan dari database
+    console.log(`Table name: ${tableName}`);
+    console.log(`Lokasi table: ${lokasiTable}`);
+
+    // Ambil data karyawan dari database dengan JOIN ke lokasi_store
     const [rows] = await db.query(
       `SELECT 
-        no_induk,
-        nama_lengkap,
-        nik,
-        tanggal_lahir,
-        alamat_domisili,
-        no_hp,
-        email,
-        jabatan,
-        cabang,
-        nama_gerai,
-        foto_diri,
-        foto_ktp
-      FROM ${tableName} 
-      WHERE id = ?`,
+        k.no_induk,
+        k.nama_lengkap,
+        k.nik,
+        k.tanggal_lahir,
+        k.alamat_domisili,
+        k.no_hp,
+        k.email,
+        k.jabatan,
+        k.lokasi_store_id,
+        l.nama_store,
+        l.alamat as alamat_store,
+        k.foto_diri,
+        k.foto_ktp
+      FROM ${tableName} k
+      LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+      WHERE k.id = ?`,
       [karyawan.id],
     );
 
@@ -75,6 +85,9 @@ router.get("/api/karyawan/profile", requireKaryawan, async (req, res) => {
     const profileData = rows[0];
     console.log("Profile data from DB:", {
       nama_lengkap: profileData.nama_lengkap,
+      lokasi_store_id: profileData.lokasi_store_id,
+      nama_store: profileData.nama_store,
+      alamat_store: profileData.alamat_store,
       foto_diri: profileData.foto_diri,
       foto_ktp: profileData.foto_ktp,
     });
@@ -137,8 +150,10 @@ router.get("/api/karyawan/profile", requireKaryawan, async (req, res) => {
         no_hp: profileData.no_hp || "-",
         email: profileData.email || "-",
         jabatan: profileData.jabatan || "-",
-        cabang: profileData.cabang || "-",
-        nama_gerai: profileData.nama_gerai || "-",
+        // Menggunakan nama_store sebagai nama gerai
+        nama_gerai: profileData.nama_store || "-",
+        // Menggunakan alamat_store sebagai cabang
+        cabang: profileData.alamat_store || "-",
         foto_diri_url: fotoDiriUrl,
         foto_ktp_url: fotoKtpUrl,
       },
@@ -150,6 +165,8 @@ router.get("/api/karyawan/profile", requireKaryawan, async (req, res) => {
 
     console.log("=== RESPONSE DATA ===");
     console.log("company:", responseData.company);
+    console.log("nama_gerai:", responseData.profile.nama_gerai);
+    console.log("cabang:", responseData.profile.cabang);
     console.log("foto_diri_url:", responseData.profile.foto_diri_url);
     console.log("foto_ktp_url:", responseData.profile.foto_ktp_url);
 
@@ -176,7 +193,7 @@ router.get("/api/karyawan/current-slip", requireKaryawan, async (req, res) => {
     // Dapatkan bulan dan tahun saat ini
     const now = new Date();
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1; // MySQL bulan dimulai dari 1
+    const currentMonth = now.getMonth() + 1;
 
     console.log(`[Current Slip] Looking for slip - Company: ${company}, No Induk: ${karyawan.no_induk}, Month: ${currentMonth}, Year: ${currentYear}`);
 
@@ -292,7 +309,7 @@ router.get("/api/karyawan/current-bonus", requireKaryawan, async (req, res) => {
     // Dapatkan bulan dan tahun saat ini
     const now = new Date();
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1; // MySQL bulan dimulai dari 1
+    const currentMonth = now.getMonth() + 1;
 
     console.log(`[Current Bonus] Looking for bonus - Company: ${company}, No Induk: ${karyawan.no_induk}, Month: ${currentMonth}, Year: ${currentYear}`);
 
@@ -499,7 +516,6 @@ router.post("/api/karyawan/download-thr", requireKaryawan, async (req, res) => {
 
     console.log(`[Download THR] PDF generated at: ${pdfPath}`);
 
-    // PERBAIKAN: Langsung gunakan pdfPath yang sudah absolute, jangan di-path.join lagi
     // Cek apakah file ada
     if (!fs.existsSync(pdfPath)) {
       throw new Error(`File PDF tidak ditemukan: ${pdfPath}`);

@@ -1113,16 +1113,23 @@ textarea.form-control {
   color: #1e293b;
 }
 
+/* Status Badge untuk Absensi */
 .status-badge {
+  display: inline-block;
   padding: 4px 12px;
   border-radius: 20px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .status-badge.hadir {
   background: #d1fae5;
   color: #065f46;
+}
+
+.status-badge.terlambat {
+  background: #ffedd5;
+  color: #ea580c;
 }
 
 .status-badge.izin {
@@ -1135,14 +1142,14 @@ textarea.form-control {
   color: #d97706;
 }
 
-.status-badge.terlambat {
-  background: #ffedd5;
-  color: #ea580c;
+.status-badge.belum {
+  background: #e2e8f0;
+  color: #475569;
 }
 
-.status-badge.belum {
+.status-badge.alpha {
   background: #f1f5f9;
-  color: #64748b;
+  color: #94a3b8;
 }
 
 /* Responsive */

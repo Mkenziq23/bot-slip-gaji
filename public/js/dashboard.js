@@ -274,9 +274,62 @@ function setupDashboardHandlers() {
 // GLOBAL DATA KARYAWAN
 // =============================
 let karyawanData = [];
+let lokasiStoreList = [];
 let currentKaryawanPage = 1;
 const pageSizeKaryawan = 10;
 let currentKaryawanCompany = "hisana";
+
+// =============================
+// LOAD LOKASI STORE DROPDOWN
+// =============================
+async function loadLokasiStoreDropdown() {
+  try {
+    console.log(`Loading lokasi store dropdown for company: ${currentKaryawanCompany}`);
+    const res = await fetch(`/data-karyawan/lokasi-store?company=${currentKaryawanCompany}`);
+    const data = await res.json();
+
+    if (data.success) {
+      lokasiStoreList = data.data;
+      console.log(`Loaded ${lokasiStoreList.length} lokasi store`);
+      return lokasiStoreList;
+    }
+    return [];
+  } catch (err) {
+    console.error("Load lokasi store dropdown error:", err);
+    return [];
+  }
+}
+
+function renderLokasiStoreDropdown(selectedId = null) {
+  const container = document.getElementById("karyawan_lokasi_store_container");
+  if (!container) return;
+
+  if (lokasiStoreList.length === 0) {
+    container.innerHTML = `
+      <div style="color: #ef4444; font-size: 0.8rem; margin-top: 5px;">
+        <i class="fas fa-exclamation-triangle"></i> 
+        Belum ada data lokasi store. Silakan tambahkan lokasi store terlebih dahulu.
+        <button type="button" class="btn-outline" onclick="showLokasiStoreSection(currentKaryawanCompany)" style="margin-left: 10px; padding: 2px 8px;">
+          <i class="fas fa-plus"></i> Tambah Lokasi
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  let options = '<option value="">Pilih Lokasi Store</option>';
+  lokasiStoreList.forEach((store) => {
+    options += `<option value="${store.id}" ${selectedId == store.id ? "selected" : ""}>
+      ${escapeHtml(store.nama_store)} - ${escapeHtml(store.alamat.substring(0, 50))}${store.alamat.length > 50 ? "..." : ""}
+    </option>`;
+  });
+
+  container.innerHTML = `
+    <select id="karyawan_lokasi_store_id" class="form-control" required style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+      ${options}
+    </select>
+  `;
+}
 
 // =============================
 // DATA KARYAWAN CRUD FUNCTIONS
@@ -423,7 +476,7 @@ function setupImagePreview() {
   }
 }
 
-// Fungsi Swal dengan target modal (agar muncul di depan modal)
+// Fungsi Swal dengan target modal
 function SwalFireWithModal(title, text, icon) {
   const modal = document.getElementById("karyawanModal");
   if (modal && modal.style.display === "flex") {
@@ -437,6 +490,18 @@ function SwalFireWithModal(title, text, icon) {
   } else {
     Swal.fire(title, text, icon);
   }
+}
+
+// Fungsi untuk mendapatkan nama store dari ID
+function getNamaStoreById(storeId) {
+  const store = lokasiStoreList.find((s) => s.id == storeId);
+  return store ? store.nama_store : "-";
+}
+
+// Fungsi untuk mendapatkan alamat store dari ID
+function getAlamatStoreById(storeId) {
+  const store = lokasiStoreList.find((s) => s.id == storeId);
+  return store ? store.alamat : "-";
 }
 
 async function loadKaryawanData() {
@@ -455,6 +520,9 @@ async function loadKaryawanData() {
       `;
     }
 
+    // Load lokasi store terlebih dahulu
+    await loadLokasiStoreDropdown();
+
     const res = await fetch(`/data-karyawan?company=${currentKaryawanCompany}`);
 
     if (!res.ok) {
@@ -464,6 +532,7 @@ async function loadKaryawanData() {
 
     karyawanData = await res.json();
     console.log(`✅ Loaded ${karyawanData.length} karyawan records`);
+    console.log("Sample karyawan data:", karyawanData[0]);
 
     renderKaryawanTable();
   } catch (err) {
@@ -491,6 +560,8 @@ function renderKaryawanTable() {
   tbody.innerHTML = "";
 
   const query = document.getElementById("searchKaryawanInput")?.value.toLowerCase() || "";
+
+  // Filter data
   const filtered = karyawanData.filter((d) => d.nama_lengkap?.toLowerCase().includes(query) || d.no_induk?.toLowerCase().includes(query) || d.nik?.toLowerCase().includes(query));
 
   const totalPages = Math.ceil(filtered.length / pageSizeKaryawan);
@@ -503,7 +574,7 @@ function renderKaryawanTable() {
   if (pageData.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="14" style="text-align: center; padding: 40px;">
+        <td colspan="15" style="text-align: center; padding: 40px;">
           <i class="fas fa-users" style="font-size: 48px; color: #cbd5e1; margin-bottom: 10px; display: block;"></i>
           <p style="color: #64748b;">Belum ada data karyawan</p>
           <button class="btn-primary" onclick="openKaryawanModal()" style="margin-top: 10px;">
@@ -537,6 +608,10 @@ function renderKaryawanTable() {
       noHpDisplay = "0" + noHpDisplay.substring(2);
     }
 
+    // Dua kolom terpisah: Nama Gerai dan Cabang (Alamat)
+    const namaGerai = d.nama_store || "-";
+    const cabangAlamat = d.alamat_store || "-";
+
     tr.innerHTML = `
       <td class="text-center">${start + i + 1}</td>
       <td style="font-weight: 500;">${escapeHtml(d.no_induk || "-")}</td>
@@ -547,8 +622,8 @@ function renderKaryawanTable() {
       <td>${escapeHtml(noHpDisplay)}</td>
       <td>${escapeHtml(d.email || "-")}</td>
       <td>${escapeHtml(d.jabatan || "-")}</td>
-      <td>${escapeHtml(d.cabang || "-")}</td>
-      <td>${escapeHtml(d.nama_gerai || "-")}</td>
+      <td><strong>${escapeHtml(namaGerai)}</strong></td>
+      <td>${escapeHtml(cabangAlamat)}</td>
       <td class="text-center">${fotoDiriHtml}</td>
       <td class="text-center">${fotoKtpHtml}</td>
       <td class="text-center">
@@ -593,10 +668,8 @@ function openKaryawanModal(item = null) {
     document.getElementById("karyawan_nama_lengkap").value = item.nama_lengkap || "";
     document.getElementById("karyawan_nik").value = item.nik || "";
 
-    // Format tanggal lahir untuk input date (YYYY-MM-DD)
     if (item.tanggal_lahir) {
       let tglLahir = item.tanggal_lahir;
-      // Jika format DD/MM/YYYY, konversi ke YYYY-MM-DD
       if (tglLahir.includes("/")) {
         const parts = tglLahir.split("/");
         if (parts.length === 3) {
@@ -605,7 +678,6 @@ function openKaryawanModal(item = null) {
       }
       document.getElementById("karyawan_tanggal_lahir").value = tglLahir;
 
-      // Update display format
       setTimeout(() => {
         const dateInput = document.getElementById("karyawan_tanggal_lahir");
         if (dateInput && dateInput.value) {
@@ -622,15 +694,12 @@ function openKaryawanModal(item = null) {
 
     document.getElementById("karyawan_alamat_domisili").value = item.alamat_domisili || "";
 
-    // Format nomor HP untuk ditampilkan (hilangkan 62)
     let noHp = item.no_hp || "";
     noHp = formatPhoneNumberForDisplay(noHp);
     document.getElementById("karyawan_no_hp").value = noHp;
 
     document.getElementById("karyawan_email").value = item.email || "";
     document.getElementById("karyawan_jabatan").value = item.jabatan || "";
-    document.getElementById("karyawan_cabang").value = item.cabang || "";
-    document.getElementById("karyawan_nama_gerai").value = item.nama_gerai || "";
     document.getElementById("karyawan_foto_diri_url").value = item.foto_diri || "";
     document.getElementById("karyawan_foto_ktp_url").value = item.foto_ktp || "";
 
@@ -651,13 +720,15 @@ function openKaryawanModal(item = null) {
     if (item.foto_ktp && item.foto_ktp !== "") {
       document.getElementById("preview_foto_ktp").innerHTML = `<img src="${item.foto_ktp}" class="image-preview" style="max-width: 100px; max-height: 100px; object-fit: cover; border-radius: 8px;">`;
     }
-  } else {
-    // Mode Tambah - No Induk diisi manual oleh user
-    document.getElementById("karyawanModalTitle").innerText = "Tambah Karyawan Baru";
 
-    // HAPUS pengisian otomatis no_induk - biarkan kosong untuk diisi user
+    // Load lokasi store dropdown dengan selected value
+    loadLokasiStoreDropdown().then(() => {
+      renderLokasiStoreDropdown(item.lokasi_store_id);
+    });
+  } else {
+    // Mode Tambah
+    document.getElementById("karyawanModalTitle").innerText = "Tambah Karyawan Baru";
     document.getElementById("karyawan_no_induk").value = "";
-    // Hapus readonly agar user bisa mengedit
     document.getElementById("karyawan_no_induk").readOnly = false;
     document.getElementById("karyawan_no_induk").style.background = "white";
     document.getElementById("karyawan_no_induk").placeholder = "Contoh: H001 atau E001";
@@ -673,7 +744,6 @@ function openKaryawanModal(item = null) {
       }
     }
 
-    // Reset semua field lainnya
     document.getElementById("karyawan_nama_lengkap").value = "";
     document.getElementById("karyawan_nik").value = "";
     document.getElementById("karyawan_tanggal_lahir").value = "";
@@ -681,11 +751,13 @@ function openKaryawanModal(item = null) {
     document.getElementById("karyawan_no_hp").value = "";
     document.getElementById("karyawan_email").value = "";
     document.getElementById("karyawan_jabatan").value = "";
-    document.getElementById("karyawan_cabang").value = "";
-    document.getElementById("karyawan_nama_gerai").value = "";
+
+    // Load lokasi store dropdown tanpa selected value
+    loadLokasiStoreDropdown().then(() => {
+      renderLokasiStoreDropdown(null);
+    });
   }
 
-  // Tampilkan modal
   modal.style.display = "flex";
   console.log("✅ Modal ditampilkan");
 }
@@ -750,12 +822,24 @@ function setupKaryawanFormHandler() {
     let noHp = document.getElementById("karyawan_no_hp")?.value.trim();
     let tanggalLahir = document.getElementById("karyawan_tanggal_lahir")?.value;
 
+    // AMBIL NILAI LOKASI STORE ID dari dropdown
+    const lokasiStoreSelect = document.getElementById("karyawan_lokasi_store_id");
+    const lokasiStoreId = lokasiStoreSelect ? lokasiStoreSelect.value : "";
+
+    console.log("Lokasi Store ID selected:", lokasiStoreId);
+
     if (!id && (!password || password === "")) {
       SwalFireWithModal("Error", "Password wajib diisi untuk karyawan baru", "error");
       return;
     }
     if (password && password !== "" && password.length < 6) {
       SwalFireWithModal("Error", "Password minimal 6 karakter", "error");
+      return;
+    }
+
+    // VALIDASI LOKASI STORE
+    if (!lokasiStoreId) {
+      SwalFireWithModal("Error", "Lokasi Store / Gerai wajib dipilih", "error");
       return;
     }
 
@@ -772,8 +856,7 @@ function setupKaryawanFormHandler() {
     formData.append("no_hp", noHp || "");
     formData.append("email", document.getElementById("karyawan_email")?.value.trim() || "");
     formData.append("jabatan", document.getElementById("karyawan_jabatan")?.value.trim() || "");
-    formData.append("cabang", document.getElementById("karyawan_cabang")?.value.trim() || "");
-    formData.append("nama_gerai", document.getElementById("karyawan_nama_gerai")?.value.trim() || "");
+    formData.append("lokasi_store_id", lokasiStoreId); // TAMBAHKAN INI - GANTI cabang dan nama_gerai
 
     const fotoDiriFile = document.getElementById("karyawan_foto_diri")?.files[0];
     const fotoKtpFile = document.getElementById("karyawan_foto_ktp")?.files[0];
@@ -841,6 +924,10 @@ function setupKaryawanFormHandler() {
     const url = id ? `/data-karyawan/${id}?company=${currentKaryawanCompany}` : `/data-karyawan?company=${currentKaryawanCompany}`;
 
     console.log(`Sending ${method} request to ${url}`);
+    console.log("FormData entries:");
+    for (let pair of formData.entries()) {
+      console.log(pair[0] + ": " + pair[1]);
+    }
 
     try {
       const res = await fetch(url, {
@@ -963,7 +1050,6 @@ function setupKaryawanEventHandlers() {
       console.log("📥 Export button clicked for company:", currentKaryawanCompany);
 
       try {
-        // Tampilkan loading
         Swal.fire({
           title: "Sedang mengexport...",
           text: "Mohon tunggu sebentar",
@@ -973,8 +1059,6 @@ function setupKaryawanEventHandlers() {
           },
         });
 
-        // PERBAIKAN: Gunakan endpoint yang sesuai dengan route di server
-        // Route yang tersedia: /data-karyawan/export (bukan /data-karyawan/export-with-photos)
         const response = await fetch(`/data-karyawan/export?company=${currentKaryawanCompany}`);
 
         Swal.close();
@@ -989,7 +1073,6 @@ function setupKaryawanEventHandlers() {
         const a = document.createElement("a");
         a.href = url;
 
-        // Nama file dari response atau default
         const contentDisposition = response.headers.get("Content-Disposition");
         let filename = currentKaryawanCompany === "hisana" ? "data_karyawan_hisana.zip" : "data_karyawan_enakko.zip";
 
@@ -1036,7 +1119,6 @@ function setupKaryawanEventHandlers() {
           },
         });
 
-        // Endpoint yang benar
         const response = await fetch(`/data-karyawan/template?company=${currentKaryawanCompany}`);
 
         Swal.close();
@@ -1059,7 +1141,13 @@ function setupKaryawanEventHandlers() {
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
 
-        Swal.fire("Berhasil!", "Template berhasil didownload", "success");
+        Swal.fire({
+          title: "Berhasil!",
+          text: "Template berhasil didownload",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false,
+        });
       } catch (err) {
         console.error("Download template error:", err);
         Swal.fire("Error", err.message || "Gagal download template", "error");
@@ -1068,7 +1156,7 @@ function setupKaryawanEventHandlers() {
   }
 
   // ============================================
-  // IMPORT BUTTON - Toggle form (tetap sama)
+  // IMPORT BUTTON
   // ============================================
   const importBtn = document.getElementById("importKaryawanBtn");
   const importForm = document.getElementById("importKaryawanForm");
@@ -1088,7 +1176,7 @@ function setupKaryawanEventHandlers() {
   }
 
   // ============================================
-  // CANCEL IMPORT (tetap sama)
+  // CANCEL IMPORT
   // ============================================
   const cancelImport = document.getElementById("cancelImportKaryawan");
   if (cancelImport && importForm) {
@@ -1111,7 +1199,7 @@ function setupKaryawanEventHandlers() {
   }
 
   // ============================================
-  // FILE INPUT - Show filename (tetap sama)
+  // FILE INPUT - Show filename
   // ============================================
   const fileInput = document.getElementById("fileInputKaryawan");
   const fileName = document.getElementById("fileNameKaryawan");
@@ -1131,14 +1219,13 @@ function setupKaryawanEventHandlers() {
   }
 
   // ============================================
-  // UPLOAD FORM SUBMIT - DIPERBAIKI UNTUK TAMPILAN FILE NAME
+  // UPLOAD FORM SUBMIT
   // ============================================
   const uploadForm = document.getElementById("uploadFormKaryawan");
   if (uploadForm) {
     const newUploadForm = uploadForm.cloneNode(true);
     uploadForm.parentNode.replaceChild(newUploadForm, uploadForm);
 
-    // Update file name display saat file dipilih
     const fileInputField = document.getElementById("fileInputKaryawan");
     if (fileInputField) {
       const newFileInput = fileInputField.cloneNode(true);
@@ -1171,7 +1258,6 @@ function setupKaryawanEventHandlers() {
         return;
       }
 
-      // Validasi ekstensi file
       const fileName = fileInput_field.files[0].name;
       const fileExt = fileName.split(".").pop().toLowerCase();
       if (!["xlsx", "xls"].includes(fileExt)) {
@@ -1188,7 +1274,6 @@ function setupKaryawanEventHandlers() {
         statusEl.style.color = "#2563eb";
       }
 
-      // Tampilkan loading
       Swal.fire({
         title: "Sedang mengimport...",
         text: "Mohon tunggu sebentar",
@@ -1256,7 +1341,6 @@ function setupKaryawanEventHandlers() {
 
           await loadKaryawanData();
 
-          // Reset form
           newUploadForm.reset();
           const fileNameSpan = document.getElementById("fileNameKaryawan");
           if (fileNameSpan) {
@@ -1297,10 +1381,8 @@ function showDataKaryawanSection(company) {
 
   currentKaryawanPage = 1;
 
-  // Sembunyikan semua section
   document.querySelectorAll(".section").forEach((s) => s.classList.remove("active"));
 
-  // Tampilkan section Data Karyawan
   const targetSection = document.getElementById("sectionDataKaryawan");
   if (targetSection) {
     targetSection.classList.add("active");
@@ -1310,9 +1392,6 @@ function showDataKaryawanSection(company) {
     return;
   }
 
-  // JANGAN tutup dropdown Data Master - biarkan tetap terbuka
-
-  // Update active state di sidebar untuk Data Master dropdown
   if (company === "hisana") {
     const hisanaToggle = document.getElementById("dataMasterHisanaToggle");
     const hisanaMenu = document.getElementById("dataMasterHisanaMenu");
@@ -1343,25 +1422,20 @@ function showDataKaryawanSection(company) {
     }
   }
 
-  // Update active class untuk nav-item - HAPUS active dari semua nav-item
   document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.remove("active"));
 
-  // Set active untuk menu Data Karyawan yang dipilih
   const dataKaryawanBtn = company === "hisana" ? document.getElementById("dataKaryawanHisana") : document.getElementById("dataKaryawanEnakko");
   if (dataKaryawanBtn) {
     dataKaryawanBtn.classList.add("active");
   }
 
-  // Pastikan dropdown toggle tetap active
   const dataMasterToggle = company === "hisana" ? document.getElementById("dataMasterHisanaToggle") : document.getElementById("dataMasterEnakkoToggle");
   if (dataMasterToggle) {
     dataMasterToggle.classList.add("active");
   }
 
-  // Load data karyawan
   loadKaryawanData();
 
-  // Reset search input
   const searchInput = document.getElementById("searchKaryawanInput");
   if (searchInput) {
     searchInput.value = "";
@@ -1374,7 +1448,6 @@ function showDataKaryawanSection(company) {
 function setupDataKaryawanHandlers() {
   console.log("🔵 setupDataKaryawanHandlers dipanggil");
 
-  // Data Karyawan Hisana
   const dataKaryawanHisana = document.getElementById("dataKaryawanHisana");
   if (dataKaryawanHisana) {
     const newDataKaryawanHisana = dataKaryawanHisana.cloneNode(true);
@@ -1386,17 +1459,14 @@ function setupDataKaryawanHandlers() {
       console.log("🖱️ Data Karyawan Hisana clicked");
       showDataKaryawanSection("hisana");
 
-      // Update active class untuk dropdown items
       document.querySelectorAll(".dropdown-item").forEach((item) => item.classList.remove("active"));
       newDataKaryawanHisana.classList.add("active");
 
-      // Pastikan dropdown toggle tetap active
       const hisanaToggle = document.getElementById("dataMasterHisanaToggle");
       if (hisanaToggle) {
         hisanaToggle.classList.add("active");
       }
 
-      // Pastikan dropdown menu tetap terbuka
       const hisanaMenu = document.getElementById("dataMasterHisanaMenu");
       if (hisanaMenu) {
         hisanaMenu.classList.add("show");
@@ -1407,7 +1477,6 @@ function setupDataKaryawanHandlers() {
     console.warn("⚠️ dataKaryawanHisana not found");
   }
 
-  // Data Karyawan Enakko
   const dataKaryawanEnakko = document.getElementById("dataKaryawanEnakko");
   if (dataKaryawanEnakko) {
     const newDataKaryawanEnakko = dataKaryawanEnakko.cloneNode(true);
@@ -1419,17 +1488,14 @@ function setupDataKaryawanHandlers() {
       console.log("🖱️ Data Karyawan Enakko clicked");
       showDataKaryawanSection("enakko");
 
-      // Update active class untuk dropdown items
       document.querySelectorAll(".dropdown-item").forEach((item) => item.classList.remove("active"));
       newDataKaryawanEnakko.classList.add("active");
 
-      // Pastikan dropdown toggle tetap active
       const enakkoToggle = document.getElementById("dataMasterEnakkoToggle");
       if (enakkoToggle) {
         enakkoToggle.classList.add("active");
       }
 
-      // Pastikan dropdown menu tetap terbuka
       const enakkoMenu = document.getElementById("dataMasterEnakkoMenu");
       if (enakkoMenu) {
         enakkoMenu.classList.add("show");

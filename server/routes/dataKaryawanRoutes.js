@@ -1,3 +1,5 @@
+// server/routes/dataKaryawanRoutes.js - UPDATED WITH lokasi_store_id
+
 import express from "express";
 import multer from "multer";
 import xlsx from "xlsx";
@@ -29,6 +31,11 @@ function getTableName(company) {
   return company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
 }
 
+// Helper function untuk mendapatkan nama tabel lokasi store
+function getLokasiStoreTableName(company) {
+  return company === "hisana" ? "lokasi_store_hisana" : "lokasi_store_enakko";
+}
+
 // Helper function untuk mendapatkan folder upload berdasarkan company
 function getUploadFolder(company, type) {
   const baseDir = path.join(process.cwd(), "public/uploads");
@@ -43,7 +50,7 @@ function getUploadFolder(company, type) {
 }
 
 // =============================
-// KONFIGURASI MULTER UNTUK FOTO (dengan fileFilter gambar)
+// KONFIGURASI MULTER UNTUK FOTO
 // =============================
 const uploadFoto = multer({
   storage: multer.diskStorage({
@@ -73,15 +80,56 @@ const uploadFoto = multer({
 });
 
 // =============================
-// KONFIGURASI MULTER UNTUK EXCEL (tanpa fileFilter)
+// KONFIGURASI MULTER UNTUK EXCEL
 // =============================
 const uploadExcel = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
 // =============================
-// DOWNLOAD TEMPLATE EXCEL KARYAWAN
+// GET LOKASI STORE LIST FOR DROPDOWN
+// =============================
+router.get("/data-karyawan/lokasi-store", async (req, res) => {
+  try {
+    const { company } = req.query;
+    const number = checkLogin(req, res);
+
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa = ?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+
+    const userId = users[0].id;
+    const lokasiTable = getLokasiStoreTableName(company);
+
+    const [rows] = await db.query(
+      `SELECT id, nama_store, alamat, latitude, longitude 
+       FROM ${lokasiTable} 
+       WHERE user_id = ? 
+       ORDER BY nama_store ASC`,
+      [userId],
+    );
+
+    res.json({
+      success: true,
+      data: rows,
+    });
+  } catch (err) {
+    console.error("❌ Get lokasi store error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Gagal mengambil data lokasi store: " + err.message,
+    });
+  }
+});
+
+// =============================
+// DOWNLOAD TEMPLATE EXCEL KARYAWAN (UPDATED)
 // =============================
 router.get("/data-karyawan/template", async (req, res) => {
   try {
@@ -92,40 +140,46 @@ router.get("/data-karyawan/template", async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    console.log(`📥 Download template karyawan for company: ${company || "hisana"}`);
-
     const companyType = company === "enakko" ? "enakko" : "hisana";
+    const lokasiTable = companyType === "hisana" ? "lokasi_store_hisana" : "lokasi_store_enakko";
 
-    // Header yang SIMPLE dan MATCH dengan import
-    const headers = ["No Induk", "Nama Lengkap", "Nik", "Tanggal Lahir", "Alamat Domisili", "No Hp", "Email", "Password", "Jabatan", "Cabang", "Nama Gerai"];
+    // Ambil daftar lokasi store untuk dropdown reference di template
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa = ?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+    const userId = users[0].id;
+
+    const [lokasiList] = await db.query(`SELECT nama_store FROM ${lokasiTable} WHERE user_id = ? ORDER BY nama_store ASC`, [userId]);
+
+    // Header untuk template Excel
+    const headers = ["No Induk*", "Nama Lengkap*", "NIK*", "Tanggal Lahir* (DD/MM/YYYY)", "Alamat Domisili", "No HP*", "Email*", "Password* (min 6 karakter)", "Jabatan*", "Nama Store / Gerai*"];
 
     // Data contoh - 2 baris
     const templateData = [
       {
-        "No Induk": companyType === "hisana" ? "H001" : "E001",
-        "Nama Lengkap": "Budi Santoso",
-        Nik: "1234567890123456",
-        "Tanggal Lahir": "15/01/1990",
+        "No Induk*": companyType === "hisana" ? "H001" : "E001",
+        "Nama Lengkap*": "Budi Santoso",
+        "NIK*": "1234567890123456",
+        "Tanggal Lahir* (DD/MM/YYYY)": "15/01/1990",
         "Alamat Domisili": "Jl. Contoh No. 123, Jakarta",
-        "No Hp": "08123456789",
-        Email: "budi@example.com",
-        Password: "password123",
-        Jabatan: "Staff",
-        Cabang: "Jakarta Pusat",
-        "Nama Gerai": companyType === "hisana" ? "Hisana Thamrin" : "Enakko Thamrin",
+        "No HP*": "08123456789",
+        "Email*": "budi@example.com",
+        "Password* (min 6 karakter)": "password123",
+        "Jabatan*": "Staff",
+        "Nama Store / Gerai*": lokasiList.length > 0 ? lokasiList[0].nama_store : companyType === "hisana" ? "Hisana Thamrin" : "Enakko Thamrin",
       },
       {
-        "No Induk": companyType === "hisana" ? "H002" : "E002",
-        "Nama Lengkap": "Siti Aminah",
-        Nik: "2345678901234567",
-        "Tanggal Lahir": "20/05/1995",
+        "No Induk*": companyType === "hisana" ? "H002" : "E002",
+        "Nama Lengkap*": "Siti Aminah",
+        "NIK*": "2345678901234567",
+        "Tanggal Lahir* (DD/MM/YYYY)": "20/05/1995",
         "Alamat Domisili": "Jl. Merdeka No. 45, Jakarta",
-        "No Hp": "08123456788",
-        Email: "siti@example.com",
-        Password: "password123",
-        Jabatan: "Supervisor",
-        Cabang: "Jakarta Selatan",
-        "Nama Gerai": companyType === "hisana" ? "Hisana Pondok Indah" : "Enakko Pondok Indah",
+        "No HP*": "08123456788",
+        "Email*": "siti@example.com",
+        "Password* (min 6 karakter)": "password123",
+        "Jabatan*": "Supervisor",
+        "Nama Store / Gerai*": lokasiList.length > 1 ? lokasiList[1].nama_store : companyType === "hisana" ? "Hisana Pondok Indah" : "Enakko Pondok Indah",
       },
     ];
 
@@ -134,22 +188,57 @@ router.get("/data-karyawan/template", async (req, res) => {
 
     // Set lebar kolom
     ws["!cols"] = [
-      { wch: 12 }, // No Induk
-      { wch: 20 }, // Nama Lengkap
-      { wch: 18 }, // Nik
-      { wch: 15 }, // Tanggal Lahir
+      { wch: 12 }, // No Induk*
+      { wch: 20 }, // Nama Lengkap*
+      { wch: 18 }, // NIK*
+      { wch: 22 }, // Tanggal Lahir* (DD/MM/YYYY)
       { wch: 35 }, // Alamat Domisili
-      { wch: 15 }, // No Hp
-      { wch: 25 }, // Email
-      { wch: 15 }, // Password
-      { wch: 15 }, // Jabatan
-      { wch: 15 }, // Cabang
-      { wch: 20 }, // Nama Gerai
+      { wch: 15 }, // No HP*
+      { wch: 25 }, // Email*
+      { wch: 25 }, // Password* (min 6 karakter)
+      { wch: 15 }, // Jabatan*
+      { wch: 30 }, // Nama Store / Gerai*
     ];
+
+    // Tambahkan sheet informasi untuk validasi
+    const infoSheetData = [
+      ["PETUNJUK PENGISIAN TEMPLATE KARYAWAN"],
+      [""],
+      ["1. Kolom bertanda * (bintang) WAJIB diisi:", ""],
+      ["   - No Induk: Harus unik untuk setiap karyawan", ""],
+      ["   - Nama Lengkap: Nama lengkap karyawan", ""],
+      ["   - NIK: 16 digit angka", ""],
+      ["   - Tanggal Lahir: Format DD/MM/YYYY (contoh: 15/01/1990)", ""],
+      ["   - No HP: Bisa dimulai dengan 0 atau 62 (contoh: 08123456789 atau 628123456789)", ""],
+      ["   - Email: Format email yang valid", ""],
+      ["   - Password: Minimal 6 karakter", ""],
+      ["   - Jabatan: Posisi/jabatan karyawan", ""],
+      ["   - Nama Store / Gerai: Harus sesuai dengan nama store yang sudah terdaftar di sistem", ""],
+      [""],
+      ["2. Daftar Nama Store / Gerai yang tersedia:", ""],
+      ...lokasiList.map((l) => [`   - ${l.nama_store}`, ""]),
+      [""],
+      ["3. Format Tanggal Lahir yang benar:", ""],
+      ["   - Contoh: 15/01/1990 (15 Januari 1990)", ""],
+      ["   - Contoh: 20/12/1995 (20 Desember 1995)", ""],
+      [""],
+      ["4. Format No HP yang benar:", ""],
+      ["   - Contoh: 08123456789 (akan otomatis dikonversi ke 628123456789)", ""],
+      ["   - Contoh: 628123456789 (format internasional)", ""],
+      [""],
+      ["5. Catatan Penting:", ""],
+      ["   - Data dengan No Induk, Email, atau NIK yang sudah terdaftar akan dilewati", ""],
+      ["   - Nama Store / Gerai harus sudah ada di database, jika tidak maka import akan gagal", ""],
+      ["   - Pastikan semua data terisi dengan benar sebelum import", ""],
+    ];
+
+    const wsInfo = xlsx.utils.aoa_to_sheet(infoSheetData);
+    wsInfo["!cols"] = [{ wch: 60 }];
 
     const wb = xlsx.utils.book_new();
     const sheetName = companyType === "hisana" ? "Template_Hisana" : "Template_Enakko";
     xlsx.utils.book_append_sheet(wb, ws, sheetName);
+    xlsx.utils.book_append_sheet(wb, wsInfo, "Petunjuk");
 
     const buffer = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
     const filename = companyType === "hisana" ? "template_karyawan_hisana.xlsx" : "template_karyawan_enakko.xlsx";
@@ -165,13 +254,11 @@ router.get("/data-karyawan/template", async (req, res) => {
 });
 
 // =============================
-// EXPORT EXCEL KARYAWAN + FOTO (ZIP)
+// EXPORT EXCEL KARYAWAN (UPDATED)
 // =============================
 router.get("/data-karyawan/export", async (req, res) => {
   try {
     const { company } = req.query;
-
-    console.log(`📥 Export karyawan with photos requested for company: ${company}`);
 
     if (!company || (company !== "hisana" && company !== "enakko")) {
       return res.status(400).json({
@@ -192,13 +279,28 @@ router.get("/data-karyawan/export", async (req, res) => {
 
     const userId = users[0].id;
     const tableName = getTableName(company);
+    const lokasiTable = getLokasiStoreTableName(company);
 
+    // Query dengan JOIN ke lokasi_store
     const [rows] = await db.query(
-      `SELECT no_induk, nama_lengkap, nik, 
-              DATE_FORMAT(tanggal_lahir, '%d/%m/%Y') as tanggal_lahir,
-              alamat_domisili, no_hp, email, jabatan, cabang, nama_gerai,
-              foto_diri, foto_ktp
-       FROM ${tableName} WHERE user_id = ? ORDER BY no_induk ASC`,
+      `SELECT 
+        k.no_induk, 
+        k.nama_lengkap, 
+        k.nik, 
+        DATE_FORMAT(k.tanggal_lahir, '%d/%m/%Y') as tanggal_lahir,
+        k.alamat_domisili, 
+        k.no_hp, 
+        k.email, 
+        k.jabatan,
+        k.lokasi_store_id,
+        l.nama_store,
+        l.alamat as alamat_store,
+        k.foto_diri, 
+        k.foto_ktp
+       FROM ${tableName} k
+       LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+       WHERE k.user_id = ? 
+       ORDER BY k.no_induk ASC`,
       [userId],
     );
 
@@ -216,7 +318,7 @@ router.get("/data-karyawan/export", async (req, res) => {
     const archive = archiver("zip", { zlib: { level: 9 } });
     archive.pipe(res);
 
-    const headers = ["No Induk", "Nama Lengkap", "Nik", "Tanggal Lahir", "Alamat Domisili", "No Hp", "Email", "Jabatan", "Cabang", "Nama Gerai", "File Foto Diri", "File Foto Ktp"];
+    const headers = ["No Induk", "Nama Lengkap", "Nik", "Tanggal Lahir", "Alamat Domisili", "No Hp", "Email", "Jabatan", "Nama Store / Gerai", "Alamat Store", "File Foto Diri", "File Foto Ktp"];
 
     const exportData = rows.map((row) => {
       const sanitizedName = row.nama_lengkap ? row.nama_lengkap.replace(/\s+/g, "_") : "unknown";
@@ -229,15 +331,15 @@ router.get("/data-karyawan/export", async (req, res) => {
         "No Hp": row.no_hp ? (row.no_hp.startsWith("62") ? "0" + row.no_hp.substring(2) : row.no_hp) : "",
         Email: row.email || "",
         Jabatan: row.jabatan || "",
-        Cabang: row.cabang || "",
-        "Nama Gerai": row.nama_gerai || "",
+        "Nama Store / Gerai": row.nama_store || "",
+        "Alamat Store": row.alamat_store || "",
         "File Foto Diri": row.foto_diri ? `foto_diri/foto_diri_${row.no_induk}_${sanitizedName}${path.extname(row.foto_diri)}` : "",
         "File Foto Ktp": row.foto_ktp ? `foto_ktp/foto_ktp_${row.no_induk}_${sanitizedName}${path.extname(row.foto_ktp)}` : "",
       };
     });
 
     const ws = xlsx.utils.json_to_sheet(exportData, { header: headers });
-    ws["!cols"] = [{ wch: 12 }, { wch: 25 }, { wch: 18 }, { wch: 15 }, { wch: 35 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 40 }, { wch: 40 }];
+    ws["!cols"] = [{ wch: 12 }, { wch: 25 }, { wch: 18 }, { wch: 15 }, { wch: 35 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 25 }, { wch: 35 }, { wch: 40 }, { wch: 40 }];
 
     const wb = xlsx.utils.book_new();
     const sheetName = company === "hisana" ? "Data_Karyawan_Hisana" : "Data_Karyawan_Enakko";
@@ -279,16 +381,14 @@ router.get("/data-karyawan/export", async (req, res) => {
 });
 
 // =============================
-// IMPORT EXCEL KARYAWAN (DIREVISI - menggunakan uploadExcel)
+// IMPORT EXCEL KARYAWAN (UPDATED)
 // =============================
 router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res) => {
   console.log("=== IMPORT KARYAWAN ROUTE HIT ===");
 
   try {
     const { company } = req.query;
-    console.log("Company:", company);
 
-    // Validasi company
     if (!company || (company !== "hisana" && company !== "enakko")) {
       return res.status(400).json({
         success: false,
@@ -296,7 +396,6 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
       });
     }
 
-    // Validasi file
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -304,9 +403,6 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
       });
     }
 
-    console.log("File received:", req.file.originalname, "Size:", req.file.size, "bytes");
-
-    // Cek login
     const number = req.session?.number;
     if (!number) {
       return res.status(401).json({
@@ -315,7 +411,6 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
       });
     }
 
-    // Cek user
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa = ?", [number]);
     if (!users.length) {
       return res.status(401).json({
@@ -325,8 +420,19 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
     }
 
     const userId = users[0].id;
-    const tableName = company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
-    console.log(`User ID: ${userId}, Table: ${tableName}`);
+    const tableName = getTableName(company);
+    const lokasiTable = getLokasiStoreTableName(company);
+
+    // Load semua lokasi store untuk mapping (case insensitive)
+    const [lokasiList] = await db.query(`SELECT id, nama_store FROM ${lokasiTable} WHERE user_id = ?`, [userId]);
+
+    const lokasiMap = new Map();
+    lokasiList.forEach((l) => {
+      lokasiMap.set(l.nama_store.toLowerCase().trim(), l.id);
+    });
+
+    console.log(`📊 Loaded ${lokasiList.length} lokasi store for mapping`);
+    console.log("Available store names:", Array.from(lokasiMap.keys()));
 
     // Baca file Excel
     let data = [];
@@ -364,33 +470,46 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
 
       try {
         // Ambil data sesuai header (case insensitive)
-        const no_induk = (row["No Induk"] || row["no_induk"] || row["NO INDUK"] || "").toString().trim();
-        const nama_lengkap = (row["Nama Lengkap"] || row["nama_lengkap"] || row["NAMA LENGKAP"] || row["Nama"] || "").toString().trim();
-        let nik = (row["Nik"] || row["nik"] || row["NIK"] || "").toString().trim();
-        let tanggal_lahir = (row["Tanggal Lahir"] || row["tanggal_lahir"] || row["TANGGAL LAHIR"] || "").toString().trim();
+        const no_induk = (row["No Induk*"] || row["No Induk"] || row["no_induk"] || row["NO INDUK"] || "").toString().trim();
+        const nama_lengkap = (row["Nama Lengkap*"] || row["Nama Lengkap"] || row["nama_lengkap"] || row["NAMA LENGKAP"] || row["Nama"] || "").toString().trim();
+        let nik = (row["NIK*"] || row["NIK"] || row["nik"] || row["NIK"] || "").toString().trim();
+        let tanggal_lahir = (row["Tanggal Lahir* (DD/MM/YYYY)"] || row["Tanggal Lahir*"] || row["Tanggal Lahir"] || row["tanggal_lahir"] || "").toString().trim();
         const alamat_domisili = (row["Alamat Domisili"] || row["alamat_domisili"] || row["ALAMAT DOMISILI"] || row["Alamat"] || "").toString().trim();
-        let no_hp = (row["No Hp"] || row["no_hp"] || row["NO HP"] || row["No HP"] || row["nohp"] || "").toString().trim();
-        const email = (row["Email"] || row["email"] || row["EMAIL"] || "").toString().trim();
-        let password = (row["Password"] || row["password"] || row["PASSWORD"] || "").toString().trim();
-        const jabatan = (row["Jabatan"] || row["jabatan"] || row["JABATAN"] || row["Posisi"] || "").toString().trim();
-        const cabang = (row["Cabang"] || row["cabang"] || row["CABANG"] || "").toString().trim();
-        const nama_gerai = (row["Nama Gerai"] || row["nama_gerai"] || row["NAMA GERAI"] || row["Gerai"] || "").toString().trim();
+        let no_hp = (row["No HP*"] || row["No HP"] || row["no_hp"] || row["NO HP"] || row["nohp"] || "").toString().trim();
+        const email = (row["Email*"] || row["Email"] || row["email"] || row["EMAIL"] || "").toString().trim();
+        let password = (row["Password* (min 6 karakter)"] || row["Password*"] || row["Password"] || row["password"] || "").toString().trim();
+        const jabatan = (row["Jabatan*"] || row["Jabatan"] || row["jabatan"] || row["JABATAN"] || row["Posisi"] || "").toString().trim();
+        const namaStore = (row["Nama Store / Gerai*"] || row["Nama Store / Gerai"] || row["nama_store"] || row["Nama Store"] || row["Gerai"] || "").toString().trim();
 
-        console.log(`Row ${i + 1}: No Induk=${no_induk}, Nama=${nama_lengkap}`);
+        console.log(`Row ${i + 1}: No Induk=${no_induk}, Nama=${nama_lengkap}, Store=${namaStore}`);
 
         // Validasi field wajib
         const missingFields = [];
         if (!no_induk) missingFields.push("No Induk");
         if (!nama_lengkap) missingFields.push("Nama Lengkap");
-        if (!nik) missingFields.push("Nik");
+        if (!nik) missingFields.push("NIK");
         if (!tanggal_lahir) missingFields.push("Tanggal Lahir");
-        if (!no_hp) missingFields.push("No Hp");
+        if (!no_hp) missingFields.push("No HP");
         if (!email) missingFields.push("Email");
         if (!jabatan) missingFields.push("Jabatan");
+        if (!namaStore) missingFields.push("Nama Store / Gerai");
 
         if (missingFields.length > 0) {
           errorCount++;
           errors.push(`Baris ${i + 2}: Field wajib kosong: ${missingFields.join(", ")}`);
+          continue;
+        }
+
+        // Cari lokasi_store_id berdasarkan nama store
+        let lokasiStoreId = null;
+        const storeKey = namaStore.toLowerCase().trim();
+
+        if (lokasiMap.has(storeKey)) {
+          lokasiStoreId = lokasiMap.get(storeKey);
+          console.log(`✓ Found store: ${namaStore} -> ID: ${lokasiStoreId}`);
+        } else {
+          errorCount++;
+          errors.push(`Baris ${i + 2}: Nama Store "${namaStore}" tidak ditemukan di database. Silakan tambahkan lokasi store terlebih dahulu.`);
           continue;
         }
 
@@ -421,7 +540,12 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
         if (tanggal_lahir.includes("/")) {
           const parts = tanggal_lahir.split("/");
           if (parts.length === 3) {
-            formattedDate = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+            const day = parts[0].padStart(2, "0");
+            const month = parts[1].padStart(2, "0");
+            const year = parts[2];
+            if (year.length === 4) {
+              formattedDate = `${year}-${month}-${day}`;
+            }
           }
         } else if (tanggal_lahir.includes("-")) {
           const parts = tanggal_lahir.split("-");
@@ -429,7 +553,12 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
             if (parts[0].length === 4) {
               formattedDate = tanggal_lahir;
             } else {
-              formattedDate = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+              const day = parts[0].padStart(2, "0");
+              const month = parts[1].padStart(2, "0");
+              const year = parts[2];
+              if (year.length === 4) {
+                formattedDate = `${year}-${month}-${day}`;
+              }
             }
           }
         }
@@ -448,7 +577,7 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
           continue;
         }
 
-        // Set default password
+        // Set default password jika kosong
         if (!password) {
           password = "default123";
         }
@@ -490,18 +619,18 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Insert data
+        // Insert data dengan lokasi_store_id
         const query = `
           INSERT INTO ${tableName} 
           (user_id, no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, 
-           no_hp, email, password, jabatan, cabang, nama_gerai) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           no_hp, email, password, jabatan, lokasi_store_id) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
-        await db.query(query, [userId, no_induk, nama_lengkap, nikClean, formattedDate, alamat_domisili, noHpClean, email, hashedPassword, jabatan, cabang, nama_gerai]);
+        await db.query(query, [userId, no_induk, nama_lengkap, nikClean, formattedDate, alamat_domisili || null, noHpClean, email, hashedPassword, jabatan, lokasiStoreId]);
 
         successCount++;
-        console.log(`✅ Imported: ${no_induk} - ${nama_lengkap}`);
+        console.log(`✅ Imported: ${no_induk} - ${nama_lengkap} (Store ID: ${lokasiStoreId})`);
       } catch (err) {
         errorCount++;
         errors.push(`Baris ${i + 2}: ${err.message}`);
@@ -530,7 +659,7 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
 });
 
 // =============================
-// GET ALL KARYAWAN
+// GET ALL KARYAWAN (UPDATED WITH JOIN)
 // =============================
 router.get("/data-karyawan", async (req, res) => {
   try {
@@ -560,12 +689,29 @@ router.get("/data-karyawan", async (req, res) => {
 
     const userId = users[0].id;
     const tableName = getTableName(company);
+    const lokasiTable = getLokasiStoreTableName(company);
 
     const [rows] = await db.query(
-      `SELECT id, no_induk, nama_lengkap, nik, DATE_FORMAT(tanggal_lahir, '%Y-%m-%d') as tanggal_lahir,
-              alamat_domisili, no_hp, email, jabatan, cabang, nama_gerai, 
-              foto_diri, foto_ktp, created_at 
-       FROM ${tableName} WHERE user_id = ? ORDER BY no_induk ASC`,
+      `SELECT 
+        k.id, 
+        k.no_induk, 
+        k.nama_lengkap, 
+        k.nik, 
+        DATE_FORMAT(k.tanggal_lahir, '%Y-%m-%d') as tanggal_lahir,
+        k.alamat_domisili, 
+        k.no_hp, 
+        k.email, 
+        k.jabatan, 
+        k.lokasi_store_id,
+        l.nama_store,
+        l.alamat as alamat_store,
+        k.foto_diri, 
+        k.foto_ktp, 
+        k.created_at 
+       FROM ${tableName} k
+       LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+       WHERE k.user_id = ? 
+       ORDER BY k.no_induk ASC`,
       [userId],
     );
 
@@ -581,7 +727,7 @@ router.get("/data-karyawan", async (req, res) => {
 });
 
 // =============================
-// GET KARYAWAN BY ID
+// GET KARYAWAN BY ID (UPDATED WITH JOIN)
 // =============================
 router.get("/data-karyawan/:id", async (req, res) => {
   try {
@@ -600,11 +746,25 @@ router.get("/data-karyawan/:id", async (req, res) => {
 
     const userId = users[0].id;
     const tableName = getTableName(company);
+    const lokasiTable = getLokasiStoreTableName(company);
 
     const [rows] = await db.query(
-      `SELECT id, no_induk, nama_lengkap, nik, DATE_FORMAT(tanggal_lahir, '%Y-%m-%d') as tanggal_lahir,
-              alamat_domisili, no_hp, email, jabatan, cabang, nama_gerai, foto_diri, foto_ktp 
-       FROM ${tableName} WHERE id = ? AND user_id = ?`,
+      `SELECT 
+        k.id, 
+        k.no_induk, 
+        k.nama_lengkap, 
+        k.nik, 
+        DATE_FORMAT(k.tanggal_lahir, '%Y-%m-%d') as tanggal_lahir,
+        k.alamat_domisili, 
+        k.no_hp, 
+        k.email, 
+        k.jabatan, 
+        k.lokasi_store_id,
+        l.nama_store,
+        l.alamat as alamat_store
+       FROM ${tableName} k
+       LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+       WHERE k.id = ? AND k.user_id = ?`,
       [id, userId],
     );
 
@@ -626,7 +786,7 @@ router.get("/data-karyawan/:id", async (req, res) => {
 });
 
 // =============================
-// CREATE KARYAWAN (dengan uploadFoto)
+// CREATE KARYAWAN (UPDATED)
 // =============================
 router.post(
   "/data-karyawan",
@@ -642,7 +802,7 @@ router.post(
       }
 
       const { company } = req.query;
-      const { no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, no_hp, email, password, jabatan, cabang, nama_gerai } = req.body;
+      const { no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, no_hp, email, password, jabatan, lokasi_store_id } = req.body;
 
       const [users] = await db.query("SELECT id FROM users WHERE nomor_wa = ?", [number]);
       if (!users.length) {
@@ -659,6 +819,7 @@ router.post(
         { field: "email", name: "Email" },
         { field: "password", name: "Password" },
         { field: "jabatan", name: "Jabatan" },
+        { field: "lokasi_store_id", name: "Lokasi Store" },
       ];
 
       for (const reqField of requiredFields) {
@@ -671,6 +832,17 @@ router.post(
       }
 
       const tableName = getTableName(company);
+      const lokasiTable = getLokasiStoreTableName(company);
+
+      // Validasi lokasi_store_id ada
+      const [lokasiCheck] = await db.query(`SELECT id FROM ${lokasiTable} WHERE id = ? AND user_id = ?`, [lokasi_store_id, userId]);
+
+      if (lokasiCheck.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Lokasi Store tidak valid",
+        });
+      }
 
       const [existingNoInduk] = await db.query(`SELECT id FROM ${tableName} WHERE no_induk = ? AND user_id = ?`, [no_induk.trim(), userId]);
       if (existingNoInduk.length > 0) {
@@ -705,24 +877,9 @@ router.post(
       const [result] = await db.query(
         `INSERT INTO ${tableName} 
          (user_id, no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, 
-          no_hp, email, password, jabatan, cabang, nama_gerai, foto_diri, foto_ktp) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          userId,
-          no_induk.trim(),
-          nama_lengkap.trim(),
-          nik.trim(),
-          tanggal_lahir,
-          alamat_domisili?.trim() || "",
-          no_hp.trim(),
-          email.trim(),
-          hashedPassword,
-          jabatan.trim(),
-          cabang?.trim() || "",
-          nama_gerai?.trim() || "",
-          fotoDiriPath,
-          fotoKtpPath,
-        ],
+          no_hp, email, password, jabatan, lokasi_store_id, foto_diri, foto_ktp) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, no_induk.trim(), nama_lengkap.trim(), nik.trim(), tanggal_lahir, alamat_domisili?.trim() || "", no_hp.trim(), email.trim(), hashedPassword, jabatan.trim(), lokasi_store_id, fotoDiriPath, fotoKtpPath],
       );
 
       res.json({
@@ -741,7 +898,7 @@ router.post(
 );
 
 // =============================
-// UPDATE KARYAWAN (dengan uploadFoto)
+// UPDATE KARYAWAN (UPDATED)
 // =============================
 router.put(
   "/data-karyawan/:id",
@@ -753,7 +910,7 @@ router.put(
     try {
       const { id } = req.params;
       const { company } = req.query;
-      const { no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, no_hp, email, password, jabatan, cabang, nama_gerai } = req.body;
+      const { no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, no_hp, email, password, jabatan, lokasi_store_id } = req.body;
 
       const number = checkLogin(req, res);
       if (!number) {
@@ -767,10 +924,23 @@ router.put(
 
       const userId = users[0].id;
       const tableName = getTableName(company);
+      const lokasiTable = getLokasiStoreTableName(company);
 
       const [existing] = await db.query(`SELECT id, foto_diri, foto_ktp FROM ${tableName} WHERE id = ? AND user_id = ?`, [id, userId]);
       if (existing.length === 0) {
         return res.status(404).json({ success: false, message: "Data karyawan tidak ditemukan" });
+      }
+
+      // Validasi lokasi_store_id jika diisi
+      if (lokasi_store_id) {
+        const [lokasiCheck] = await db.query(`SELECT id FROM ${lokasiTable} WHERE id = ? AND user_id = ?`, [lokasi_store_id, userId]);
+
+        if (lokasiCheck.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Lokasi Store tidak valid",
+          });
+        }
       }
 
       const [duplicateNoInduk] = await db.query(`SELECT id FROM ${tableName} WHERE no_induk = ? AND id != ? AND user_id = ?`, [no_induk.trim(), id, userId]);
@@ -813,9 +983,9 @@ router.put(
         UPDATE ${tableName} SET 
           no_induk = ?, nama_lengkap = ?, nik = ?, tanggal_lahir = ?, 
           alamat_domisili = ?, no_hp = ?, email = ?, jabatan = ?, 
-          cabang = ?, nama_gerai = ?, foto_diri = ?, foto_ktp = ?
+          lokasi_store_id = ?, foto_diri = ?, foto_ktp = ?
       `;
-      let params = [no_induk.trim(), nama_lengkap.trim(), nik.trim(), tanggal_lahir, alamat_domisili?.trim() || "", no_hp.trim(), email.trim(), jabatan.trim(), cabang?.trim() || "", nama_gerai?.trim() || "", fotoDiriPath, fotoKtpPath];
+      let params = [no_induk.trim(), nama_lengkap.trim(), nik.trim(), tanggal_lahir, alamat_domisili?.trim() || "", no_hp.trim(), email.trim(), jabatan.trim(), lokasi_store_id || null, fotoDiriPath, fotoKtpPath];
 
       if (password && password.trim() !== "") {
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -843,7 +1013,7 @@ router.put(
 );
 
 // =============================
-// DELETE KARYAWAN
+// DELETE KARYAWAN (UPDATED - no changes needed)
 // =============================
 router.delete("/data-karyawan/:id", async (req, res) => {
   try {

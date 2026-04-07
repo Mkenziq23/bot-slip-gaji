@@ -35,6 +35,11 @@ function requireKaryawan(req, res, next) {
   next();
 }
 
+// Helper function untuk mendapatkan nama tabel lokasi store
+function getLokasiStoreTableName(company) {
+  return company === "hisana" ? "lokasi_store_hisana" : "lokasi_store_enakko";
+}
+
 /**
  * ==========================
  * Halaman Login (terpadu)
@@ -95,7 +100,7 @@ router.post("/login", async (req, res) => {
   }
 
   // Jika bukan admin, coba login sebagai Karyawan
-  // Untuk Hisana
+  // Untuk Hisana - QUERY DIPERBAIKI (tanpa cabang dan nama_gerai)
   let [karyawanRows] = await db.query(
     `SELECT 
       id, 
@@ -105,15 +110,14 @@ router.post("/login", async (req, res) => {
       email, 
       password, 
       jabatan, 
-      cabang, 
-      nama_gerai,
+      lokasi_store_id,
       'hisana' as company 
     FROM data_karyawan_hisana 
     WHERE no_induk = ? OR email = ?`,
     [username, username],
   );
 
-  // Jika tidak ditemukan di Hisana, coba di Enakko
+  // Jika tidak ditemukan di Hisana, coba di Enakko - QUERY DIPERBAIKI (tanpa cabang dan nama_gerai)
   if (karyawanRows.length === 0) {
     [karyawanRows] = await db.query(
       `SELECT 
@@ -124,8 +128,7 @@ router.post("/login", async (req, res) => {
         email, 
         password, 
         jabatan, 
-        cabang, 
-        nama_gerai,
+        lokasi_store_id,
         'enakko' as company 
       FROM data_karyawan_enakko 
       WHERE no_induk = ? OR email = ?`,
@@ -142,6 +145,7 @@ router.post("/login", async (req, res) => {
       id: karyawan.id,
       nama_lengkap: karyawan.nama_lengkap,
       company: karyawan.company,
+      lokasi_store_id: karyawan.lokasi_store_id,
       hasPassword: !!karyawan.password,
     });
 
@@ -155,6 +159,23 @@ router.post("/login", async (req, res) => {
     const match = await bcrypt.compare(password, karyawan.password);
 
     if (match) {
+      // Ambil informasi lokasi store jika ada
+      let namaStore = null;
+      let alamatStore = null;
+
+      if (karyawan.lokasi_store_id) {
+        const lokasiTable = getLokasiStoreTableName(karyawan.company);
+        try {
+          const [lokasiRows] = await db.query(`SELECT nama_store, alamat FROM ${lokasiTable} WHERE id = ?`, [karyawan.lokasi_store_id]);
+          if (lokasiRows.length > 0) {
+            namaStore = lokasiRows[0].nama_store;
+            alamatStore = lokasiRows[0].alamat;
+          }
+        } catch (err) {
+          console.error("Error fetching lokasi store:", err);
+        }
+      }
+
       // Simpan ke session
       req.session.karyawan = {
         id: karyawan.id,
@@ -163,8 +184,9 @@ router.post("/login", async (req, res) => {
         nama_lengkap: karyawan.nama_lengkap,
         email: karyawan.email,
         jabatan: karyawan.jabatan,
-        cabang: karyawan.cabang,
-        nama_gerai: karyawan.nama_gerai,
+        lokasi_store_id: karyawan.lokasi_store_id,
+        nama_store: namaStore, // Nama gerai
+        alamat_store: alamatStore, // Alamat sebagai cabang
         company: karyawan.company, // 'hisana' atau 'enakko'
       };
 
