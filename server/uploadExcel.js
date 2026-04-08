@@ -1,6 +1,19 @@
 import db from "./db.js";
 import XLSX from "xlsx";
 
+// Helper function untuk mendapatkan nama tabel karyawan
+function getKaryawanTableName(company) {
+  return company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
+}
+
+// Helper function untuk parse currency
+function parseCurrencyFromExcel(value) {
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  const cleanValue = String(value).replace(/[^\d]/g, "");
+  return parseInt(cleanValue) || 0;
+}
+
 export async function uploadExcel(req, res, number, company) {
   try {
     const file = req.file;
@@ -16,6 +29,7 @@ export async function uploadExcel(req, res, number, company) {
     const userId = users[0].id;
 
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+    const karyawanTable = getKaryawanTableName(company);
 
     // Read Excel file
     const workbook = XLSX.readFile(file.path);
@@ -29,21 +43,31 @@ export async function uploadExcel(req, res, number, company) {
 
     console.log(`[UPLOAD] Processing ${data.length} rows for ${company}`);
 
+    // Load semua karyawan untuk mapping no_induk ke karyawan_id
+    const [karyawanList] = await db.query(`SELECT id as karyawan_id, no_induk FROM ${karyawanTable} WHERE user_id = ?`, [userId]);
+
+    const karyawanMap = new Map();
+    karyawanList.forEach((k) => {
+      karyawanMap.set(k.no_induk, k);
+    });
+
+    console.log(`[UPLOAD] Loaded ${karyawanList.length} karyawan for mapping`);
+
     // Get current date for month/year filtering
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    // Get existing no_induk for current month to avoid duplicates
+    // Get existing karyawan_id for current month to avoid duplicates
     const [existingData] = await db.query(
-      `SELECT no_induk FROM ${tableName} 
+      `SELECT karyawan_id FROM ${tableName} 
        WHERE user_id = ? 
        AND MONTH(created_at) = ? 
        AND YEAR(created_at) = ?`,
       [userId, currentMonth, currentYear],
     );
 
-    const existingNoInduk = new Set(existingData.map((row) => row.no_induk));
+    const existingKaryawanIds = new Set(existingData.map((row) => row.karyawan_id));
 
     let successCount = 0;
     let skippedCount = 0;
@@ -57,25 +81,27 @@ export async function uploadExcel(req, res, number, company) {
 
       try {
         // Validate required fields based on company
-        let noInduk, nama, nohp;
+        let noInduk, nohp;
 
         if (company === "hisana") {
           noInduk = row["No Induk"] || row["no_induk"] || row["NO INDUK"];
-          nama = row["NAMA"] || row["Nama"] || row["nama"];
-          nohp = row["NO HP"] || row["No HP"] || row["nohp"] || row["NO HP"];
+          nohp = row["NO HP"] || row["No HP"] || row["nohp"];
 
           if (!noInduk) {
             throw new Error(`Baris ${rowNumber}: No Induk tidak boleh kosong`);
-          }
-          if (!nama) {
-            throw new Error(`Baris ${rowNumber}: Nama tidak boleh kosong`);
           }
           if (!nohp) {
             throw new Error(`Baris ${rowNumber}: No HP tidak boleh kosong`);
           }
 
-          // Check if no_induk already exists in current month
-          if (existingNoInduk.has(noInduk.toString())) {
+          // Cari karyawan_id berdasarkan no_induk
+          const karyawan = karyawanMap.get(noInduk.toString());
+          if (!karyawan) {
+            throw new Error(`Baris ${rowNumber}: No Induk "${noInduk}" tidak ditemukan di database karyawan`);
+          }
+
+          // Check if karyawan already exists in current month
+          if (existingKaryawanIds.has(karyawan.karyawan_id)) {
             console.log(`[UPLOAD] Skipping ${noInduk} - already exists in current month`);
             skippedCount++;
             errors.push(`Baris ${rowNumber}: Data dengan No Induk ${noInduk} sudah ada di bulan ini`);
@@ -83,13 +109,14 @@ export async function uploadExcel(req, res, number, company) {
           }
 
           // Parse values
-          const gaji = parseFloat(row["GAJI"] || row["Gaji"] || row["gaji"] || 0);
-          const iuranBpjs = parseFloat(row["Iuran BPJS Ketenagakerjaan"] || row["Iuran BPJS"] || row["iuran_bpjs"] || 0);
-          const kerajinan = parseFloat(row["KERAJINAN"] || row["Kerajinan"] || row["kerajinan"] || 0);
-          const cuti = parseFloat(row["CUTI"] || row["Cuti"] || row["cuti"] || 0);
-          const tunjBpjsPulsa = parseFloat(row["Tunj. BPJS & Pulsa"] || row["Tunj BPJS & Pulsa"] || row["tunj_bpjs_pulsa"] || 0);
-          const um = parseFloat(row["UM"] || row["Um"] || row["um"] || 0);
-          const kerja = parseInt(row["KERJA"] || row["Kerja"] || row["kerja"] || 0);
+          const kerja = parseInt(row["Kerja"] || row["KERJA"] || 0);
+          const gaji = parseCurrencyFromExcel(row["Gaji"] || row["GAJI"] || 0);
+          const iuranBpjs = parseCurrencyFromExcel(row["Iuran BPJS Ketenagakerjaan"] || row["Iuran BPJS"] || 0);
+          const kerajinan = parseCurrencyFromExcel(row["Kerajinan"] || row["KERAJINAN"] || 0);
+          const cuti = parseCurrencyFromExcel(row["Cuti"] || row["CUTI"] || 0);
+          const tunjBpjsPulsa = parseCurrencyFromExcel(row["Tunj. BPJS & Pulsa"] || row["Tunj BPJS & Pulsa"] || 0);
+          const um = parseCurrencyFromExcel(row["UM"] || row["Um"] || 0);
+          const keterangan = row["KETERANGAN"] || row["Keterangan"] || "";
 
           // Calculate jumlah and gaji_total
           const jumlah = gaji - iuranBpjs + kerajinan + cuti + tunjBpjsPulsa;
@@ -97,112 +124,62 @@ export async function uploadExcel(req, res, number, company) {
 
           const query = `
             INSERT INTO ${tableName} (
-              user_id, no_induk, nama, posisi, store, awal_masuk, kerja,
-              gaji, iuran_bpjs_ketenagakerjaan, kerajinan, cuti, tunj_bpjs_pulsa,
-              jumlah, um, keterangan, gaji_total, nohp, status_slip,
-              is_imported, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+              user_id, karyawan_id, kerja, gaji, iuran_bpjs_ketenagakerjaan,
+              kerajinan, cuti, tunj_bpjs_pulsa, jumlah, um, keterangan,
+              gaji_total, nohp, status_slip, is_imported, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
           `;
 
-          const values = [
-            userId,
-            noInduk.toString(),
-            nama.toString(),
-            row["POSISI"] || row["Posisi"] || row["posisi"] || "",
-            row["STORE"] || row["Store"] || row["store"] || "",
-            row["AWAL MASUK"] || row["Awal Masuk"] || row["awal_masuk"] || null,
-            kerja,
-            gaji,
-            iuranBpjs,
-            kerajinan,
-            cuti,
-            tunjBpjsPulsa,
-            jumlah,
-            um,
-            row["KETERANGAN"] || row["Keterangan"] || row["keterangan"] || "",
-            gajiTotal,
-            nohp.toString(),
-            "belum_dikirim",
-            1,
-          ];
+          const values = [userId, karyawan.karyawan_id, kerja, gaji, iuranBpjs, kerajinan, cuti, tunjBpjsPulsa, jumlah, um, keterangan, gajiTotal, nohp.toString(), "belum_dikirim", 1];
 
           await db.query(query, values);
           successCount++;
-          existingNoInduk.add(noInduk.toString());
+          existingKaryawanIds.add(karyawan.karyawan_id);
         } else {
           // Enakko
           noInduk = row["No Induk"] || row["no_induk"] || row["NO INDUK"];
-          nama = row["Nama Karyawan"] || row["NAMA KARYAWAN"] || row["nama_karyawan"] || row["Nama"];
           nohp = row["NO HP"] || row["No HP"] || row["nohp"];
 
           if (!noInduk) {
             throw new Error(`Baris ${rowNumber}: No Induk tidak boleh kosong`);
           }
-          if (!nama) {
-            throw new Error(`Baris ${rowNumber}: Nama Karyawan tidak boleh kosong`);
-          }
           if (!nohp) {
             throw new Error(`Baris ${rowNumber}: No HP tidak boleh kosong`);
           }
 
-          // Check if no_induk already exists in current month
-          if (existingNoInduk.has(noInduk.toString())) {
+          // Cari karyawan_id berdasarkan no_induk
+          const karyawan = karyawanMap.get(noInduk.toString());
+          if (!karyawan) {
+            throw new Error(`Baris ${rowNumber}: No Induk "${noInduk}" tidak ditemukan di database karyawan`);
+          }
+
+          // Check if karyawan already exists in current month
+          if (existingKaryawanIds.has(karyawan.karyawan_id)) {
             console.log(`[UPLOAD] Skipping ${noInduk} - already exists in current month`);
             skippedCount++;
             errors.push(`Baris ${rowNumber}: Data dengan No Induk ${noInduk} sudah ada di bulan ini`);
             continue;
           }
 
-          const gajiUtuh = parseFloat(row["Gaji Utuh"] || row["GAJI UTUH"] || row["gaji_utuh"] || 0);
-          const gajiPokok = parseFloat(row["Gaji Pokok"] || row["GAJI POKOK"] || row["gaji_pokok"] || 0);
-          const bpjsKesehatan = parseFloat(row["BPJS Kesehatan"] || row["BPJS KESEHATAN"] || row["bpjs_kesehatan"] || 0);
-          const insentif = parseFloat(row["Insentif"] || row["INSENTIF"] || row["insentif"] || 0);
+          const gajiPokok = parseCurrencyFromExcel(row["Gaji Pokok"] || row["GAJI POKOK"] || 0);
+          const bpjsKesehatan = parseCurrencyFromExcel(row["BPJS Kesehatan"] || row["BPJS KESEHATAN"] || 0);
+          const insentif = parseCurrencyFromExcel(row["Insentif"] || row["INSENTIF"] || 0);
+          const keterangan = row["Keterangan"] || row["KETERANGAN"] || "";
 
           const totalGaji = gajiPokok + bpjsKesehatan + insentif;
 
           const query = `
             INSERT INTO ${tableName} (
-              user_id, no_induk, nama_karyawan, tanggal_masuk, jabatan, penempatan,
-              gaji_utuh, gaji_pokok, bpjs_kesehatan, insentif, total_gaji,
-              keterangan, nohp, status_slip, is_imported, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+              user_id, karyawan_id, gaji_pokok, bpjs_kesehatan,
+              insentif, total_gaji, keterangan, nohp, status_slip, is_imported, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
           `;
 
-          let tanggalMasuk = null;
-          if (row["Tanggal Masuk"] || row["TANGGAL MASUK"] || row["tanggal_masuk"]) {
-            const tgl = row["Tanggal Masuk"] || row["TANGGAL MASUK"] || row["tanggal_masuk"];
-            if (tgl) {
-              // Try to parse date
-              const parsedDate = new Date(tgl);
-              if (!isNaN(parsedDate.getTime())) {
-                tanggalMasuk = parsedDate.toISOString().split("T")[0];
-              } else {
-                tanggalMasuk = tgl;
-              }
-            }
-          }
-
-          const values = [
-            userId,
-            noInduk.toString(),
-            nama.toString(),
-            tanggalMasuk,
-            row["Jabatan"] || row["JABATAN"] || row["jabatan"] || "",
-            row["Penempatan"] || row["PENEMPATAN"] || row["penempatan"] || "",
-            gajiUtuh,
-            gajiPokok,
-            bpjsKesehatan,
-            insentif,
-            totalGaji,
-            row["Keterangan"] || row["KETERANGAN"] || row["keterangan"] || "",
-            nohp.toString(),
-            "belum_dikirim",
-            1,
-          ];
+          const values = [userId, karyawan.karyawan_id, gajiPokok, bpjsKesehatan, insentif, totalGaji, keterangan, nohp.toString(), "belum_dikirim", 1];
 
           await db.query(query, values);
           successCount++;
-          existingNoInduk.add(noInduk.toString());
+          existingKaryawanIds.add(karyawan.karyawan_id);
         }
       } catch (err) {
         console.error(`[UPLOAD] Error processing row ${rowNumber}:`, err.message);
@@ -213,7 +190,7 @@ export async function uploadExcel(req, res, number, company) {
 
     console.log(`[UPLOAD] Complete - Success: ${successCount}, Skipped: ${skippedCount}, Failed: ${errorCount}`);
 
-    // Return response in same format as data karyawan import
+    // Return response
     res.json({
       success: true,
       successCount: successCount,

@@ -54,14 +54,13 @@ async function requestOTP() {
       document.getElementById("otp-section").style.display = "block";
       document.getElementById("phone-number").disabled = true;
 
-      // Button berubah jadi SUBMIT
       btn.className = "btn btn-success";
       btn.innerHTML = '<i class="fas fa-check-circle"></i> SUBMIT';
       btn.disabled = false;
       isOtpRequested = true;
 
       showMessage("Kode OTP sudah dibuat! Masukkan kode OTP", false);
-      startTimer(120); // 2 menit = 120 detik
+      startTimer(120);
       document.getElementById("otp-code").focus();
     } else {
       showMessage(data.message, true);
@@ -69,6 +68,7 @@ async function requestOTP() {
       btn.innerHTML = '<i class="fas fa-paper-plane"></i> Minta Kode OTP';
     }
   } catch (err) {
+    console.error("Request OTP error:", err);
     showMessage("Terjadi kesalahan", true);
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-paper-plane"></i> Minta Kode OTP';
@@ -98,20 +98,15 @@ async function submitOTP() {
     const data = await res.json();
 
     if (data.success) {
-      showMessage("Login berhasil! Mengalihkan...", false);
+      showMessage("Login berhasil! Menyambungkan ke WhatsApp...", false);
       statusDiv.classList.add("connected");
-      statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Login Berhasil';
+      statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Login Berhasil, mengalihkan...';
 
-      const sessionRes = await fetch("/set-number", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ number: currentPhone }),
-      });
+      if (otpTimer) clearInterval(otpTimer);
 
-      if (sessionRes.ok) {
-        if (otpTimer) clearInterval(otpTimer);
-        setTimeout(() => (window.location.href = "/dashboard"), 1200);
-      }
+      setTimeout(() => {
+        window.location.href = "/dashboard";
+      }, 2000);
     } else {
       showMessage(data.message, true);
       btn.disabled = false;
@@ -120,6 +115,7 @@ async function submitOTP() {
       document.getElementById("otp-code").focus();
     }
   } catch (err) {
+    console.error("Submit OTP error:", err);
     showMessage("Terjadi kesalahan", true);
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-check-circle"></i> SUBMIT';
@@ -136,7 +132,6 @@ function startTimer(seconds) {
     if (timeLeft <= 0) {
       clearInterval(otpTimer);
       timerDiv.innerHTML = '<i class="fas fa-hourglass-end"></i> Kode kadaluarsa, minta ulang';
-      // Reset button ke semula
       const btn = document.getElementById("action-btn");
       btn.className = "btn btn-primary";
       btn.innerHTML = '<i class="fas fa-paper-plane"></i> Minta Kode OTP';
@@ -168,10 +163,14 @@ function switchTab(tab, el) {
 
   if (tab === "qr") {
     document.getElementById("qr-tab").classList.add("active");
-    if (!ws || ws.readyState !== WebSocket.OPEN) connectWS();
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      connectWS();
+    }
   } else {
     document.getElementById("otp-tab").classList.add("active");
-    if (ws) ws.close();
+    if (ws) {
+      ws.close();
+    }
     resetOTP();
   }
 }
@@ -202,40 +201,79 @@ document.getElementById("otp-code")?.addEventListener("keypress", function (e) {
 // QR WebSocket
 function connectWS() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  ws = new WebSocket(`${protocol}//${location.host}`);
+  const wsUrl = `${protocol}//${location.host}`;
 
-  ws.onopen = () => (statusDiv.innerHTML = "Menunggu QR...");
+  console.log("Connecting to WebSocket:", wsUrl);
+  statusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Menghubungkan ke Server...';
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    return;
+  }
+
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    console.log("WebSocket connected");
+    statusDiv.innerHTML = '<i class="fas fa-qrcode"></i> Menunggu QR Code...';
+  };
 
   ws.onmessage = async (e) => {
-    const data = JSON.parse(e.data);
-    if (data.qr) {
-      loading.style.display = "none";
-      qrCanvas.style.display = "block";
-      QRCode.toCanvas(qrCanvas, data.qr, { width: 250 });
-      statusDiv.innerHTML = "Scan QR Code";
-    }
-    if (data.status === "connected") {
-      statusDiv.classList.add("connected");
-      statusDiv.innerHTML = "Login Berhasil";
-      const res = await fetch("/set-number", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ number: data.number }),
-      });
-      if (res.ok) setTimeout(() => (window.location.href = "/dashboard"), 1200);
-    }
-    if (data.status === "not_registered") {
-      statusDiv.innerHTML = "Nomor belum terdaftar";
-      setTimeout(() => (window.location.href = "/404.html"), 1500);
+    try {
+      const data = JSON.parse(e.data);
+      console.log("WebSocket message:", data);
+
+      if (data.qr) {
+        loading.style.display = "none";
+        qrCanvas.style.display = "block";
+        QRCode.toCanvas(qrCanvas, data.qr, { width: 250, margin: 2 });
+        statusDiv.innerHTML = '<i class="fas fa-qrcode"></i> Scan QR Code dengan WhatsApp';
+      }
+
+      if (data.status === "connected") {
+        statusDiv.classList.add("connected");
+        statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Login Berhasil! Mengalihkan...';
+
+        const res = await fetch("/set-number", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ number: data.number }),
+        });
+
+        if (res.ok) {
+          setTimeout(() => (window.location.href = "/dashboard"), 1500);
+        }
+      }
+
+      if (data.status === "not_registered") {
+        statusDiv.classList.add("error");
+        statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Nomor belum terdaftar';
+        setTimeout(() => (window.location.href = "/404.html"), 2000);
+      }
+
+      if (data.status === "force_logout") {
+        statusDiv.innerHTML = '<i class="fas fa-sign-out-alt"></i> Sesi berakhir, scan ulang QR';
+        setTimeout(() => location.reload(), 2000);
+      }
+    } catch (err) {
+      console.error("WebSocket message error:", err);
     }
   };
 
+  ws.onerror = (error) => {
+    console.error("WebSocket error:", error);
+    statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Koneksi error';
+  };
+
   ws.onclose = () => {
+    console.log("WebSocket closed");
     if (document.getElementById("qr-tab").classList.contains("active")) {
-      statusDiv.innerHTML = "Menghubungkan ulang...";
-      setTimeout(connectWS, 2000);
+      statusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Menghubungkan ulang...';
+      setTimeout(connectWS, 3000);
     }
   };
 }
 
-connectWS();
+// Initialize WebSocket
+if (document.getElementById("qr-tab").classList.contains("active")) {
+  connectWS();
+}

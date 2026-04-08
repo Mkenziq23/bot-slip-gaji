@@ -1,3 +1,5 @@
+// server/routes/slipGajiRoutes.js - COMPLETE FIXED VERSION
+
 import express from "express";
 import db from "../db.js";
 import multer from "multer";
@@ -7,6 +9,7 @@ import kirimSlipEnakko from "../../bot/sendMessage/kirimSlipGajiEnakko.js";
 import XLSX from "xlsx";
 import { progress } from "../progress.js";
 import { kirimPembatalanSlipHisana, kirimPembatalanSlipEnakko } from "../../bot/cancelMessage/cancelSlipGaji.js";
+import { getSocketByNumber } from "../../bot/index.js";
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
@@ -18,7 +21,6 @@ CHECK LOGIN
 */
 function checkLogin(req, res) {
   const number = req.session.number;
-
   if (!number) {
     res.status(401).json({
       success: false,
@@ -26,12 +28,43 @@ function checkLogin(req, res) {
     });
     return null;
   }
-
   return number;
 }
 
+// Helper function untuk mendapatkan nama tabel karyawan
+function getKaryawanTableName(company) {
+  return company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
+}
+
+// Helper function untuk mendapatkan nama tabel lokasi store
+function getLokasiStoreTableName(company) {
+  return company === "hisana" ? "lokasi_store_hisana" : "lokasi_store_enakko";
+}
+
+// Helper function untuk parse currency dari Excel
+function parseCurrencyFromExcel(value) {
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  const cleanValue = String(value).replace(/[^\d]/g, "");
+  return parseInt(cleanValue) || 0;
+}
+
+// Helper untuk mendapatkan socket yang valid
+async function getValidSocket(senderNumber, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    const sock = getSocketByNumber(senderNumber);
+    if (sock && sock.user && sock.user.id) {
+      console.log(`✅ Socket valid untuk ${senderNumber}`);
+      return sock;
+    }
+    console.log(`⚠️ Socket belum siap untuk ${senderNumber}, percobaan ${i + 1}/${maxRetries}`);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(`Bot WhatsApp tidak aktif untuk nomor ${senderNumber}. Silakan scan QR code terlebih dahulu.`);
+}
+
 // ========================
-// GET DATA SLIP DENGAN FILTER BULAN & TAHUN
+// GET DATA SLIP DENGAN FILTER BULAN & TAHUN (WITH JOIN)
 // ========================
 router.get("/my-slip", async (req, res) => {
   try {
@@ -42,6 +75,8 @@ router.get("/my-slip", async (req, res) => {
     const month = req.query.month;
     const year = req.query.year;
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+    const karyawanTable = getKaryawanTableName(company);
+    const lokasiTable = getLokasiStoreTableName(company);
 
     console.log(`[SERVER] GET /my-slip`);
     console.log(`  Company: ${company}`);
@@ -50,7 +85,6 @@ router.get("/my-slip", async (req, res) => {
     console.log(`  User: ${number}`);
 
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-
     if (!users.length) {
       console.log(`[SERVER] User tidak ditemukan untuk nomor: ${number}`);
       return res.json([]);
@@ -59,44 +93,82 @@ router.get("/my-slip", async (req, res) => {
     const userId = users[0].id;
     console.log(`[SERVER] userId: ${userId}`);
 
-    // Build query with filters
     let query = `
-      SELECT * FROM ${tableName} 
-      WHERE user_id = ? 
+      SELECT 
+        s.*,
+        k.no_induk,
+        k.nama_lengkap as nama,
+        k.jabatan,
+        DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
+        l.nama_store as store_name,
+        k.no_hp
+      FROM ${tableName} s
+      LEFT JOIN ${karyawanTable} k ON s.karyawan_id = k.id
+      LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+      WHERE s.user_id = ? 
     `;
     const queryParams = [userId];
 
-    // Add month filter - jika month ada dan bukan "all"
     if (month && month !== "all" && month !== "") {
-      query += ` AND MONTH(created_at) = ?`;
+      query += ` AND MONTH(s.created_at) = ?`;
       queryParams.push(parseInt(month));
-      console.log(`[SERVER] Adding month filter: ${month}`);
     }
 
-    // Add year filter - jika year ada dan bukan "all"
     if (year && year !== "all" && year !== "") {
-      query += ` AND YEAR(created_at) = ?`;
+      query += ` AND YEAR(s.created_at) = ?`;
       queryParams.push(parseInt(year));
-      console.log(`[SERVER] Adding year filter: ${year}`);
     }
 
-    query += ` ORDER BY created_at DESC, id DESC`;
-
-    console.log(`[SERVER] Final query: ${query}`);
-    console.log(`[SERVER] Query params:`, queryParams);
+    query += ` ORDER BY s.created_at DESC, s.id DESC`;
 
     const [rows] = await db.query(query, queryParams);
-
-    console.log(`[SERVER] Data ditemukan: ${rows.length} baris`);
-
-    if (rows.length > 0) {
-      console.log(`[SERVER] Sample data - created_at: ${rows[0].created_at}, month: ${rows[0].created_at.getMonth() + 1}, year: ${rows[0].created_at.getFullYear()}`);
-    }
-
     res.json(rows);
   } catch (err) {
     console.error("[SERVER] GET SLIP ERROR:", err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================
+// GET EMPLOYEES FOR SLIP DROPDOWN
+// ========================
+router.get("/slip-employees", async (req, res) => {
+  try {
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
+
+    const company = req.query.company || "hisana";
+    const karyawanTable = getKaryawanTableName(company);
+    const lokasiTable = getLokasiStoreTableName(company);
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+    const userId = users[0].id;
+
+    const [rows] = await db.query(
+      `SELECT 
+        k.id as karyawan_id,
+        k.no_induk,
+        k.nama_lengkap as nama,
+        k.jabatan as posisi,
+        DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
+        l.nama_store as store,
+        k.no_hp
+      FROM ${karyawanTable} k
+      LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+      WHERE k.user_id = ?
+      ORDER BY k.no_induk ASC`,
+      [userId],
+    );
+
+    res.json({ success: true, employees: rows });
+  } catch (err) {
+    console.error("[SLIP EMPLOYEES ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -113,23 +185,14 @@ router.get("/slip-years", async (req, res) => {
     const company = req.query.company || "hisana";
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
 
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
-
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
 
     const userId = users[0].id;
-
-    // Get distinct years from created_at
     const [rows] = await db.query(`SELECT DISTINCT YEAR(created_at) as tahun FROM ${tableName} WHERE user_id = ? ORDER BY tahun DESC`, [userId]);
-
     const years = rows.map((row) => row.tahun);
-
-    console.log(`[SLIP YEARS] Available years for ${company}:`, years);
 
     res.json({ success: true, years });
   } catch (err) {
@@ -139,7 +202,7 @@ router.get("/slip-years", async (req, res) => {
 });
 
 // ========================
-// INSERT SLIP (DENGAN PARAMETER COMPANY)
+// INSERT SLIP
 // ========================
 router.post("/slip", async (req, res) => {
   try {
@@ -150,7 +213,6 @@ router.post("/slip", async (req, res) => {
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
 
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
@@ -158,52 +220,39 @@ router.post("/slip", async (req, res) => {
     const userId = users[0].id;
     const d = req.body;
 
-    console.log("=".repeat(50));
-    console.log("[INSERT] Received data:", JSON.stringify(d, null, 2));
-    console.log("[INSERT] Company:", company);
-    console.log("[INSERT] Table:", tableName);
-    console.log("[INSERT] User ID:", userId);
+    if (!d.karyawan_id) {
+      return res.status(400).json({ success: false, message: "Pilih karyawan terlebih dahulu" });
+    }
 
-    // Get current date for month/year filtering
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    // Check if no_induk already exists for this user in current month
-    const noInduk = company === "hisana" ? d.no_induk : d.no_induk;
     const [existing] = await db.query(
       `SELECT COUNT(*) as count FROM ${tableName} 
-       WHERE user_id = ? 
-       AND no_induk = ? 
-       AND MONTH(created_at) = ? 
-       AND YEAR(created_at) = ?`,
-      [userId, noInduk, currentMonth, currentYear],
+       WHERE user_id = ? AND karyawan_id = ? 
+       AND MONTH(created_at) = ? AND YEAR(created_at) = ?`,
+      [userId, d.karyawan_id, currentMonth, currentYear],
     );
 
     if (existing[0].count > 0) {
       return res.status(400).json({
         success: false,
-        message: `Nomor induk ${noInduk} sudah ada untuk bulan ini. Silakan gunakan nomor induk yang berbeda atau edit data yang sudah ada.`,
+        message: `Karyawan ini sudah memiliki slip gaji untuk bulan ini.`,
       });
     }
 
     if (company === "hisana") {
-      // PERBAIKAN: Hisana insert - hanya field yang diperlukan
       const query = `
         INSERT INTO ${tableName}
-        (user_id, no_induk, nama, posisi, store, awal_masuk, kerja, gaji,
-        iuran_bpjs_ketenagakerjaan, kerajinan, cuti, tunj_bpjs_pulsa,
-        jumlah, um, keterangan, gaji_total, nohp, status_slip)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, karyawan_id, kerja, gaji, iuran_bpjs_ketenagakerjaan, 
+         kerajinan, cuti, tunj_bpjs_pulsa, jumlah, um, keterangan, 
+         gaji_total, nohp, status_slip)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
-
       const values = [
         userId,
-        d.no_induk || "",
-        d.nama || "",
-        d.posisi || "",
-        d.store || "",
-        d.awal_masuk || null,
+        d.karyawan_id,
         d.kerja || 0,
         d.gaji || 0,
         d.iuran_bpjs_ketenagakerjaan || 0,
@@ -217,91 +266,28 @@ router.post("/slip", async (req, res) => {
         d.nohp || "",
         "belum_dikirim",
       ];
-
-      console.log("[INSERT Hisana] Query:", query);
-      console.log("[INSERT Hisana] Values:", values);
-
       await db.query(query, values);
     } else {
-      // Enakko insert logic
-      console.log("[INSERT Enakko] Processing...");
-
-      // Validasi field yang diperlukan
-      const requiredFields = ["no_induk", "tanggal_masuk", "jabatan", "nohp"];
-      const missingFields = requiredFields.filter((field) => !d[field]);
-
-      if (missingFields.length > 0) {
-        console.error("[INSERT Enakko] Missing fields:", missingFields);
-        return res.status(400).json({
-          success: false,
-          message: `Field yang diperlukan tidak lengkap: ${missingFields.join(", ")}`,
-        });
-      }
-
-      // Pastikan field nama_karyawan ada
-      const namaKaryawan = d.nama_karyawan || d.nama;
-      if (!namaKaryawan) {
-        console.error("[INSERT Enakko] Missing nama_karyawan field");
-        return res.status(400).json({
-          success: false,
-          message: "Nama karyawan harus diisi",
-        });
-      }
-
       const query = `
         INSERT INTO ${tableName}
-        (user_id, no_induk, nama_karyawan, tanggal_masuk, jabatan, penempatan,
-        gaji_utuh, gaji_pokok, bpjs_kesehatan, insentif, 
-        total_gaji, keterangan, nohp, status_slip)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, karyawan_id, gaji_pokok, bpjs_kesehatan, 
+         insentif, total_gaji, keterangan, nohp, status_slip)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
-
-      const values = [
-        userId,
-        d.no_induk,
-        namaKaryawan,
-        d.tanggal_masuk,
-        d.jabatan,
-        d.penempatan || "",
-        parseFloat(d.gaji_utuh) || 0,
-        parseFloat(d.gaji_pokok) || 0,
-        parseFloat(d.bpjs_kesehatan) || 0,
-        parseFloat(d.insentif) || 0,
-        parseFloat(d.total_gaji) || 0,
-        d.keterangan || "",
-        d.nohp,
-        "belum_dikirim",
-      ];
-
-      console.log("[INSERT Enakko] Query:", query);
-      console.log("[INSERT Enakko] Values:", values);
-
+      const values = [userId, d.karyawan_id, parseFloat(d.gaji_pokok) || 0, parseFloat(d.bpjs_kesehatan) || 0, parseFloat(d.insentif) || 0, parseFloat(d.total_gaji) || 0, d.keterangan || "", d.nohp, "belum_dikirim"];
       await db.query(query, values);
     }
 
     res.json({ success: true });
   } catch (err) {
-    console.error("=".repeat(50));
-    console.error("[INSERT ERROR] Details:");
-    console.error("Error message:", err.message);
-    console.error("Error code:", err.code);
-    console.error("SQL State:", err.sqlState);
-    console.error("SQL Message:", err.sqlMessage);
-    console.error("=".repeat(50));
-
-    res.status(500).json({
-      success: false,
-      message: err.sqlMessage || err.message,
-      code: err.code,
-    });
+    console.error("[INSERT ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-/*
-========================
-UPDATE SLIP (DENGAN PARAMETER COMPANY)
-========================
-*/
+// ========================
+// UPDATE SLIP
+// ========================
 router.put("/slip/:id", async (req, res) => {
   try {
     const number = checkLogin(req, res);
@@ -311,11 +297,7 @@ router.put("/slip/:id", async (req, res) => {
     const company = req.query.company || "hisana";
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
 
-    console.log(`[UPDATE] Request params - id: ${id}, company: ${company}`);
-    console.log(`[UPDATE] Request body:`, JSON.stringify(req.body, null, 2));
-
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
@@ -323,80 +305,21 @@ router.put("/slip/:id", async (req, res) => {
     const userId = users[0].id;
     const d = req.body;
 
-    // Get current date for month/year filtering
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-
-    // Check if no_induk already exists for this user in current month (excluding current record)
-    const noInduk = d.no_induk;
-    if (!noInduk) {
-      return res.status(400).json({
-        success: false,
-        message: "No Induk tidak boleh kosong",
-      });
-    }
-
-    const [existing] = await db.query(
-      `SELECT COUNT(*) as count FROM ${tableName} 
-       WHERE user_id = ? 
-       AND no_induk = ? 
-       AND MONTH(created_at) = ? 
-       AND YEAR(created_at) = ?
-       AND id != ?`,
-      [userId, noInduk, currentMonth, currentYear, id],
-    );
-
-    if (existing[0].count > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Nomor induk ${noInduk} sudah digunakan oleh data lain pada bulan ini. Silakan gunakan nomor induk yang berbeda.`,
-      });
+    if (!d.karyawan_id) {
+      return res.status(400).json({ success: false, message: "Pilih karyawan terlebih dahulu" });
     }
 
     let result;
     if (company === "hisana") {
-      // Validasi field yang diperlukan untuk Hisana
-      if (!d.nama) {
-        return res.status(400).json({ success: false, message: "Nama karyawan harus diisi" });
-      }
-      if (!d.posisi) {
-        return res.status(400).json({ success: false, message: "Posisi harus diisi" });
-      }
-      if (!d.store) {
-        return res.status(400).json({ success: false, message: "Store harus diisi" });
-      }
-      if (!d.nohp) {
-        return res.status(400).json({ success: false, message: "No HP harus diisi" });
-      }
-
       const query = `
         UPDATE ${tableName} SET
-          no_induk = ?,
-          nama = ?,
-          posisi = ?,
-          store = ?,
-          awal_masuk = ?,
-          kerja = ?,
-          gaji = ?,
-          iuran_bpjs_ketenagakerjaan = ?,
-          kerajinan = ?,
-          cuti = ?,
-          tunj_bpjs_pulsa = ?,
-          jumlah = ?,
-          um = ?,
-          keterangan = ?,
-          gaji_total = ?,
-          nohp = ?
+          karyawan_id = ?, kerja = ?, gaji = ?, iuran_bpjs_ketenagakerjaan = ?,
+          kerajinan = ?, cuti = ?, tunj_bpjs_pulsa = ?, jumlah = ?, um = ?,
+          keterangan = ?, gaji_total = ?, nohp = ?
         WHERE id = ? AND user_id = ?
       `;
-
       const values = [
-        d.no_induk || "",
-        d.nama || "",
-        d.posisi || "",
-        d.store || "",
-        d.awal_masuk || null,
+        d.karyawan_id,
         parseInt(d.kerja) || 0,
         parseFloat(d.gaji) || 0,
         parseFloat(d.iuran_bpjs_ketenagakerjaan) || 0,
@@ -411,96 +334,32 @@ router.put("/slip/:id", async (req, res) => {
         id,
         userId,
       ];
-
-      console.log("[UPDATE Hisana] Query:", query);
-      console.log("[UPDATE Hisana] Values:", values);
-
       [result] = await db.query(query, values);
     } else {
-      // Enakko update
-      const namaKaryawan = d.nama_karyawan || d.nama;
-
-      // Validasi field yang diperlukan untuk Enakko
-      if (!namaKaryawan) {
-        return res.status(400).json({ success: false, message: "Nama karyawan harus diisi" });
-      }
-      if (!d.tanggal_masuk) {
-        return res.status(400).json({ success: false, message: "Tanggal masuk harus diisi" });
-      }
-      if (!d.jabatan) {
-        return res.status(400).json({ success: false, message: "Jabatan harus diisi" });
-      }
-      if (!d.nohp) {
-        return res.status(400).json({ success: false, message: "No HP harus diisi" });
-      }
-
       const query = `
         UPDATE ${tableName} SET
-          no_induk = ?,
-          nama_karyawan = ?,
-          tanggal_masuk = ?,
-          jabatan = ?,
-          penempatan = ?,
-          gaji_utuh = ?,
-          gaji_pokok = ?,
-          bpjs_kesehatan = ?,
-          insentif = ?,
-          total_gaji = ?,
-          keterangan = ?,
-          nohp = ?
+          karyawan_id = ?, gaji_pokok = ?, bpjs_kesehatan = ?,
+          insentif = ?, total_gaji = ?, keterangan = ?, nohp = ?
         WHERE id = ? AND user_id = ?
       `;
-
-      const values = [
-        d.no_induk || "",
-        namaKaryawan,
-        d.tanggal_masuk || null,
-        d.jabatan || "",
-        d.penempatan || "",
-        parseFloat(d.gaji_utuh) || 0,
-        parseFloat(d.gaji_pokok) || 0,
-        parseFloat(d.bpjs_kesehatan) || 0,
-        parseFloat(d.insentif) || 0,
-        parseFloat(d.total_gaji) || 0,
-        d.keterangan || "",
-        d.nohp || "",
-        id,
-        userId,
-      ];
-
-      console.log("[UPDATE Enakko] Query:", query);
-      console.log("[UPDATE Enakko] Values:", values);
-
+      const values = [d.karyawan_id, parseFloat(d.gaji_pokok) || 0, parseFloat(d.bpjs_kesehatan) || 0, parseFloat(d.insentif) || 0, parseFloat(d.total_gaji) || 0, d.keterangan || "", d.nohp || "", id, userId];
       [result] = await db.query(query, values);
     }
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Data tidak ditemukan atau tidak memiliki akses",
-      });
+      return res.status(404).json({ success: false, message: "Data tidak ditemukan" });
     }
 
-    console.log(`[UPDATE] Success! Affected rows: ${result.affectedRows}`);
-
-    res.json({
-      success: true,
-      message: "Data berhasil diperbarui",
-    });
+    res.json({ success: true, message: "Data berhasil diperbarui" });
   } catch (err) {
     console.error("[UPDATE ERROR]:", err);
-    res.status(500).json({
-      success: false,
-      message: err.sqlMessage || err.message,
-      code: err.code,
-    });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
-/*
-========================
-DELETE SLIP (DENGAN PARAMETER COMPANY)
-========================
-*/
+
+// ========================
+// DELETE SLIP
+// ========================
 router.delete("/slip/:id", async (req, res) => {
   try {
     const number = checkLogin(req, res);
@@ -511,18 +370,14 @@ router.delete("/slip/:id", async (req, res) => {
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
 
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
 
     const userId = users[0].id;
-
     const [result] = await db.query(`DELETE FROM ${tableName} WHERE id = ? AND user_id = ?`, [id, userId]);
 
-    res.json({
-      success: result.affectedRows > 0,
-    });
+    res.json({ success: result.affectedRows > 0 });
   } catch (err) {
     console.error("DELETE ERROR:", err);
     res.status(500).json({ success: false, error: err.message });
@@ -530,7 +385,187 @@ router.delete("/slip/:id", async (req, res) => {
 });
 
 // ========================
-// UPLOAD EXCEL
+// DOWNLOAD TEMPLATE EXCEL SLIP GAJI
+// ========================
+router.get("/download-template-slip", async (req, res) => {
+  try {
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
+
+    const company = req.query.company || "hisana";
+    let ws_data = [];
+    let filename = "";
+    let instructions = [];
+
+    if (company === "hisana") {
+      ws_data = [
+        ["No Induk", "Nama", "Jabatan", "Store", "Awal Masuk", "Kerja", "Gaji", "Iuran BPJS Ketenagakerjaan", "Kerajinan", "Cuti", "Tunj. BPJS & Pulsa", "JUMLAH", "UM", "KETERANGAN", "GAJI TOTAL", "NO HP"],
+        ["H001", "Budi Santoso", "Staff", "Hisana Thamrin", "2020-01-15", "25", "5000000", "100000", "50000", "0", "200000", "5050000", "500000", "Bonus kinerja", "5550000", "628123456789"],
+      ];
+      filename = "template_slip_gaji_hisana.xlsx";
+    } else {
+      ws_data = [
+        ["No Induk", "Nama Karyawan", "Jabatan", "Penempatan", "Tanggal Masuk", "Gaji Pokok", "BPJS Kesehatan", "Insentif", "Total Gaji", "Keterangan", "No HP"],
+        ["E002", "Siti Aminah", "Staff", "Enakko Batu", "2026-04-08", "4500000", "100000", "50000", "4650000", "Insentif bulanan", "628123456788"],
+      ];
+      filename = "template_slip_gaji_enakko.xlsx";
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error("[DOWNLOAD TEMPLATE ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ========================
+// IMPORT EXCEL SLIP GAJI
+// ========================
+router.post("/import-slip", upload.single("file"), async (req, res) => {
+  try {
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
+
+    const company = req.query.company || "hisana";
+    const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+    const karyawanTable = getKaryawanTableName(company);
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "Silakan pilih file Excel terlebih dahulu" });
+    }
+
+    const workbook = XLSX.readFile(req.file.path);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet);
+
+    if (data.length === 0) {
+      return res.status(400).json({ success: false, message: "File Excel tidak mengandung data" });
+    }
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+    const userId = users[0].id;
+
+    const [karyawanList] = await db.query(`SELECT id as karyawan_id, no_induk, nama_lengkap FROM ${karyawanTable} WHERE user_id = ?`, [userId]);
+    const karyawanMap = new Map();
+    karyawanList.forEach((k) => karyawanMap.set(k.no_induk, k));
+
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    let successCount = 0;
+    let errorCount = 0;
+    let skippedCount = 0;
+    const errors = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const rowNumber = i + 2;
+
+      try {
+        const no_induk = (row["No Induk"] || row["no_induk"] || "").toString().trim();
+        let nohp = (row["No HP"] || row["nohp"] || "").toString().trim();
+
+        if (!no_induk) {
+          errorCount++;
+          errors.push(`Baris ${rowNumber}: No Induk tidak boleh kosong`);
+          continue;
+        }
+
+        let cleanNohp = nohp.replace(/\D/g, "");
+        if (!cleanNohp.startsWith("62")) {
+          if (cleanNohp.startsWith("0")) cleanNohp = "62" + cleanNohp.substring(1);
+          else if (cleanNohp.length >= 10 && cleanNohp.length <= 12) cleanNohp = "62" + cleanNohp;
+        }
+
+        const karyawan = karyawanMap.get(no_induk);
+        if (!karyawan) {
+          errorCount++;
+          errors.push(`Baris ${rowNumber}: No Induk "${no_induk}" tidak ditemukan`);
+          continue;
+        }
+
+        const [existing] = await db.query(`SELECT COUNT(*) as count FROM ${tableName} WHERE user_id = ? AND karyawan_id = ? AND MONTH(created_at) = ? AND YEAR(created_at) = ?`, [userId, karyawan.karyawan_id, currentMonth, currentYear]);
+
+        if (existing[0].count > 0) {
+          skippedCount++;
+          errors.push(`Baris ${rowNumber}: Slip gaji sudah ada, dilewati`);
+          continue;
+        }
+
+        if (company === "hisana") {
+          const kerja = parseInt(row["Kerja"] || 0);
+          const gaji = parseCurrencyFromExcel(row["Gaji"] || 0);
+          const iuran = parseCurrencyFromExcel(row["Iuran BPJS Ketenagakerjaan"] || 0);
+          const kerajinan = parseCurrencyFromExcel(row["Kerajinan"] || 0);
+          const cuti = parseCurrencyFromExcel(row["Cuti"] || 0);
+          const tunjangan = parseCurrencyFromExcel(row["Tunj. BPJS & Pulsa"] || 0);
+          const um = parseCurrencyFromExcel(row["UM"] || 0);
+          const keterangan = row["KETERANGAN"] || "";
+          const jumlah = gaji - iuran + kerajinan + cuti + tunjangan;
+          const gajiTotal = jumlah + um;
+
+          await db.query(
+            `
+            INSERT INTO ${tableName} (user_id, karyawan_id, kerja, gaji, iuran_bpjs_ketenagakerjaan, 
+             kerajinan, cuti, tunj_bpjs_pulsa, jumlah, um, keterangan, gaji_total, nohp, status_slip, is_imported, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+          `,
+            [userId, karyawan.karyawan_id, kerja, gaji, iuran, kerajinan, cuti, tunjangan, jumlah, um, keterangan, gajiTotal, cleanNohp, "belum_dikirim", 1],
+          );
+        } else {
+          const gajiPokok = parseCurrencyFromExcel(row["Gaji Pokok"] || 0);
+          const bpjsKesehatan = parseCurrencyFromExcel(row["BPJS Kesehatan"] || 0);
+          const insentif = parseCurrencyFromExcel(row["Insentif"] || 0);
+          const keterangan = row["Keterangan"] || "";
+          const totalGaji = gajiPokok + bpjsKesehatan + insentif;
+
+          await db.query(
+            `
+            INSERT INTO ${tableName} (user_id, karyawan_id, gaji_pokok, bpjs_kesehatan, 
+             insentif, total_gaji, keterangan, nohp, status_slip, is_imported, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+          `,
+            [userId, karyawan.karyawan_id, gajiPokok, bpjsKesehatan, insentif, totalGaji, keterangan, cleanNohp, "belum_dikirim", 1],
+          );
+        }
+
+        successCount++;
+      } catch (err) {
+        errorCount++;
+        errors.push(`Baris ${rowNumber}: ${err.message}`);
+      }
+    }
+
+    if (req.file && req.file.path) {
+      const fs = await import("fs");
+      fs.unlink(req.file.path, () => {});
+    }
+
+    res.json({ success: true, successCount, skippedCount, errorCount, errors: errors.slice(0, 30) });
+  } catch (err) {
+    console.error("[IMPORT SLIP ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ========================
+// UPLOAD EXCEL (Legacy)
 // ========================
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
@@ -538,11 +573,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     if (!number) {
       return res.status(401).json({ success: false, message: "Belum login" });
     }
-
     const company = req.query.company || req.body.company || "hisana";
-    console.log(`[UPLOAD ROUTE] Company: ${company}, User: ${number}`);
-
-    // Panggil fungsi uploadExcel yang sudah dimodifikasi
     await uploadExcel(req, res, number, company);
   } catch (err) {
     console.error("[UPLOAD ERROR]:", err);
@@ -551,7 +582,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 // ========================
-// EXPORT SLIP GAJI KE EXCEL (Dengan filter bulan dan tahun)
+// EXPORT SLIP GAJI KE EXCEL
 // ========================
 router.get("/export-slip", async (req, res) => {
   try {
@@ -563,110 +594,54 @@ router.get("/export-slip", async (req, res) => {
     const company = req.query.company || "hisana";
     const month = req.query.month;
     const year = req.query.year;
-    const type = req.query.type; // Untuk backward compatibility
-
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
-
-    console.log(`[EXPORT SLIP] Company: ${company}, Month filter: ${month || "none"}, Year filter: ${year || "none"}`);
+    const karyawanTable = getKaryawanTableName(company);
+    const lokasiTable = getLokasiStoreTableName(company);
 
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
-
     const userId = users[0].id;
 
-    // Build query berdasarkan filter
-    let query = `SELECT * FROM ${tableName} WHERE user_id = ?`;
+    let query = `
+      SELECT s.*, k.no_induk, k.nama_lengkap as nama, k.jabatan,
+             DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
+             l.nama_store as store_name, k.no_hp
+      FROM ${tableName} s
+      LEFT JOIN ${karyawanTable} k ON s.karyawan_id = k.id
+      LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+      WHERE s.user_id = ?
+    `;
     const queryParams = [userId];
 
-    let selectedMonth = null;
-    let selectedYear = null;
-
-    // Support untuk parameter type (backward compatibility)
-    if (type && type !== "all") {
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth() + 1;
-
-      if (type === "current_month") {
-        query += ` AND MONTH(created_at) = ? AND YEAR(created_at) = ?`;
-        queryParams.push(currentMonth, currentYear);
-        selectedMonth = currentMonth;
-        selectedYear = currentYear;
-        console.log(`Export type: current_month (${currentMonth}/${currentYear})`);
-      } else if (type === "current_year") {
-        query += ` AND YEAR(created_at) = ?`;
-        queryParams.push(currentYear);
-        selectedYear = currentYear;
-        console.log(`Export type: current_year (${currentYear})`);
-      }
-    } else {
-      // Gunakan filter bulan dan tahun dari parameter
-      if (month && month !== "all" && month !== "") {
-        query += ` AND MONTH(created_at) = ?`;
-        const monthInt = parseInt(month);
-        queryParams.push(monthInt);
-        selectedMonth = monthInt;
-        console.log(`Filtering by month: ${month}`);
-      }
-
-      if (year && year !== "all" && year !== "") {
-        query += ` AND YEAR(created_at) = ?`;
-        const yearInt = parseInt(year);
-        queryParams.push(yearInt);
-        selectedYear = yearInt;
-        console.log(`Filtering by year: ${year}`);
-      }
+    if (month && month !== "all" && month !== "") {
+      query += ` AND MONTH(s.created_at) = ?`;
+      queryParams.push(parseInt(month));
     }
-
-    query += ` ORDER BY created_at DESC, id DESC`;
-
-    console.log(`Export query: ${query}`);
-    console.log(`Query params:`, queryParams);
+    if (year && year !== "all" && year !== "") {
+      query += ` AND YEAR(s.created_at) = ?`;
+      queryParams.push(parseInt(year));
+    }
+    query += ` ORDER BY s.created_at DESC`;
 
     const [rows] = await db.query(query, queryParams);
 
-    // Jika tidak ada data, kembalikan response JSON dengan status 404
     if (rows.length === 0) {
-      const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-      const companyName = company === "hisana" ? "Hisana" : "Enakko";
-
-      let periodeText = "";
-      if (selectedMonth && selectedYear) {
-        periodeText = `${monthNames[selectedMonth - 1]} ${selectedYear}`;
-      } else if (selectedYear) {
-        periodeText = `tahun ${selectedYear}`;
-      } else if (selectedMonth) {
-        periodeText = `bulan ${monthNames[selectedMonth - 1]}`;
-      } else {
-        periodeText = "periode yang dipilih";
-      }
-
-      return res.status(404).json({
-        success: false,
-        message: `Mohon maaf, belum ada data slip gaji pada ${periodeText} untuk ${companyName}.`,
-        noData: true,
-        periode: periodeText,
-        company: companyName,
-      });
+      return res.status(404).json({ success: false, message: "Tidak ada data untuk diexport", noData: true });
     }
 
-    // Buat worksheet data
     let ws_data = [];
-
     if (company === "hisana") {
-      // Header untuk Hisana
-      ws_data.push(["No", "No Induk", "Nama", "Posisi", "Store", "Awal Masuk", "Kerja", "Gaji", "Iuran BPJS", "Kerajinan", "Cuti", "Tunj. BPJS & Pulsa", "Total", "UM", "Keterangan", "Gaji Total", "No HP", "Status Slip", "Tanggal Dibuat"]);
-
+      ws_data.push(["No", "No Induk", "Nama", "Jabatan", "Store", "Awal Masuk", "Kerja", "Gaji", "Iuran BPJS", "Kerajinan", "Cuti", "Tunj. BPJS & Pulsa", "Total", "UM", "Keterangan", "Gaji Total", "No HP", "Status Slip", "Tanggal Dibuat"]);
       rows.forEach((item, index) => {
         ws_data.push([
           index + 1,
           item.no_induk || "",
           item.nama || "",
-          item.posisi || "",
-          item.store || "",
-          item.awal_masuk ? new Date(item.awal_masuk).toISOString().split("T")[0] : "",
+          item.jabatan || "",
+          item.store_name || "",
+          item.awal_masuk || "",
           item.kerja || 0,
           item.gaji || 0,
           item.iuran_bpjs_ketenagakerjaan || 0,
@@ -683,18 +658,15 @@ router.get("/export-slip", async (req, res) => {
         ]);
       });
     } else {
-      // Header untuk Enakko
-      ws_data.push(["No", "No Induk", "Nama Karyawan", "Tanggal Masuk", "Jabatan", "Penempatan", "Gaji Utuh", "Gaji Pokok", "BPJS Kesehatan", "Insentif", "Total Gaji", "Keterangan", "No HP", "Status Slip", "Tanggal Dibuat"]);
-
+      ws_data.push(["No", "No Induk", "Nama Karyawan", "Jabatan", "Penempatan", "Tanggal Masuk", "Gaji Pokok", "BPJS Kesehatan", "Insentif", "Total Gaji", "Keterangan", "No HP", "Status Slip", "Tanggal Dibuat"]);
       rows.forEach((item, index) => {
         ws_data.push([
           index + 1,
           item.no_induk || "",
-          item.nama_karyawan || item.nama || "",
-          item.tanggal_masuk ? new Date(item.tanggal_masuk).toISOString().split("T")[0] : "",
+          item.nama || "",
           item.jabatan || "",
-          item.penempatan || "",
-          item.gaji_utuh || 0,
+          item.store_name || "",
+          item.awal_masuk || "",
           item.gaji_pokok || 0,
           item.bpjs_kesehatan || 0,
           item.insentif || 0,
@@ -707,70 +679,15 @@ router.get("/export-slip", async (req, res) => {
       });
     }
 
-    // Buat workbook dan worksheet
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(ws_data);
-
-    // Atur lebar kolom
-    const colWidths =
-      company === "hisana"
-        ? [
-            { wch: 5 },
-            { wch: 12 },
-            { wch: 25 },
-            { wch: 15 },
-            { wch: 15 },
-            { wch: 12 },
-            { wch: 8 },
-            { wch: 15 },
-            { wch: 15 },
-            { wch: 12 },
-            { wch: 10 },
-            { wch: 18 },
-            { wch: 12 },
-            { wch: 10 },
-            { wch: 20 },
-            { wch: 15 },
-            { wch: 15 },
-            { wch: 12 },
-            { wch: 15 },
-          ]
-        : [{ wch: 5 }, { wch: 12 }, { wch: 25 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 15 }];
-
-    ws["!cols"] = colWidths;
-
     XLSX.utils.book_append_sheet(wb, ws, "Slip Gaji");
 
-    // Tentukan nama file berdasarkan filter
     const companyName = company === "hisana" ? "Hisana" : "Enakko";
-    const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    const filename = `Slip_Gaji_${companyName}_${new Date().toISOString().split("T")[0]}.xlsx`;
 
-    let filename = `Slip_Gaji_${companyName}`;
-
-    if (type === "current_month") {
-      const now = new Date();
-      filename += `_${monthNames[now.getMonth()]}_${now.getFullYear()}`;
-    } else if (type === "current_year") {
-      const now = new Date();
-      filename += `_Tahun_${now.getFullYear()}`;
-    } else {
-      if (selectedMonth && selectedMonth !== "all") {
-        filename += `_${monthNames[selectedMonth - 1]}`;
-      }
-      if (selectedYear && selectedYear !== "all") {
-        filename += `_${selectedYear}`;
-      }
-      if ((!selectedMonth || selectedMonth === "all") && (!selectedYear || selectedYear === "all")) {
-        filename += `_Semua_Data`;
-      }
-    }
-    filename += `.xlsx`;
-
-    // Set response headers
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
-
-    // Write to response
     const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
     res.send(buffer);
   } catch (err) {
@@ -780,77 +697,132 @@ router.get("/export-slip", async (req, res) => {
 });
 
 // ========================
-// KIRIM SLIP WHATSAPP
+// KIRIM SLIP WHATSAPP - FIXED FOR BOTH HISANA & ENAKKO
 // ========================
 router.post("/start-send", async (req, res) => {
   try {
-    const number = checkLogin(req, res);
-    if (!number) return;
+    const number = req.session.number;
+    if (!number) {
+      return res.status(401).json({ success: false, message: "Belum login" });
+    }
 
     const selected = req.body.selected || [];
     const company = req.body.company || "hisana";
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+    const karyawanTable = getKaryawanTableName(company);
+    const lokasiTable = getLokasiStoreTableName(company);
 
-    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-
+    const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
 
     const userId = users[0].id;
+    const senderNumber = users[0].nomor_wa;
 
-    // Ambil data berdasarkan user_id dan no_induk yang dipilih
-    const [rows] = await db.query(`SELECT * FROM ${tableName} WHERE user_id = ?`, [userId]);
-
-    let toSend;
-    if (company === "hisana") {
-      toSend = rows.filter((d) => selected.includes(d.no_induk) && d.status_slip !== "terkirim");
-    } else {
-      toSend = rows.filter((d) => selected.includes(d.no_induk) && d.status_slip !== "terkirim");
+    // CEK SOCKET SEBELUM PROSES
+    try {
+      await getValidSocket(senderNumber);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message });
     }
 
-    if (!toSend.length) {
-      return res.status(400).json({ success: false, message: "Tidak ada data terpilih" });
+    if (selected.length === 0) {
+      return res.status(400).json({ success: false, message: "Tidak ada data yang dipilih" });
+    }
+
+    const placeholders = selected.map(() => "?").join(",");
+
+    const [rows] = await db.query(
+      `SELECT 
+        s.*,
+        k.id as karyawan_id,
+        k.no_induk,
+        k.nama_lengkap as nama,
+        k.jabatan,
+        DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
+        l.nama_store as store_name,
+        COALESCE(s.nohp, k.no_hp) as nohp
+      FROM ${tableName} s
+      LEFT JOIN ${karyawanTable} k ON s.karyawan_id = k.id
+      LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+      WHERE s.user_id = ? AND s.id IN (${placeholders}) AND s.status_slip != 'terkirim'`,
+      [userId, ...selected],
+    );
+
+    if (!rows.length) {
+      return res.status(400).json({ success: false, message: "Tidak ada data terpilih yang belum terkirim" });
     }
 
     progress.running = true;
-    progress.total = toSend.length;
+    progress.total = rows.length;
     progress.sent = 0;
     progress.failed = 0;
 
     res.json({ success: true });
 
-    // Proses pengiriman secara asynchronous
     (async () => {
-      for (const karyawan of toSend) {
+      for (const slip of rows) {
         try {
-          if (company === "hisana") {
-            await kirimSlip(karyawan, number);
-          } else {
-            await kirimSlipEnakko(karyawan, number);
+          if (!slip.nohp) {
+            throw new Error(`Nomor HP tidak tersedia untuk ${slip.nama || slip.no_induk}`);
           }
 
-          // Update status menjadi terkirim
-          await db.query(`UPDATE ${tableName} SET status_slip = 'terkirim' WHERE id = ? AND user_id = ?`, [karyawan.id, userId]);
+          console.log(`📨 [${company.toUpperCase()}] Mengirim slip untuk: ${slip.nama} (${slip.no_induk}) ke ${slip.nohp}`);
+
+          const slipData = {
+            id: slip.id,
+            no_induk: slip.no_induk,
+            nama: slip.nama,
+            nama_lengkap: slip.nama,
+            jabatan: slip.jabatan,
+            awal_masuk: slip.awal_masuk,
+            store_name: slip.store_name,
+            nohp: slip.nohp,
+            no_hp: slip.nohp,
+            gaji_pokok: slip.gaji_pokok || 0,
+            bpjs_kesehatan: slip.bpjs_kesehatan || 0,
+            insentif: slip.insentif || 0,
+            total_gaji: slip.total_gaji || 0,
+            keterangan: slip.keterangan || "",
+            kerja: slip.kerja || 0,
+            gaji: slip.gaji || 0,
+            iuran_bpjs_ketenagakerjaan: slip.iuran_bpjs_ketenagakerjaan || 0,
+            kerajinan: slip.kerajinan || 0,
+            cuti: slip.cuti || 0,
+            tunj_bpjs_pulsa: slip.tunj_bpjs_pulsa || 0,
+            jumlah: slip.jumlah || 0,
+            um: slip.um || 0,
+            gaji_total: slip.gaji_total || 0,
+          };
+
+          if (company === "hisana") {
+            await kirimSlip(slipData, senderNumber);
+          } else {
+            await kirimSlipEnakko(slipData, senderNumber);
+          }
+
+          await db.query(`UPDATE ${tableName} SET status_slip = 'terkirim' WHERE id = ? AND user_id = ?`, [slip.id, userId]);
           progress.sent++;
+          console.log(`✅ [${company.toUpperCase()}] Berhasil terkirim: ${slip.nama}`);
         } catch (err) {
-          console.error(`Gagal kirim ke ${karyawan.no_induk}:`, err);
-          // Status tetap belum_dikirim karena gagal
+          console.error(`❌ [${company.toUpperCase()}] Gagal kirim ke ${slip.no_induk}:`, err.message);
           progress.failed++;
         }
         await new Promise((r) => setTimeout(r, 2000));
       }
       progress.running = false;
+      console.log(`📊 Selesai: ${progress.sent} berhasil, ${progress.failed} gagal dari ${progress.total}`);
     })();
   } catch (err) {
-    console.error("START SEND ERROR:", err);
+    console.error("[START SEND ERROR]:", err);
     progress.running = false;
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // ========================
-// BATAL KIRIM SLIP (UNDO SEND)
+// BATAL KIRIM SLIP (UNDO SEND) - FIXED FOR BOTH HISANA & ENAKKO
 // ========================
 router.post("/undo-send", async (req, res) => {
   try {
@@ -859,6 +831,8 @@ router.post("/undo-send", async (req, res) => {
 
     const { selected, company, cancellation_note } = req.body;
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+    const karyawanTable = getKaryawanTableName(company);
+    const lokasiTable = getLokasiStoreTableName(company);
 
     if (!selected || selected.length === 0) {
       return res.status(400).json({ success: false, message: "Tidak ada data yang dipilih" });
@@ -871,71 +845,101 @@ router.post("/undo-send", async (req, res) => {
     const userId = users[0].id;
     const senderNumber = users[0].nomor_wa;
 
-    // Ambil data yang akan dibatalkan (hanya yang statusnya terkirim)
+    // CEK SOCKET SEBELUM PROSES
+    try {
+      await getValidSocket(senderNumber);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+
     const placeholders = selected.map(() => "?").join(",");
+
     const [rows] = await db.query(
-      `SELECT * FROM ${tableName} 
-       WHERE id IN (${placeholders}) 
-       AND user_id = ? 
-       AND status_slip = 'terkirim'`,
+      `SELECT 
+        s.*,
+        k.no_induk,
+        k.nama_lengkap as nama,
+        k.jabatan,
+        k.no_hp as nohp,
+        l.nama_store as store_name
+      FROM ${tableName} s
+      LEFT JOIN ${karyawanTable} k ON s.karyawan_id = k.id
+      LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+      WHERE s.id IN (${placeholders}) AND s.user_id = ? AND s.status_slip = 'terkirim'`,
       [...selected, userId],
     );
 
     if (rows.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Tidak ada data dengan status terkirim yang dipilih",
-      });
+      return res.status(400).json({ success: false, message: "Tidak ada data dengan status terkirim yang dipilih" });
     }
 
-    // Kirim pesan pembatalan ke nomor WhatsApp
     const cancelMessages = [];
     for (const slip of rows) {
       try {
+        const nohpToUse = slip.nohp || slip.no_hp;
+
+        let slipData = {
+          id: slip.id,
+          no_induk: slip.no_induk,
+          nama: slip.nama,
+          jabatan: slip.jabatan,
+          store_name: slip.store_name,
+          nohp: nohpToUse,
+        };
+
+        if (company === "hisana") {
+          slipData = {
+            ...slipData,
+            gaji: slip.gaji,
+            iuran_bpjs_ketenagakerjaan: slip.iuran_bpjs_ketenagakerjaan,
+            kerajinan: slip.kerajinan,
+            cuti: slip.cuti,
+            tunj_bpjs_pulsa: slip.tunj_bpjs_pulsa,
+            um: slip.um,
+            gaji_total: slip.gaji_total,
+          };
+        } else {
+          slipData = {
+            ...slipData,
+            gaji_pokok: slip.gaji_pokok,
+            bpjs_kesehatan: slip.bpjs_kesehatan,
+            insentif: slip.insentif,
+            total_gaji: slip.total_gaji,
+            keterangan: slip.keterangan,
+          };
+        }
+
         let result;
         if (company === "hisana") {
-          result = await kirimPembatalanSlipHisana(slip, senderNumber, cancellation_note);
+          result = await kirimPembatalanSlipHisana(slipData, senderNumber, cancellation_note);
         } else {
-          result = await kirimPembatalanSlipEnakko(slip, senderNumber, cancellation_note);
+          result = await kirimPembatalanSlipEnakko(slipData, senderNumber, cancellation_note);
         }
 
         cancelMessages.push({
           id: slip.id,
           no_induk: slip.no_induk,
-          nama: slip.nama || slip.nama_karyawan,
+          nama: slip.nama,
           success: result.success,
           message: result.message,
         });
 
-        // Delay 1 detik antar pengiriman
         await new Promise((r) => setTimeout(r, 1000));
       } catch (err) {
         console.error(`Error sending cancel notification to ${slip.no_induk}:`, err);
-        cancelMessages.push({
-          id: slip.id,
-          no_induk: slip.no_induk,
-          nama: slip.nama || slip.nama_karyawan,
-          success: false,
-          message: err.message,
-        });
+        cancelMessages.push({ id: slip.id, no_induk: slip.no_induk, nama: slip.nama, success: false, message: err.message });
       }
     }
 
-    // Update status menjadi "dibatalkan" di database
     const updateQuery = `
       UPDATE ${tableName} 
-      SET status_slip = 'dibatalkan', 
-          cancelled_at = NOW(),
-          cancellation_note = ?,
-          cancelled_by = ?
-      WHERE id IN (${placeholders}) 
-      AND user_id = ?
+      SET status_slip = 'dibatalkan', cancelled_at = NOW(), cancellation_note = ?, cancelled_by = ?
+      WHERE id IN (${placeholders}) AND user_id = ? AND status_slip = 'terkirim'
     `;
 
     const finalCancellationNote = cancellation_note || `Pembatalan kirim slip gaji pada ${new Date().toLocaleString("id-ID")}`;
-    const [updateResult] = await db.query(updateQuery, [finalCancellationNote, userId, ...selected, userId]);
+    const [updateResult] = await db.query(updateQuery, [finalCancellationNote, number, ...selected, userId]);
 
-    // Hitung statistik
     const successCount = cancelMessages.filter((m) => m.success).length;
     const failedCount = cancelMessages.filter((m) => !m.success).length;
 
@@ -954,7 +958,7 @@ router.post("/undo-send", async (req, res) => {
 });
 
 // ========================
-// CHECK UNDO STATUS (apakah data bisa dibatalkan)
+// CHECK UNDO STATUS
 // ========================
 router.get("/check-undo-status", async (req, res) => {
   try {
@@ -970,18 +974,9 @@ router.get("/check-undo-status", async (req, res) => {
     }
     const userId = users[0].id;
 
-    // Hitung jumlah data dengan status terkirim
-    const [result] = await db.query(
-      `SELECT COUNT(*) as count FROM ${tableName} 
-       WHERE user_id = ? AND status_slip = 'terkirim'`,
-      [userId],
-    );
+    const [result] = await db.query(`SELECT COUNT(*) as count FROM ${tableName} WHERE user_id = ? AND status_slip = 'terkirim'`, [userId]);
 
-    res.json({
-      success: true,
-      hasSentData: result[0].count > 0,
-      sentCount: result[0].count,
-    });
+    res.json({ success: true, hasSentData: result[0].count > 0, sentCount: result[0].count });
   } catch (err) {
     console.error("[CHECK UNDO STATUS ERROR]:", err);
     res.status(500).json({ success: false, message: err.message });
@@ -998,25 +993,23 @@ router.get("/my-slip/status/:status", async (req, res) => {
 
     const company = req.query.company || "hisana";
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+    const karyawanTable = getKaryawanTableName(company);
     const status = req.params.status;
 
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-    if (!users.length) {
-      return res.json([]);
-    }
-    const userId = users[0].id;
+    if (!users.length) return res.json([]);
 
+    const userId = users[0].id;
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
     const [rows] = await db.query(
-      `SELECT * FROM ${tableName} 
-       WHERE user_id = ? 
-       AND MONTH(created_at) = ? 
-       AND YEAR(created_at) = ?
-       AND status_slip = ?
-       ORDER BY id DESC`,
+      `SELECT s.*, k.no_induk, k.nama_lengkap as nama
+       FROM ${tableName} s
+       LEFT JOIN ${karyawanTable} k ON s.karyawan_id = k.id
+       WHERE s.user_id = ? AND MONTH(s.created_at) = ? AND YEAR(s.created_at) = ? AND s.status_slip = ?
+       ORDER BY s.id DESC`,
       [userId, currentMonth, currentYear, status],
     );
 
@@ -1035,36 +1028,24 @@ router.get("/progress", (req, res) => {
 });
 
 // ========================
-// DUPLIKASI DATA DARI BULAN SEBELUMNYA (MERGE LOGIC WITH FLAG)
+// DUPLIKASI DATA DARI BULAN SEBELUMNYA
 // ========================
 router.post("/duplicate-data", async (req, res) => {
   try {
-    console.log("[DUPLICATE] Request received");
-    console.log("[DUPLICATE] Query params:", req.query);
-    console.log("[DUPLICATE] Session number:", req.session.number);
-
     const number = req.session.number;
     if (!number) {
-      console.log("[DUPLICATE] No session number found");
       return res.status(401).json({ success: false, message: "Belum login" });
     }
 
     const company = req.query.company || "hisana";
-    console.log(`[DUPLICATE] Company: ${company}`);
-
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
-    console.log(`[DUPLICATE] Table name: ${tableName}`);
 
-    // Get user ID
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
-      console.log("[DUPLICATE] User not found for number:", number);
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
     const userId = users[0].id;
-    console.log(`[DUPLICATE] User ID: ${userId}`);
 
-    // Get current date and previous month
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
@@ -1076,230 +1057,103 @@ router.post("/duplicate-data", async (req, res) => {
       previousYear = currentYear - 1;
     }
 
-    console.log(`[DUPLICATE] Current: ${currentYear}-${currentMonth}, Previous: ${previousYear}-${previousMonth}`);
+    const [existingCurrent] = await db.query(`SELECT karyawan_id FROM ${tableName} WHERE user_id = ? AND MONTH(created_at) = ? AND YEAR(created_at) = ?`, [userId, currentMonth, currentYear]);
+    const existingKaryawanIds = new Set(existingCurrent.map((row) => row.karyawan_id));
 
-    // Get existing data in current month untuk pengecekan duplikasi
-    let currentDataQuery;
-    if (company === "hisana") {
-      currentDataQuery = `
-        SELECT no_induk FROM ${tableName} 
-        WHERE user_id = ? 
-        AND MONTH(created_at) = ? 
-        AND YEAR(created_at) = ?
-      `;
-    } else {
-      currentDataQuery = `
-        SELECT no_induk FROM ${tableName} 
-        WHERE user_id = ? 
-        AND MONTH(created_at) = ? 
-        AND YEAR(created_at) = ?
-      `;
-    }
-
-    const [existingCurrent] = await db.query(currentDataQuery, [userId, currentMonth, currentYear]);
-    const existingNoInduk = new Set(existingCurrent.map((row) => row.no_induk));
-    console.log(`[DUPLICATE] Existing data in current month: ${existingNoInduk.size} records`);
-
-    // Get ALL data from previous month (semua status: belum_dikirim, terkirim, dibatalkan)
-    let previousDataQuery;
-    if (company === "hisana") {
-      previousDataQuery = `
-        SELECT * FROM ${tableName} 
-        WHERE user_id = ? 
-        AND MONTH(created_at) = ? 
-        AND YEAR(created_at) = ?
-        ORDER BY id ASC
-      `;
-    } else {
-      previousDataQuery = `
-        SELECT * FROM ${tableName} 
-        WHERE user_id = ? 
-        AND MONTH(created_at) = ? 
-        AND YEAR(created_at) = ?
-        ORDER BY id ASC
-      `;
-    }
-
-    const [previousData] = await db.query(previousDataQuery, [userId, previousMonth, previousYear]);
-    console.log(`[DUPLICATE] Previous month data found: ${previousData.length} records`);
-    console.log(
-      `[DUPLICATE] Data breakdown:`,
-      previousData.map((d) => ({
-        no_induk: d.no_induk,
-        status: d.status_slip,
-        nama: company === "hisana" ? d.nama : d.nama_karyawan,
-      })),
-    );
+    const [previousData] = await db.query(`SELECT * FROM ${tableName} WHERE user_id = ? AND MONTH(created_at) = ? AND YEAR(created_at) = ? ORDER BY id ASC`, [userId, previousMonth, previousYear]);
 
     if (previousData.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Tidak ada data slip gaji dari bulan sebelumnya (${previousMonth}/${previousYear}) untuk diduplikasi. Pastikan data bulan lalu sudah ada.`,
-      });
+      return res.status(400).json({ success: false, message: `Tidak ada data slip gaji dari bulan sebelumnya (${previousMonth}/${previousYear}) untuk diduplikasi.` });
     }
 
     let duplicatedCount = 0;
     let skippedCount = 0;
-    const duplicatedIds = [];
-    const skippedDetails = [];
 
-    // Prepare insert query based on company
-    let insertQuery;
-    let insertValues = [];
-
-    // Mulai transaksi
     const connection = await db.getConnection();
     await connection.beginTransaction();
 
     try {
       for (const sourceData of previousData) {
-        // Skip jika no_induk sudah ada di bulan ini
-        if (existingNoInduk.has(sourceData.no_induk)) {
-          console.log(`[DUPLICATE] Skipping ${sourceData.no_induk} - already exists in current month`);
+        if (existingKaryawanIds.has(sourceData.karyawan_id)) {
           skippedCount++;
-          skippedDetails.push({
-            no_induk: sourceData.no_induk,
-            nama: company === "hisana" ? sourceData.nama : sourceData.nama_karyawan,
-            reason: "Data sudah ada di bulan ini",
-          });
           continue;
         }
 
-        // Copy data from previous month
         const nowDate = new Date();
 
         if (company === "hisana") {
-          insertQuery = `
+          await connection.query(
+            `
             INSERT INTO ${tableName} (
-              user_id, no_induk, nama, posisi, store, awal_masuk, kerja,
-              gaji, iuran_bpjs_ketenagakerjaan, kerajinan, cuti, tunj_bpjs_pulsa,
-              jumlah, um, keterangan, gaji_total, nohp, status_slip,
-              is_duplicated, duplicated_from_id, duplicated_at, is_imported, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `;
-
-          insertValues = [
-            userId,
-            sourceData.no_induk,
-            sourceData.nama,
-            sourceData.posisi,
-            sourceData.store,
-            sourceData.awal_masuk,
-            sourceData.kerja,
-            sourceData.gaji,
-            sourceData.iuran_bpjs_ketenagakerjaan,
-            sourceData.kerajinan,
-            sourceData.cuti,
-            sourceData.tunj_bpjs_pulsa,
-            sourceData.jumlah,
-            sourceData.um,
-            sourceData.keterangan,
-            sourceData.gaji_total,
-            sourceData.nohp,
-            "belum_dikirim", // status_slip - selalu reset ke belum_dikirim
-            1, // is_duplicated
-            sourceData.id, // duplicated_from_id
-            nowDate, // duplicated_at
-            0, // is_imported
-            nowDate, // created_at
-          ];
-        } else {
-          // Enakko
-          insertQuery = `
-            INSERT INTO ${tableName} (
-              user_id, no_induk, nama_karyawan, tanggal_masuk, jabatan, penempatan,
-              gaji_utuh, gaji_pokok, bpjs_kesehatan, insentif, total_gaji,
-              keterangan, nohp, status_slip,
-              is_duplicated, duplicated_from_id, duplicated_at, is_imported, created_at
+              user_id, karyawan_id, kerja, gaji, iuran_bpjs_ketenagakerjaan, 
+              kerajinan, cuti, tunj_bpjs_pulsa, jumlah, um, keterangan, 
+              gaji_total, nohp, status_slip, is_duplicated, duplicated_from_id, 
+              duplicated_at, is_imported, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `;
-
-          insertValues = [
-            userId,
-            sourceData.no_induk,
-            sourceData.nama_karyawan,
-            sourceData.tanggal_masuk,
-            sourceData.jabatan,
-            sourceData.penempatan,
-            sourceData.gaji_utuh,
-            sourceData.gaji_pokok,
-            sourceData.bpjs_kesehatan,
-            sourceData.insentif,
-            sourceData.total_gaji,
-            sourceData.keterangan,
-            sourceData.nohp,
-            "belum_dikirim", // status_slip - selalu reset ke belum_dikirim
-            1, // is_duplicated
-            sourceData.id, // duplicated_from_id
-            nowDate, // duplicated_at
-            0, // is_imported
-            nowDate, // created_at
-          ];
+          `,
+            [
+              userId,
+              sourceData.karyawan_id,
+              sourceData.kerja,
+              sourceData.gaji,
+              sourceData.iuran_bpjs_ketenagakerjaan,
+              sourceData.kerajinan,
+              sourceData.cuti,
+              sourceData.tunj_bpjs_pulsa,
+              sourceData.jumlah,
+              sourceData.um,
+              sourceData.keterangan,
+              sourceData.gaji_total,
+              sourceData.nohp,
+              "belum_dikirim",
+              1,
+              sourceData.id,
+              nowDate,
+              0,
+              nowDate,
+            ],
+          );
+        } else {
+          await connection.query(
+            `
+            INSERT INTO ${tableName} (
+              user_id, karyawan_id, gaji_pokok, bpjs_kesehatan, 
+              insentif, total_gaji, keterangan, nohp, status_slip,
+              is_duplicated, duplicated_from_id, duplicated_at, is_imported, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+            [
+              userId,
+              sourceData.karyawan_id,
+              sourceData.gaji_pokok,
+              sourceData.bpjs_kesehatan,
+              sourceData.insentif,
+              sourceData.total_gaji,
+              sourceData.keterangan || "",
+              sourceData.nohp,
+              "belum_dikirim",
+              1,
+              sourceData.id,
+              nowDate,
+              0,
+              nowDate,
+            ],
+          );
         }
-
-        const [result] = await connection.query(insertQuery, insertValues);
         duplicatedCount++;
-        duplicatedIds.push(result.insertId);
-        console.log(
-          `[DUPLICATE] Duplicated ${sourceData.no_induk} (${company === "hisana" ? sourceData.nama : sourceData.nama_karyawan}) from ID: ${sourceData.id} (status asli: ${sourceData.status_slip}) to new ID: ${result.insertId} (status baru: belum_dikirim)`,
-        );
       }
 
-      // Commit transaksi
       await connection.commit();
-      console.log(`[DUPLICATE] Transaction committed successfully`);
-
-      // Buat pesan detail untuk ditampilkan
-      let messageHtml = `<div style="background:#f0fdf4;border-radius:12px;padding:15px">
-          <p><strong>✅ Berhasil menduplikasi data slip gaji dari bulan ${previousMonth}/${previousYear} ke bulan ${currentMonth}/${currentYear}.</strong></p>
-          <p style="margin-top: 10px;">
-            <i class="fas fa-check-circle" style="color:#16a34a"></i> <strong>${duplicatedCount}</strong> data berhasil diduplikasi
-          </p>`;
-
-      if (skippedCount > 0) {
-        messageHtml += `<p style="margin-top: 5px;">
-          <i class="fas fa-info-circle" style="color:#f59e0b"></i> <strong>${skippedCount}</strong> data dilewati (sudah ada di bulan ini)
-        </p>`;
-
-        if (skippedDetails.length > 0 && skippedDetails.length <= 5) {
-          messageHtml += `<div style="margin-top: 10px; padding: 10px; background: #fef3c7; border-radius: 8px;">
-            <p style="margin: 0 0 5px 0; font-weight: bold;">Data yang dilewati:</p>
-            <ul style="margin: 0; padding-left: 20px;">`;
-          skippedDetails.forEach((detail) => {
-            messageHtml += `<li>${detail.no_induk} - ${detail.nama}</li>`;
-          });
-          messageHtml += `</ul></div>`;
-        }
-      }
-
-      messageHtml += `</div>`;
-
-      res.json({
-        success: true,
-        message: `Berhasil menduplikasi ${duplicatedCount} data slip gaji dari bulan ${previousMonth}/${previousYear} ke bulan ${currentMonth}/${currentYear}.`,
-        messageHtml: messageHtml,
-        duplicatedCount: duplicatedCount,
-        skippedCount: skippedCount,
-        totalPrevious: previousData.length,
-        duplicatedIds: duplicatedIds,
-        skippedDetails: skippedDetails,
-        month: currentMonth,
-        year: currentYear,
-      });
+      res.json({ success: true, message: `Berhasil menduplikasi ${duplicatedCount} data slip gaji`, duplicatedCount, skippedCount });
     } catch (err) {
-      // Rollback jika ada error
       await connection.rollback();
-      console.error("[DUPLICATE] Transaction error, rolling back:", err);
       throw err;
     } finally {
       connection.release();
     }
   } catch (err) {
     console.error("[DUPLICATE ERROR]:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message || "Terjadi kesalahan saat menduplikasi data",
-    });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -1316,37 +1170,19 @@ router.get("/check-duplicate-status", async (req, res) => {
     const company = req.query.company || "hisana";
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
 
-    // Get user ID
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
     const userId = users[0].id;
 
-    // Get current date
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    // Check if there are duplicated data in current month
-    let result;
-    const query = `
-      SELECT COUNT(*) as count FROM ${tableName} 
-      WHERE user_id = ? 
-      AND MONTH(created_at) = ? 
-      AND YEAR(created_at) = ?
-      AND is_duplicated = 1
-    `;
-    [result] = await db.query(query, [userId, currentMonth, currentYear]);
+    const [result] = await db.query(`SELECT COUNT(*) as count FROM ${tableName} WHERE user_id = ? AND MONTH(created_at) = ? AND YEAR(created_at) = ? AND is_duplicated = 1`, [userId, currentMonth, currentYear]);
 
-    const hasRecentDuplicate = result[0].count > 0;
-
-    console.log(`[CHECK STATUS] User ${userId}, Month ${currentMonth}/${currentYear}, Has duplicated data: ${hasRecentDuplicate}`);
-
-    res.json({
-      success: true,
-      hasRecentDuplicate,
-    });
+    res.json({ success: true, hasRecentDuplicate: result[0].count > 0 });
   } catch (err) {
     console.error("[CHECK DUPLICATE STATUS ERROR]:", err);
     res.status(500).json({ success: false, message: err.message });
@@ -1354,12 +1190,10 @@ router.get("/check-duplicate-status", async (req, res) => {
 });
 
 // ========================
-// BATALKAN DUPLIKASI (HAPUS HANYA DATA HASIL DUPLIKASI)
+// BATALKAN DUPLIKASI
 // ========================
 router.post("/cancel-duplicate", async (req, res) => {
   try {
-    console.log("[CANCEL DUPLICATE] Request received");
-
     const number = req.session.number;
     if (!number) {
       return res.status(401).json({ success: false, message: "Belum login" });
@@ -1368,95 +1202,32 @@ router.post("/cancel-duplicate", async (req, res) => {
     const company = req.query.company || "hisana";
     const tableName = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
 
-    // Get user ID
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
     const userId = users[0].id;
 
-    // Get current date
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    console.log(`[CANCEL DUPLICATE] Checking data for ${currentYear}-${currentMonth}, user ${userId}, company ${company}`);
+    const [currentData] = await db.query(`SELECT id, is_duplicated FROM ${tableName} WHERE user_id = ? AND MONTH(created_at) = ? AND YEAR(created_at) = ?`, [userId, currentMonth, currentYear]);
 
-    // First, get all data in current month - PERBAIKAN: gunakan kolom yang sesuai untuk nama
-    let currentData;
-    let getDataQuery;
+    const duplicatedIds = currentData.filter((item) => item.is_duplicated === 1).map((item) => item.id);
+    const manualCount = currentData.filter((item) => item.is_duplicated !== 1).length;
 
-    if (company === "hisana") {
-      getDataQuery = `
-        SELECT id, no_induk, nama, is_duplicated 
-        FROM ${tableName} 
-        WHERE user_id = ? 
-        AND MONTH(created_at) = ? 
-        AND YEAR(created_at) = ?
-      `;
-    } else {
-      getDataQuery = `
-        SELECT id, no_induk, nama_karyawan as nama, is_duplicated 
-        FROM ${tableName} 
-        WHERE user_id = ? 
-        AND MONTH(created_at) = ? 
-        AND YEAR(created_at) = ?
-      `;
+    if (duplicatedIds.length === 0) {
+      return res.status(400).json({ success: false, message: "Tidak ada data hasil duplikasi untuk dibatalkan" });
     }
 
-    [currentData] = await db.query(getDataQuery, [userId, currentMonth, currentYear]);
+    const placeholders = duplicatedIds.map(() => "?").join(",");
+    const [result] = await db.query(`DELETE FROM ${tableName} WHERE id IN (${placeholders})`, duplicatedIds);
 
-    if (currentData.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Tidak ada data dari bulan ${currentMonth}/${currentYear} untuk dibatalkan`,
-      });
-    }
-
-    // Separate data into duplicated and manual input
-    const duplicatedData = currentData.filter((item) => item.is_duplicated === 1);
-    const manualData = currentData.filter((item) => item.is_duplicated !== 1);
-
-    console.log(`[CANCEL DUPLICATE] Found: ${duplicatedData.length} duplicated records, ${manualData.length} manual records`);
-
-    if (duplicatedData.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Tidak ada data hasil duplikasi di bulan ${currentMonth}/${currentYear} untuk dibatalkan. Data yang ada adalah hasil input manual.`,
-      });
-    }
-
-    // Get IDs of duplicated data to delete
-    const duplicatedIds = duplicatedData.map((item) => item.id);
-
-    // Delete only duplicated data
-    const deleteQuery = `
-      DELETE FROM ${tableName} 
-      WHERE id IN (${duplicatedIds.map(() => "?").join(",")})
-    `;
-
-    const [result] = await db.query(deleteQuery, duplicatedIds);
-
-    console.log(`[CANCEL DUPLICATE] Deleted ${result.affectedRows} duplicated records`);
-
-    // Prepare detailed message
     let message = `Berhasil membatalkan duplikasi. ${result.affectedRows} data hasil duplikasi telah dihapus.`;
+    if (manualCount > 0) message += ` ${manualCount} data input manual tetap dipertahankan.`;
 
-    if (manualData.length > 0) {
-      message += `\n\n${manualData.length} data input manual tetap dipertahankan.`;
-    }
-
-    res.json({
-      success: true,
-      message: message,
-      deletedCount: result.affectedRows,
-      manualDataCount: manualData.length,
-      duplicatedDataList: duplicatedData.map((d) => ({
-        id: d.id,
-        no_induk: d.no_induk,
-        nama: d.nama, // Sekarang nama sudah tersedia untuk kedua perusahaan
-      })),
-    });
+    res.json({ success: true, message, deletedCount: result.affectedRows, manualDataCount: manualCount });
   } catch (err) {
     console.error("[CANCEL DUPLICATE ERROR]:", err);
     res.status(500).json({ success: false, message: err.message });

@@ -1,4 +1,4 @@
-// server/routes/dataKaryawanRoutes.js - UPDATED WITH lokasi_store_id
+// server/routes/dataKaryawanRoutes.js - UPDATED WITH awal_masuk
 
 import express from "express";
 import multer from "multer";
@@ -129,7 +129,7 @@ router.get("/data-karyawan/lokasi-store", async (req, res) => {
 });
 
 // =============================
-// DOWNLOAD TEMPLATE EXCEL KARYAWAN (UPDATED)
+// DOWNLOAD TEMPLATE EXCEL KARYAWAN (UPDATED WITH awal_masuk)
 // =============================
 router.get("/data-karyawan/template", async (req, res) => {
   try {
@@ -152,8 +152,8 @@ router.get("/data-karyawan/template", async (req, res) => {
 
     const [lokasiList] = await db.query(`SELECT nama_store FROM ${lokasiTable} WHERE user_id = ? ORDER BY nama_store ASC`, [userId]);
 
-    // Header untuk template Excel
-    const headers = ["No Induk*", "Nama Lengkap*", "NIK*", "Tanggal Lahir* (DD/MM/YYYY)", "Alamat Domisili", "No HP*", "Email*", "Password* (min 6 karakter)", "Jabatan*", "Nama Store / Gerai*"];
+    // Header untuk template Excel - TAMBAHKAN Awal Masuk
+    const headers = ["No Induk*", "Nama Lengkap*", "NIK*", "Tanggal Lahir* (DD/MM/YYYY)", "Alamat Domisili", "No HP*", "Email*", "Password* (min 6 karakter)", "Awal Masuk (YYYY-MM-DD)", "Jabatan*", "Nama Store / Gerai*"];
 
     // Data contoh - 2 baris
     const templateData = [
@@ -166,6 +166,7 @@ router.get("/data-karyawan/template", async (req, res) => {
         "No HP*": "08123456789",
         "Email*": "budi@example.com",
         "Password* (min 6 karakter)": "password123",
+        "Awal Masuk (YYYY-MM-DD)": "2020-01-15",
         "Jabatan*": "Staff",
         "Nama Store / Gerai*": lokasiList.length > 0 ? lokasiList[0].nama_store : companyType === "hisana" ? "Hisana Thamrin" : "Enakko Thamrin",
       },
@@ -178,6 +179,7 @@ router.get("/data-karyawan/template", async (req, res) => {
         "No HP*": "08123456788",
         "Email*": "siti@example.com",
         "Password* (min 6 karakter)": "password123",
+        "Awal Masuk (YYYY-MM-DD)": "2021-03-20",
         "Jabatan*": "Supervisor",
         "Nama Store / Gerai*": lokasiList.length > 1 ? lokasiList[1].nama_store : companyType === "hisana" ? "Hisana Pondok Indah" : "Enakko Pondok Indah",
       },
@@ -196,6 +198,7 @@ router.get("/data-karyawan/template", async (req, res) => {
       { wch: 15 }, // No HP*
       { wch: 25 }, // Email*
       { wch: 25 }, // Password* (min 6 karakter)
+      { wch: 20 }, // Awal Masuk (YYYY-MM-DD)
       { wch: 15 }, // Jabatan*
       { wch: 30 }, // Nama Store / Gerai*
     ];
@@ -215,18 +218,22 @@ router.get("/data-karyawan/template", async (req, res) => {
       ["   - Jabatan: Posisi/jabatan karyawan", ""],
       ["   - Nama Store / Gerai: Harus sesuai dengan nama store yang sudah terdaftar di sistem", ""],
       [""],
-      ["2. Daftar Nama Store / Gerai yang tersedia:", ""],
+      ["2. Kolom opsional (tidak wajib):", ""],
+      ["   - Alamat Domisili: Alamat tempat tinggal karyawan", ""],
+      ["   - Awal Masuk: Tanggal awal karyawan bekerja, format YYYY-MM-DD (contoh: 2020-01-15)", ""],
+      [""],
+      ["3. Daftar Nama Store / Gerai yang tersedia:", ""],
       ...lokasiList.map((l) => [`   - ${l.nama_store}`, ""]),
       [""],
-      ["3. Format Tanggal Lahir yang benar:", ""],
+      ["4. Format Tanggal Lahir yang benar:", ""],
       ["   - Contoh: 15/01/1990 (15 Januari 1990)", ""],
       ["   - Contoh: 20/12/1995 (20 Desember 1995)", ""],
       [""],
-      ["4. Format No HP yang benar:", ""],
+      ["5. Format No HP yang benar:", ""],
       ["   - Contoh: 08123456789 (akan otomatis dikonversi ke 628123456789)", ""],
       ["   - Contoh: 628123456789 (format internasional)", ""],
       [""],
-      ["5. Catatan Penting:", ""],
+      ["6. Catatan Penting:", ""],
       ["   - Data dengan No Induk, Email, atau NIK yang sudah terdaftar akan dilewati", ""],
       ["   - Nama Store / Gerai harus sudah ada di database, jika tidak maka import akan gagal", ""],
       ["   - Pastikan semua data terisi dengan benar sebelum import", ""],
@@ -254,7 +261,7 @@ router.get("/data-karyawan/template", async (req, res) => {
 });
 
 // =============================
-// EXPORT EXCEL KARYAWAN (UPDATED)
+// EXPORT EXCEL KARYAWAN (UPDATED WITH awal_masuk)
 // =============================
 router.get("/data-karyawan/export", async (req, res) => {
   try {
@@ -281,7 +288,7 @@ router.get("/data-karyawan/export", async (req, res) => {
     const tableName = getTableName(company);
     const lokasiTable = getLokasiStoreTableName(company);
 
-    // Query dengan JOIN ke lokasi_store
+    // Query dengan JOIN ke lokasi_store - TAMBAHKAN awal_masuk
     const [rows] = await db.query(
       `SELECT 
         k.no_induk, 
@@ -291,6 +298,7 @@ router.get("/data-karyawan/export", async (req, res) => {
         k.alamat_domisili, 
         k.no_hp, 
         k.email, 
+        DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
         k.jabatan,
         k.lokasi_store_id,
         l.nama_store,
@@ -318,7 +326,7 @@ router.get("/data-karyawan/export", async (req, res) => {
     const archive = archiver("zip", { zlib: { level: 9 } });
     archive.pipe(res);
 
-    const headers = ["No Induk", "Nama Lengkap", "Nik", "Tanggal Lahir", "Alamat Domisili", "No Hp", "Email", "Jabatan", "Nama Store / Gerai", "Alamat Store", "File Foto Diri", "File Foto Ktp"];
+    const headers = ["No Induk", "Nama Lengkap", "Nik", "Tanggal Lahir", "Alamat Domisili", "No Hp", "Email", "Awal Masuk", "Jabatan", "Nama Store / Gerai", "Alamat Store", "File Foto Diri", "File Foto Ktp"];
 
     const exportData = rows.map((row) => {
       const sanitizedName = row.nama_lengkap ? row.nama_lengkap.replace(/\s+/g, "_") : "unknown";
@@ -330,6 +338,7 @@ router.get("/data-karyawan/export", async (req, res) => {
         "Alamat Domisili": row.alamat_domisili || "",
         "No Hp": row.no_hp ? (row.no_hp.startsWith("62") ? "0" + row.no_hp.substring(2) : row.no_hp) : "",
         Email: row.email || "",
+        "Awal Masuk": row.awal_masuk || "",
         Jabatan: row.jabatan || "",
         "Nama Store / Gerai": row.nama_store || "",
         "Alamat Store": row.alamat_store || "",
@@ -339,7 +348,7 @@ router.get("/data-karyawan/export", async (req, res) => {
     });
 
     const ws = xlsx.utils.json_to_sheet(exportData, { header: headers });
-    ws["!cols"] = [{ wch: 12 }, { wch: 25 }, { wch: 18 }, { wch: 15 }, { wch: 35 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 25 }, { wch: 35 }, { wch: 40 }, { wch: 40 }];
+    ws["!cols"] = [{ wch: 12 }, { wch: 25 }, { wch: 18 }, { wch: 15 }, { wch: 35 }, { wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 35 }, { wch: 40 }, { wch: 40 }];
 
     const wb = xlsx.utils.book_new();
     const sheetName = company === "hisana" ? "Data_Karyawan_Hisana" : "Data_Karyawan_Enakko";
@@ -381,7 +390,7 @@ router.get("/data-karyawan/export", async (req, res) => {
 });
 
 // =============================
-// IMPORT EXCEL KARYAWAN (UPDATED)
+// IMPORT EXCEL KARYAWAN (UPDATED WITH awal_masuk)
 // =============================
 router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res) => {
   console.log("=== IMPORT KARYAWAN ROUTE HIT ===");
@@ -478,10 +487,11 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
         let no_hp = (row["No HP*"] || row["No HP"] || row["no_hp"] || row["NO HP"] || row["nohp"] || "").toString().trim();
         const email = (row["Email*"] || row["Email"] || row["email"] || row["EMAIL"] || "").toString().trim();
         let password = (row["Password* (min 6 karakter)"] || row["Password*"] || row["Password"] || row["password"] || "").toString().trim();
+        let awal_masuk = (row["Awal Masuk (YYYY-MM-DD)"] || row["Awal Masuk"] || row["awal_masuk"] || row["AWAL MASUK"] || "").toString().trim();
         const jabatan = (row["Jabatan*"] || row["Jabatan"] || row["jabatan"] || row["JABATAN"] || row["Posisi"] || "").toString().trim();
         const namaStore = (row["Nama Store / Gerai*"] || row["Nama Store / Gerai"] || row["nama_store"] || row["Nama Store"] || row["Gerai"] || "").toString().trim();
 
-        console.log(`Row ${i + 1}: No Induk=${no_induk}, Nama=${nama_lengkap}, Store=${namaStore}`);
+        console.log(`Row ${i + 1}: No Induk=${no_induk}, Nama=${nama_lengkap}, Store=${namaStore}, Awal Masuk=${awal_masuk}`);
 
         // Validasi field wajib
         const missingFields = [];
@@ -569,6 +579,31 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
           continue;
         }
 
+        // Format awal_masuk jika ada (YYYY-MM-DD)
+        let formattedAwalMasuk = null;
+        if (awal_masuk) {
+          // Cek format YYYY-MM-DD
+          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+          if (dateRegex.test(awal_masuk)) {
+            formattedAwalMasuk = awal_masuk;
+          } else {
+            // Coba parse dari format lain
+            const parts = awal_masuk.split(/[-/]/);
+            if (parts.length === 3) {
+              if (parts[0].length === 4) {
+                formattedAwalMasuk = awal_masuk;
+              } else {
+                const day = parts[0].padStart(2, "0");
+                const month = parts[1].padStart(2, "0");
+                const year = parts[2];
+                if (year.length === 4) {
+                  formattedAwalMasuk = `${year}-${month}-${day}`;
+                }
+              }
+            }
+          }
+        }
+
         // Validasi email
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
@@ -619,18 +654,18 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Insert data dengan lokasi_store_id
+        // Insert data dengan lokasi_store_id dan awal_masuk
         const query = `
           INSERT INTO ${tableName} 
           (user_id, no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, 
-           no_hp, email, password, jabatan, lokasi_store_id) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           no_hp, email, password, awal_masuk, jabatan, lokasi_store_id) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
-        await db.query(query, [userId, no_induk, nama_lengkap, nikClean, formattedDate, alamat_domisili || null, noHpClean, email, hashedPassword, jabatan, lokasiStoreId]);
+        await db.query(query, [userId, no_induk, nama_lengkap, nikClean, formattedDate, alamat_domisili || null, noHpClean, email, hashedPassword, formattedAwalMasuk, jabatan, lokasiStoreId]);
 
         successCount++;
-        console.log(`✅ Imported: ${no_induk} - ${nama_lengkap} (Store ID: ${lokasiStoreId})`);
+        console.log(`✅ Imported: ${no_induk} - ${nama_lengkap} (Store ID: ${lokasiStoreId}, Awal Masuk: ${formattedAwalMasuk})`);
       } catch (err) {
         errorCount++;
         errors.push(`Baris ${i + 2}: ${err.message}`);
@@ -659,7 +694,7 @@ router.post("/data-karyawan/import", uploadExcel.single("file"), async (req, res
 });
 
 // =============================
-// GET ALL KARYAWAN (UPDATED WITH JOIN)
+// GET ALL KARYAWAN (UPDATED WITH awal_masuk)
 // =============================
 router.get("/data-karyawan", async (req, res) => {
   try {
@@ -701,6 +736,7 @@ router.get("/data-karyawan", async (req, res) => {
         k.alamat_domisili, 
         k.no_hp, 
         k.email, 
+        DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
         k.jabatan, 
         k.lokasi_store_id,
         l.nama_store,
@@ -727,7 +763,7 @@ router.get("/data-karyawan", async (req, res) => {
 });
 
 // =============================
-// GET KARYAWAN BY ID (UPDATED WITH JOIN)
+// GET KARYAWAN BY ID (UPDATED WITH awal_masuk)
 // =============================
 router.get("/data-karyawan/:id", async (req, res) => {
   try {
@@ -758,6 +794,7 @@ router.get("/data-karyawan/:id", async (req, res) => {
         k.alamat_domisili, 
         k.no_hp, 
         k.email, 
+        DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
         k.jabatan, 
         k.lokasi_store_id,
         l.nama_store,
@@ -786,7 +823,7 @@ router.get("/data-karyawan/:id", async (req, res) => {
 });
 
 // =============================
-// CREATE KARYAWAN (UPDATED)
+// CREATE KARYAWAN (UPDATED WITH awal_masuk)
 // =============================
 router.post(
   "/data-karyawan",
@@ -802,7 +839,7 @@ router.post(
       }
 
       const { company } = req.query;
-      const { no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, no_hp, email, password, jabatan, lokasi_store_id } = req.body;
+      const { no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, no_hp, email, password, awal_masuk, jabatan, lokasi_store_id } = req.body;
 
       const [users] = await db.query("SELECT id FROM users WHERE nomor_wa = ?", [number]);
       if (!users.length) {
@@ -877,9 +914,9 @@ router.post(
       const [result] = await db.query(
         `INSERT INTO ${tableName} 
          (user_id, no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, 
-          no_hp, email, password, jabatan, lokasi_store_id, foto_diri, foto_ktp) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, no_induk.trim(), nama_lengkap.trim(), nik.trim(), tanggal_lahir, alamat_domisili?.trim() || "", no_hp.trim(), email.trim(), hashedPassword, jabatan.trim(), lokasi_store_id, fotoDiriPath, fotoKtpPath],
+          no_hp, email, password, awal_masuk, jabatan, lokasi_store_id, foto_diri, foto_ktp) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, no_induk.trim(), nama_lengkap.trim(), nik.trim(), tanggal_lahir, alamat_domisili?.trim() || "", no_hp.trim(), email.trim(), hashedPassword, awal_masuk || null, jabatan.trim(), lokasi_store_id, fotoDiriPath, fotoKtpPath],
       );
 
       res.json({
@@ -898,7 +935,7 @@ router.post(
 );
 
 // =============================
-// UPDATE KARYAWAN (UPDATED)
+// UPDATE KARYAWAN (UPDATED WITH awal_masuk)
 // =============================
 router.put(
   "/data-karyawan/:id",
@@ -910,7 +947,7 @@ router.put(
     try {
       const { id } = req.params;
       const { company } = req.query;
-      const { no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, no_hp, email, password, jabatan, lokasi_store_id } = req.body;
+      const { no_induk, nama_lengkap, nik, tanggal_lahir, alamat_domisili, no_hp, email, password, awal_masuk, jabatan, lokasi_store_id } = req.body;
 
       const number = checkLogin(req, res);
       if (!number) {
@@ -982,10 +1019,10 @@ router.put(
       let updateQuery = `
         UPDATE ${tableName} SET 
           no_induk = ?, nama_lengkap = ?, nik = ?, tanggal_lahir = ?, 
-          alamat_domisili = ?, no_hp = ?, email = ?, jabatan = ?, 
-          lokasi_store_id = ?, foto_diri = ?, foto_ktp = ?
+          alamat_domisili = ?, no_hp = ?, email = ?, awal_masuk = ?,
+          jabatan = ?, lokasi_store_id = ?, foto_diri = ?, foto_ktp = ?
       `;
-      let params = [no_induk.trim(), nama_lengkap.trim(), nik.trim(), tanggal_lahir, alamat_domisili?.trim() || "", no_hp.trim(), email.trim(), jabatan.trim(), lokasi_store_id || null, fotoDiriPath, fotoKtpPath];
+      let params = [no_induk.trim(), nama_lengkap.trim(), nik.trim(), tanggal_lahir, alamat_domisili?.trim() || "", no_hp.trim(), email.trim(), awal_masuk || null, jabatan.trim(), lokasi_store_id || null, fotoDiriPath, fotoKtpPath];
 
       if (password && password.trim() !== "") {
         const hashedPassword = await bcrypt.hash(password, 10);

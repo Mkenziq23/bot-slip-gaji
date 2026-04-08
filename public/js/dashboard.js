@@ -574,7 +574,7 @@ function renderKaryawanTable() {
   if (pageData.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="15" style="text-align: center; padding: 40px;">
+        <td colspan="16" style="text-align: center; padding: 40px;">
           <i class="fas fa-users" style="font-size: 48px; color: #cbd5e1; margin-bottom: 10px; display: block;"></i>
           <p style="color: #64748b;">Belum ada data karyawan</p>
           <button class="btn-primary" onclick="openKaryawanModal()" style="margin-top: 10px;">
@@ -591,46 +591,78 @@ function renderKaryawanTable() {
   pageData.forEach((d, i) => {
     const tr = document.createElement("tr");
 
-    let tglLahir = formatDateToDisplay(d.tanggal_lahir);
+    // Format tanggal lahir ke format Indonesia
+    let tglLahir = "-";
+    if (d.tanggal_lahir) {
+      const date = new Date(d.tanggal_lahir);
+      if (!isNaN(date.getTime())) {
+        tglLahir = date.toLocaleDateString("id-ID", {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+        });
+      }
+    }
 
+    // Format awal masuk ke format Indonesia
+    let awalMasuk = "-";
+    if (d.awal_masuk) {
+      const date = new Date(d.awal_masuk);
+      if (!isNaN(date.getTime())) {
+        awalMasuk = date.toLocaleDateString("id-ID", {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+        });
+      }
+    }
+
+    // Foto Diri
     let fotoDiriHtml = "-";
     if (d.foto_diri && d.foto_diri !== "") {
-      fotoDiriHtml = `<a href="${d.foto_diri}" target="_blank" class="foto-link" style="color: #2563eb; text-decoration: none;"><i class="fas fa-image"></i> Lihat Foto</a>`;
+      fotoDiriHtml = `<a href="${d.foto_diri}" target="_blank" class="foto-link" style="color: #2563eb; text-decoration: none;" title="Lihat Foto Diri">
+        <i class="fas fa-image"></i> Lihat
+      </a>`;
     }
 
+    // Foto KTP
     let fotoKtpHtml = "-";
     if (d.foto_ktp && d.foto_ktp !== "") {
-      fotoKtpHtml = `<a href="${d.foto_ktp}" target="_blank" class="foto-link" style="color: #2563eb; text-decoration: none;"><i class="fas fa-id-card"></i> Lihat Foto</a>`;
+      fotoKtpHtml = `<a href="${d.foto_ktp}" target="_blank" class="foto-link" style="color: #2563eb; text-decoration: none;" title="Lihat Foto KTP">
+        <i class="fas fa-id-card"></i> Lihat
+      </a>`;
     }
 
+    // Format No HP untuk display (hilangkan 62 di awal)
     let noHpDisplay = d.no_hp || "-";
     if (noHpDisplay !== "-" && noHpDisplay.startsWith("62")) {
       noHpDisplay = "0" + noHpDisplay.substring(2);
     }
 
-    // Dua kolom terpisah: Nama Gerai dan Cabang (Alamat)
+    // Data Store (dari JOIN dengan tabel lokasi_store)
     const namaGerai = d.nama_store || "-";
     const cabangAlamat = d.alamat_store || "-";
 
     tr.innerHTML = `
-      <td class="text-center">${start + i + 1}</td>
+      <td class="text-center" style="width: 50px;">${start + i + 1}</td>
       <td style="font-weight: 500;">${escapeHtml(d.no_induk || "-")}</td>
-      <td style="font-weight:600">${escapeHtml(d.nama_lengkap || "-")}</td>
+      <td style="font-weight: 600;">${escapeHtml(d.nama_lengkap || "-")}</td>
       <td>${escapeHtml(d.nik || "-")}</td>
       <td>${tglLahir}</td>
-      <td style="max-width: 200px;">${escapeHtml(d.alamat_domisili || "-")}</td>
+      <td style="max-width: 200px; word-break: break-word;">${escapeHtml(d.alamat_domisili || "-")}</td>
       <td>${escapeHtml(noHpDisplay)}</td>
       <td>${escapeHtml(d.email || "-")}</td>
+      <td>${awalMasuk}
       <td>${escapeHtml(d.jabatan || "-")}</td>
       <td><strong>${escapeHtml(namaGerai)}</strong></td>
-      <td>${escapeHtml(cabangAlamat)}</td>
+      <td><small style="color: #64748b; font-size: 11px;">${escapeHtml(cabangAlamat)}</small></td>
       <td class="text-center">${fotoDiriHtml}</td>
       <td class="text-center">${fotoKtpHtml}</td>
-      <td class="text-center">
-        <button class="btn-primary" style="padding: 5px 10px; margin-right: 5px;" onclick='openKaryawanModalById(${d.id})'>
+      <td class="text-center" style="white-space: nowrap;">
+        <button class="btn-primary" style="padding: 5px 10px; margin-right: 5px;" onclick='openKaryawanModalById(${d.id})' title="Edit">
           <i class="fas fa-edit"></i>
         </button>
-        <button class="btn-danger" style="padding: 5px 10px;" onclick='deleteKaryawan(${d.id})'>
+        <button class="btn-danger" style="padding: 5px 10px;" onclick='deleteKaryawan(${d.id})' title="Hapus">
           <i class="fas fa-trash"></i>
         </button>
       </td>
@@ -692,6 +724,13 @@ function openKaryawanModal(item = null) {
       document.getElementById("karyawan_tanggal_lahir").value = "";
     }
 
+    // Set awal_masuk
+    if (item.awal_masuk) {
+      document.getElementById("karyawan_awal_masuk").value = item.awal_masuk;
+    } else {
+      document.getElementById("karyawan_awal_masuk").value = "";
+    }
+
     document.getElementById("karyawan_alamat_domisili").value = item.alamat_domisili || "";
 
     let noHp = item.no_hp || "";
@@ -747,6 +786,7 @@ function openKaryawanModal(item = null) {
     document.getElementById("karyawan_nama_lengkap").value = "";
     document.getElementById("karyawan_nik").value = "";
     document.getElementById("karyawan_tanggal_lahir").value = "";
+    document.getElementById("karyawan_awal_masuk").value = "";
     document.getElementById("karyawan_alamat_domisili").value = "";
     document.getElementById("karyawan_no_hp").value = "";
     document.getElementById("karyawan_email").value = "";
@@ -821,6 +861,7 @@ function setupKaryawanFormHandler() {
     let password = document.getElementById("karyawan_password")?.value.trim();
     let noHp = document.getElementById("karyawan_no_hp")?.value.trim();
     let tanggalLahir = document.getElementById("karyawan_tanggal_lahir")?.value;
+    let awalMasuk = document.getElementById("karyawan_awal_masuk")?.value || "";
 
     // AMBIL NILAI LOKASI STORE ID dari dropdown
     const lokasiStoreSelect = document.getElementById("karyawan_lokasi_store_id");
@@ -855,8 +896,9 @@ function setupKaryawanFormHandler() {
     formData.append("alamat_domisili", document.getElementById("karyawan_alamat_domisili")?.value || "");
     formData.append("no_hp", noHp || "");
     formData.append("email", document.getElementById("karyawan_email")?.value.trim() || "");
+    formData.append("awal_masuk", awalMasuk || "");
     formData.append("jabatan", document.getElementById("karyawan_jabatan")?.value.trim() || "");
-    formData.append("lokasi_store_id", lokasiStoreId); // TAMBAHKAN INI - GANTI cabang dan nama_gerai
+    formData.append("lokasi_store_id", lokasiStoreId);
 
     const fotoDiriFile = document.getElementById("karyawan_foto_diri")?.files[0];
     const fotoKtpFile = document.getElementById("karyawan_foto_ktp")?.files[0];
@@ -2971,6 +3013,11 @@ function renderFormFields() {
 
   if (currentCompany === "hisana") {
     formGrid.innerHTML = `
+      <input type="hidden" id="slip_karyawan_id" />
+      <input type="hidden" id="slip_no_induk" />
+      <input type="hidden" id="slip_nama" />
+      <input type="hidden" id="slip_nohp" />
+      
       <div class="formGroup" style="grid-column: span 2;">
         <label>Pilih Karyawan *</label>
         <div class="employee-search-container">
@@ -2982,24 +3029,44 @@ function renderFormFields() {
             <div id="employeeListSlip" class="employee-list"></div>
           </div>
         </div>
-        <input type="hidden" id="slip_no_induk" />
-        <input type="hidden" id="slip_nama" />
-        <input type="hidden" id="slip_nohp" />
       </div>
-      <div class="formGroup"><label>Posisi *</label><input type="text" id="posisi" required placeholder="Contoh: Staff, Supervisor" /></div>
-      <div class="formGroup"><label>Store *</label><input type="text" id="store" required placeholder="Nama store/toko" /></div>
-      <div class="formGroup"><label>Tanggal Awal Masuk</label><input type="date" id="awal_masuk" /></div>
-      <div class="formGroup"><label>Jumlah Hari Kerja *</label><input type="number" id="kerja" required value="0" step="1" /></div>
-      <div class="formGroup"><label>Gaji Pokok *</label><input type="text" id="gaji" required placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Iuran BPJS Ketenagakerjaan</label><input type="text" id="iuran_bpjs_ketenagakerjaan" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Kerajinan</label><input type="text" id="kerajinan" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Cuti</label><input type="text" id="cuti" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Tunjangan BPJS & Pulsa</label><input type="text" id="tunj_bpjs_pulsa" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Total Perhitungan</label><input type="text" id="jumlah" readonly style="background:#f3f4f6; text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Uang Makan (UM) *</label><input type="text" id="um" required placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Keterangan</label><input type="text" id="keterangan" placeholder="Opsional" /></div>
-      <div class="formGroup"><label>Total Gaji</label><input type="text" id="gaji_total" readonly style="background:#f3f4f6; text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>No HP Karyawan *</label><input type="text" id="nohp" required placeholder="Contoh: 628123456789" /></div>
+      
+      <!-- Read-only fields that auto-fill from employee selection -->
+      <div class="formGroup">
+        <label>No Induk</label>
+        <input type="text" id="no_induk_display" readonly style="background:#f3f4f6; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" placeholder="-" value="" />
+      </div>
+      <div class="formGroup">
+        <label>Nama Karyawan</label>
+        <input type="text" id="nama_display" readonly style="background:#f3f4f6; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" placeholder="-" value="" />
+      </div>
+      <div class="formGroup">
+        <label>Posisi / Jabatan</label>
+        <input type="text" id="jabatan_display" readonly style="background:#f3f4f6; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" placeholder="-" value="" />
+      </div>
+      <div class="formGroup">
+        <label>Store / Penempatan</label>
+        <input type="text" id="store_display" readonly style="background:#f3f4f6; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" placeholder="-" value="" />
+      </div>
+      <div class="formGroup">
+        <label>Awal Masuk</label>
+        <input type="text" id="awal_masuk_display" readonly style="background:#f3f4f6; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" placeholder="-" value="" />
+      </div>
+      <div class="formGroup">
+        <label>No HP Karyawan *</label>
+        <input type="text" id="nohp" required placeholder="Contoh: 628123456789" style="width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" value="" />
+      </div>
+      
+      <div class="formGroup"><label>Jumlah Hari Kerja *</label><input type="number" id="kerja" required value="0" step="1" style="width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Gaji Pokok *</label><input type="text" id="gaji" required placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Iuran BPJS Ketenagakerjaan</label><input type="text" id="iuran_bpjs_ketenagakerjaan" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Kerajinan</label><input type="text" id="kerajinan" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Cuti</label><input type="text" id="cuti" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Tunjangan BPJS & Pulsa</label><input type="text" id="tunj_bpjs_pulsa" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Total Perhitungan</label><input type="text" id="jumlah" readonly style="background:#f3f4f6; text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Uang Makan (UM) *</label><input type="text" id="um" required placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Keterangan</label><input type="text" id="keterangan" placeholder="Opsional" style="width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Total Gaji</label><input type="text" id="gaji_total" readonly style="background:#f3f4f6; text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
     `;
 
     // Setup currency inputs
@@ -3023,8 +3090,13 @@ function renderFormFields() {
 
     calculatePayrollWithFormat();
   } else {
-    // Enakko form
+    // Enakko form (similar structure)
     formGrid.innerHTML = `
+      <input type="hidden" id="slip_karyawan_id" />
+      <input type="hidden" id="slip_no_induk" />
+      <input type="hidden" id="slip_nama" />
+      <input type="hidden" id="slip_nohp" />
+      
       <div class="formGroup" style="grid-column: span 2;">
         <label>Pilih Karyawan *</label>
         <div class="employee-search-container">
@@ -3036,23 +3108,24 @@ function renderFormFields() {
             <div id="employeeListSlip" class="employee-list"></div>
           </div>
         </div>
-        <input type="hidden" id="slip_no_induk" />
-        <input type="hidden" id="slip_nama" />
-        <input type="hidden" id="slip_nohp" />
       </div>
-      <div class="formGroup"><label>Tanggal Masuk *</label><input type="date" id="tanggal_masuk" required /></div>
-      <div class="formGroup"><label>Jabatan *</label><input type="text" id="jabatan" required placeholder="Contoh: Staff, Supervisor" /></div>
-      <div class="formGroup"><label>Penempatan</label><input type="text" id="penempatan" placeholder="Contoh: Blimbing, Kepanjen" /></div>
-      <div class="formGroup"><label>Gaji Utuh</label><input type="text" id="gaji_utuh" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Gaji Pokok *</label><input type="text" id="gaji_pokok" required placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>BPJS Kesehatan</label><input type="text" id="bpjs_kesehatan" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Insentif</label><input type="text" id="insentif" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Total Gaji</label><input type="text" id="total_gaji" readonly style="background:#f3f4f6; text-align: right; font-family: monospace" /></div>
-      <div class="formGroup"><label>Keterangan</label><input type="text" id="keterangan" placeholder="Opsional" /></div>
-      <div class="formGroup"><label>No HP Karyawan *</label><input type="text" id="nohp" required placeholder="Contoh: 628123456789" /></div>
+      
+      <!-- Read-only fields -->
+      <div class="formGroup"><label>No Induk</label><input type="text" id="no_induk_display" readonly style="background:#f3f4f6; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Nama Karyawan</label><input type="text" id="nama_display" readonly style="background:#f3f4f6; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Jabatan</label><input type="text" id="jabatan_display" readonly style="background:#f3f4f6; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Penempatan / Store</label><input type="text" id="penempatan_display" readonly style="background:#f3f4f6; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Tanggal Masuk</label><input type="text" id="tanggal_masuk_display" readonly style="background:#f3f4f6; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>No HP Karyawan *</label><input type="text" id="nohp" required placeholder="Contoh: 628123456789" style="width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      
+      <div class="formGroup"><label>Gaji Pokok *</label><input type="text" id="gaji_pokok" required placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>BPJS Kesehatan</label><input type="text" id="bpjs_kesehatan" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Insentif</label><input type="text" id="insentif" placeholder="0" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Total Gaji</label><input type="text" id="total_gaji" readonly style="background:#f3f4f6; text-align: right; font-family: monospace; width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
+      <div class="formGroup"><label>Keterangan</label><input type="text" id="keterangan" placeholder="Opsional" style="width:100%; padding:10px; border-radius:8px; border:1px solid #e2e8f0;" /></div>
     `;
 
-    const currencyFieldsEnakko = ["gaji_utuh", "gaji_pokok", "bpjs_kesehatan", "insentif"];
+    const currencyFieldsEnakko = ["gaji_pokok", "bpjs_kesehatan", "insentif"];
     currencyFieldsEnakko.forEach((fieldId) => {
       const element = document.getElementById(fieldId);
       if (element) {
@@ -3061,7 +3134,7 @@ function renderFormFields() {
       }
     });
 
-    const triggerIdsEnakko = ["gaji_utuh", "gaji_pokok", "bpjs_kesehatan", "insentif"];
+    const triggerIdsEnakko = ["gaji_pokok", "bpjs_kesehatan", "insentif"];
     triggerIdsEnakko.forEach((id) => {
       const element = document.getElementById(id);
       if (element) {
@@ -3076,27 +3149,28 @@ function renderFormFields() {
   setupSlipEmployeeSearch();
 }
 
-// Fungsi untuk load data karyawan dari data_karyawan table
+// Di dalam loadSlipEmployeeList, tambahkan log
 async function loadSlipEmployeeList() {
   try {
     console.log(`Loading employee list for slip from data_karyawan for company: ${currentCompany}`);
-    const tableKaryawan = currentCompany === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
-    const res = await fetch(`/data-karyawan?company=${currentCompany}`);
+    const res = await fetch(`/slip-employees?company=${currentCompany}`);
     const data = await res.json();
 
-    slipEmployeeList = data.map((emp) => ({
-      no_induk: emp.no_induk,
-      nama: emp.nama_lengkap,
-      jabatan: emp.jabatan,
-      cabang: emp.cabang,
-      nama_gerai: emp.nama_gerai,
-      nohp: emp.no_hp,
-    }));
+    console.log("Raw response from /slip-employees:", data);
 
-    console.log(`Employee list loaded for slip: ${slipEmployeeList.length} employees`);
-    return slipEmployeeList;
+    if (data.success && data.employees) {
+      slipEmployeeList = data.employees;
+      console.log(`Employee list loaded for slip: ${slipEmployeeList.length} employees`);
+      console.log("First employee:", slipEmployeeList[0]);
+      return slipEmployeeList;
+    } else {
+      console.error("Failed to load employees for slip:", data);
+      slipEmployeeList = [];
+      return [];
+    }
   } catch (err) {
     console.error("Load slip employee list error:", err);
+    slipEmployeeList = [];
     return [];
   }
 }
@@ -3115,10 +3189,70 @@ function renderSlipEmployeeDropdown(filterText = "") {
   employeeListContainer.innerHTML = filtered
     .map(
       (emp) => `
-    <div class="employee-item" data-no-induk="${emp.no_induk}" data-nama="${emp.nama}" data-nohp="${emp.nohp}" data-jabatan="${emp.jabatan}" data-cabang="${emp.cabang || ""}" data-nama-gerai="${emp.nama_gerai || ""}">
+    <div class="employee-item" 
+         data-karyawan-id="${emp.karyawan_id}"
+         data-no-induk="${escapeHtml(emp.no_induk)}" 
+         data-nama="${escapeHtml(emp.nama)}" 
+         data-nohp="${escapeHtml(emp.no_hp || "")}" 
+         data-jabatan="${escapeHtml(emp.jabatan || "")}" 
+         data-awal-masuk="${escapeHtml(emp.awal_masuk || "")}"
+         data-store-name="${escapeHtml(emp.store_name || "")}">
       <div class="employee-no-induk">${escapeHtml(emp.no_induk)}</div>
       <div class="employee-name">${escapeHtml(emp.nama)}</div>
-      <div class="employee-detail">${escapeHtml(emp.jabatan || "")} ${emp.cabang ? " - " + escapeHtml(emp.cabang) : ""}</div>
+      <div class="employee-detail">${escapeHtml(emp.jabatan || "")} ${emp.store_name ? " - " + escapeHtml(emp.store_name) : ""}</div>
+      ${emp.awal_masuk ? `<div class="employee-detail" style="font-size: 11px; color: #666;">📅 Awal Masuk: ${emp.awal_masuk}</div>` : ""}
+    </div>
+  `,
+    )
+    .join("");
+
+  document.querySelectorAll("#employeeListSlip .employee-item").forEach((item) => {
+    // Hapus event listener lama dengan clone
+    const newItem = item.cloneNode(true);
+    item.parentNode.replaceChild(newItem, item);
+
+    newItem.addEventListener("click", () => {
+      const karyawanId = newItem.dataset.karyawanId;
+      const noInduk = newItem.dataset.noInduk;
+      const nama = newItem.dataset.nama;
+      const nohp = newItem.dataset.nohp;
+      const jabatan = newItem.dataset.jabatan;
+      const awalMasuk = newItem.dataset.awalMasuk;
+      const storeName = newItem.dataset.storeName;
+
+      console.log("Selected employee:", { karyawanId, noInduk, nama, jabatan, awalMasuk, storeName });
+
+      selectSlipEmployee(karyawanId, noInduk, nama, nohp, jabatan, awalMasuk, storeName);
+    });
+  });
+}
+
+function renderSlipEmployeeDropdown(filterText = "") {
+  const employeeListContainer = document.getElementById("employeeListSlip");
+  if (!employeeListContainer) return;
+
+  const filtered = slipEmployeeList.filter((emp) => emp.no_induk.toLowerCase().includes(filterText.toLowerCase()) || emp.nama.toLowerCase().includes(filterText.toLowerCase()));
+
+  if (filtered.length === 0) {
+    employeeListContainer.innerHTML = '<div class="employee-empty">Tidak ada karyawan ditemukan</div>';
+    return;
+  }
+
+  employeeListContainer.innerHTML = filtered
+    .map(
+      (emp) => `
+    <div class="employee-item" 
+         data-karyawan-id="${emp.karyawan_id}"
+         data-no-induk="${escapeHtml(emp.no_induk)}" 
+         data-nama="${escapeHtml(emp.nama)}" 
+         data-nohp="${escapeHtml(emp.no_hp || "")}" 
+         data-jabatan="${escapeHtml(emp.jabatan || "")}" 
+         data-awal-masuk="${escapeHtml(emp.awal_masuk || "")}"
+         data-store-name="${escapeHtml(emp.store_name || "")}">
+      <div class="employee-no-induk">${escapeHtml(emp.no_induk)}</div>
+      <div class="employee-name">${escapeHtml(emp.nama)}</div>
+      <div class="employee-detail">${escapeHtml(emp.jabatan || "")} ${emp.store_name ? " - " + escapeHtml(emp.store_name) : ""}</div>
+      ${emp.awal_masuk ? `<div class="employee-detail" style="font-size: 11px; color: #666;">📅 Awal Masuk: ${emp.awal_masuk}</div>` : ""}
     </div>
   `,
     )
@@ -3126,59 +3260,19 @@ function renderSlipEmployeeDropdown(filterText = "") {
 
   document.querySelectorAll("#employeeListSlip .employee-item").forEach((item) => {
     item.addEventListener("click", () => {
+      const karyawanId = item.dataset.karyawanId;
       const noInduk = item.dataset.noInduk;
       const nama = item.dataset.nama;
       const nohp = item.dataset.nohp;
       const jabatan = item.dataset.jabatan;
-      const cabang = item.dataset.cabang;
-      const namaGerai = item.dataset.namaGerai;
+      const awalMasuk = item.dataset.awalMasuk;
+      const storeName = item.dataset.storeName;
 
-      selectSlipEmployee(noInduk, nama, nohp, jabatan, cabang, namaGerai);
+      console.log("Selected employee:", { karyawanId, noInduk, nama, jabatan, awalMasuk, storeName });
+
+      selectSlipEmployee(karyawanId, noInduk, nama, nohp, jabatan, awalMasuk, storeName);
     });
   });
-}
-
-function selectSlipEmployee(noInduk, nama, nohp, jabatan, cabang, namaGerai) {
-  selectedSlipEmployee = { no_induk: noInduk, nama: nama, nohp: nohp };
-
-  document.getElementById("slip_no_induk").value = noInduk;
-  document.getElementById("slip_nama").value = nama;
-
-  const searchInput = document.getElementById("employeeSearchSlip");
-  if (searchInput) {
-    searchInput.value = `${noInduk} - ${nama}`;
-  }
-
-  // Isi field nohp
-  const nohpInput = document.getElementById("nohp");
-  if (nohpInput) {
-    nohpInput.value = nohp || "";
-  }
-
-  // Auto fill posisi/jabatan untuk Hisana
-  if (currentCompany === "hisana") {
-    const posisiInput = document.getElementById("posisi");
-    if (posisiInput && jabatan && !posisiInput.value) {
-      posisiInput.value = jabatan;
-    }
-    const storeInput = document.getElementById("store");
-    if (storeInput && (cabang || namaGerai) && !storeInput.value) {
-      storeInput.value = cabang || namaGerai;
-    }
-  } else {
-    // Untuk Enakko
-    const jabatanInput = document.getElementById("jabatan");
-    if (jabatanInput && jabatan && !jabatanInput.value) {
-      jabatanInput.value = jabatan;
-    }
-    const penempatanInput = document.getElementById("penempatan");
-    if (penempatanInput && (cabang || namaGerai) && !penempatanInput.value) {
-      penempatanInput.value = cabang || namaGerai;
-    }
-  }
-
-  const dropdown = document.getElementById("employeeDropdownSlip");
-  if (dropdown) dropdown.style.display = "none";
 }
 
 function setupSlipEmployeeSearch() {
@@ -3186,7 +3280,10 @@ function setupSlipEmployeeSearch() {
   const dropdown = document.getElementById("employeeDropdownSlip");
   const dropdownSearch = document.getElementById("dropdownSearchSlip");
 
-  if (!searchInput || !dropdown) return;
+  if (!searchInput || !dropdown) {
+    console.warn("Employee search elements not found");
+    return;
+  }
 
   // Hapus event listener lama dengan clone
   const newSearchInput = searchInput.cloneNode(true);
@@ -3196,6 +3293,7 @@ function setupSlipEmployeeSearch() {
   dropdown.parentNode.replaceChild(newDropdown, dropdown);
 
   newSearchInput.addEventListener("focus", async () => {
+    console.log("Search input focused, loading employees...");
     if (slipEmployeeList.length === 0) {
       await loadSlipEmployeeList();
     }
@@ -3231,15 +3329,147 @@ function setupSlipEmployeeSearch() {
   newDropdown.addEventListener("click", (e) => {
     e.stopPropagation();
   });
+
+  console.log("Slip employee search setup complete");
+}
+
+function selectSlipEmployee(karyawanId, noInduk, nama, nohp, jabatan, awalMasuk, storeName) {
+  console.log("🔵 selectSlipEmployee called with:", {
+    karyawanId,
+    noInduk,
+    nama,
+    nohp,
+    jabatan,
+    awalMasuk,
+    storeName,
+  });
+
+  selectedSlipEmployee = {
+    karyawan_id: karyawanId,
+    no_induk: noInduk,
+    nama: nama,
+    nohp: nohp,
+  };
+
+  // Set hidden fields
+  const karyawanIdInput = document.getElementById("slip_karyawan_id");
+  const noIndukInput = document.getElementById("slip_no_induk");
+  const namaInput = document.getElementById("slip_nama");
+
+  if (karyawanIdInput) karyawanIdInput.value = karyawanId;
+  if (noIndukInput) noIndukInput.value = noInduk;
+  if (namaInput) namaInput.value = nama;
+
+  // Set search input display
+  const searchInput = document.getElementById("employeeSearchSlip");
+  if (searchInput) {
+    searchInput.value = `${noInduk} - ${nama}`;
+  }
+
+  // Set nohp field
+  const nohpInput = document.getElementById("nohp");
+  if (nohpInput) {
+    nohpInput.value = nohp || "";
+  }
+
+  // PERBAIKAN: Isi display fields dengan DOM manipulation langsung
+  if (currentCompany === "hisana") {
+    // Hisana - fill readonly display fields
+    const noIndukDisplay = document.getElementById("no_induk_display");
+    const namaDisplay = document.getElementById("nama_display");
+    const jabatanDisplay = document.getElementById("jabatan_display");
+    const storeDisplay = document.getElementById("store_display");
+    const awalMasukDisplay = document.getElementById("awal_masuk_display");
+
+    console.log("Setting Hisana display fields - elements found:", {
+      noIndukDisplay: !!noIndukDisplay,
+      namaDisplay: !!namaDisplay,
+      jabatanDisplay: !!jabatanDisplay,
+      storeDisplay: !!storeDisplay,
+      awalMasukDisplay: !!awalMasukDisplay,
+    });
+
+    if (noIndukDisplay) {
+      noIndukDisplay.value = noInduk || "-";
+      console.log("Set no_induk_display to:", noIndukDisplay.value);
+    }
+    if (namaDisplay) {
+      namaDisplay.value = nama || "-";
+      console.log("Set nama_display to:", namaDisplay.value);
+    }
+    if (jabatanDisplay) {
+      jabatanDisplay.value = jabatan || "-";
+      console.log("Set jabatan_display to:", jabatanDisplay.value);
+    }
+    if (storeDisplay) {
+      storeDisplay.value = storeName || "-";
+      console.log("Set store_display to:", storeDisplay.value);
+    }
+    if (awalMasukDisplay) {
+      // Format tanggal jika perlu
+      let formattedDate = awalMasuk;
+      if (awalMasuk && awalMasuk.includes("-")) {
+        const parts = awalMasuk.split("-");
+        if (parts.length === 3) {
+          formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+      }
+      awalMasukDisplay.value = formattedDate || "-";
+      console.log("Set awal_masuk_display to:", awalMasukDisplay.value);
+    }
+  } else {
+    // Enakko - fill readonly display fields
+    const noIndukDisplay = document.getElementById("no_induk_display");
+    const namaDisplay = document.getElementById("nama_display");
+    const jabatanDisplay = document.getElementById("jabatan_display");
+    const penempatanDisplay = document.getElementById("penempatan_display");
+    const tanggalMasukDisplay = document.getElementById("tanggal_masuk_display");
+
+    console.log("Setting Enakko display fields - elements found:", {
+      noIndukDisplay: !!noIndukDisplay,
+      namaDisplay: !!namaDisplay,
+      jabatanDisplay: !!jabatanDisplay,
+      penempatanDisplay: !!penempatanDisplay,
+      tanggalMasukDisplay: !!tanggalMasukDisplay,
+    });
+
+    if (noIndukDisplay) {
+      noIndukDisplay.value = noInduk || "-";
+    }
+    if (namaDisplay) {
+      namaDisplay.value = nama || "-";
+    }
+    if (jabatanDisplay) {
+      jabatanDisplay.value = jabatan || "-";
+    }
+    if (penempatanDisplay) {
+      penempatanDisplay.value = storeName || "-";
+    }
+    if (tanggalMasukDisplay) {
+      let formattedDate = awalMasuk;
+      if (awalMasuk && awalMasuk.includes("-")) {
+        const parts = awalMasuk.split("-");
+        if (parts.length === 3) {
+          formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+      }
+      tanggalMasukDisplay.value = formattedDate || "-";
+    }
+  }
+
+  const dropdown = document.getElementById("employeeDropdownSlip");
+  if (dropdown) dropdown.style.display = "none";
 }
 
 function resetSlipEmployeeSelection() {
   selectedSlipEmployee = null;
   const searchInput = document.getElementById("employeeSearchSlip");
+  const karyawanIdInput = document.getElementById("slip_karyawan_id");
   const noIndukInput = document.getElementById("slip_no_induk");
   const namaInput = document.getElementById("slip_nama");
 
   if (searchInput) searchInput.value = "";
+  if (karyawanIdInput) karyawanIdInput.value = "";
   if (noIndukInput) noIndukInput.value = "";
   if (namaInput) namaInput.value = "";
 }
@@ -3308,7 +3538,6 @@ function calculatePayrollWithFormat() {
 }
 
 function calculateEnakkoTotalWithFormat() {
-  const gajiUtuh = parseCurrency(document.getElementById("gaji_utuh")?.value);
   const gajiPokok = parseCurrency(document.getElementById("gaji_pokok")?.value);
   const bpjsKesehatan = parseCurrency(document.getElementById("bpjs_kesehatan")?.value);
   const insentif = parseCurrency(document.getElementById("insentif")?.value);
@@ -3709,6 +3938,7 @@ function renderTableHeader() {
         <th>No HP</th>
         <th>Status Slip</th>
         <th style="width: 150px">Alasan Pembatalan</th>
+        <th>Aksi</th>
       </tr>
     `;
   } else {
@@ -3721,7 +3951,6 @@ function renderTableHeader() {
         <th>Tanggal Masuk</th>
         <th>Jabatan</th>
         <th>Penempatan</th>
-        <th>Gaji Utuh</th>
         <th>Gaji Pokok</th>
         <th>BPJS Kesehatan</th>
         <th>Insentif</th>
@@ -3730,6 +3959,7 @@ function renderTableHeader() {
         <th>No HP</th>
         <th>Status Slip</th>
         <th style="width: 150px">Alasan Pembatalan</th>
+        <th>Aksi</th>
       </tr>
     `;
   }
@@ -3741,7 +3971,7 @@ function renderTable() {
   tbody.innerHTML = "";
 
   const query = document.getElementById("searchInput")?.value.toLowerCase() || "";
-  const filtered = dataAll.filter((d) => Object.values(d).some((v) => String(v).toLowerCase().includes(query)));
+  const filtered = dataAll.filter((d) => Object.values(d).some((v) => String(v).toLowerCase().includes(query)) || (d.no_induk && d.no_induk.toLowerCase().includes(query)) || (d.nama && d.nama.toLowerCase().includes(query)));
   const totalPages = Math.ceil(filtered.length / pageSize);
   if (currentPage > totalPages) currentPage = 1;
   const start = (currentPage - 1) * pageSize;
@@ -3756,7 +3986,7 @@ function renderTable() {
       tr.classList.add("status-cancelled");
     }
 
-    const checked = checkedSet.has(d.no_induk) ? "checked" : "";
+    const checked = checkedSet.has(d.id) ? "checked" : "";
     let statusBadge = "";
     if (d.status_slip === "terkirim") {
       statusBadge = '<span class="status-badge success"><i class="fas fa-check-circle"></i> Terkirim</span>';
@@ -3791,45 +4021,43 @@ function renderTable() {
     if (currentCompany === "hisana") {
       let awalMasukFormatted = d.awal_masuk ? new Date(d.awal_masuk).toISOString().split("T")[0] : "";
       tr.innerHTML = `
-        <td><input type="checkbox" class="chk chk-slip" data-noinduk="${d.no_induk}" ${checked}>
+        <td><input type="checkbox" class="chk chk-slip" data-id="${d.id}" ${checked}>
         <td class="text-center">${start + i + 1}</td>
-        <td>${d.no_induk}</td>
-        <td style="font-weight:600">${d.nama}</td>
-        <td>${d.posisi}</td>
-        <td>${d.store}</td>
+        <td>${d.no_induk || "-"}</td>
+        <td style="font-weight:600">${d.nama || "-"}</td>
+        <td>${d.jabatan || "-"}</td>
+        <td>${d.store_name || "-"}</td>
         <td>${awalMasukFormatted}</td>
-        <td>${d.kerja}</td>
-        <td class="money">${rupiah(d.gaji)}</td>
-        <td class="deduction">-${rupiah(d.iuran_bpjs_ketenagakerjaan)}</td>
-        <td>${rupiah(d.kerajinan)}</td>
-        <td>${rupiah(d.cuti)}</td>
-        <td>${rupiah(d.tunj_bpjs_pulsa)}</td>
-        <td class="total-bold">${rupiah(d.jumlah)}</td>
-        <td>${rupiah(d.um)}</td>
+        <td>${d.kerja || 0}</td>
+        <td class="money">${rupiah(d.gaji || 0)}</td>
+        <td class="deduction">-${rupiah(d.iuran_bpjs_ketenagakerjaan || 0)}</td>
+        <td>${rupiah(d.kerajinan || 0)}</td>
+        <td>${rupiah(d.cuti || 0)}</td>
+        <td>${rupiah(d.tunj_bpjs_pulsa || 0)}</td>
+        <td class="total-bold">${rupiah(d.jumlah || 0)}</td>
+        <td>${rupiah(d.um || 0)}</td>
         <td style="font-style:italic; color:var(--text-muted)">${d.keterangan || "-"}</td>
-        <td class="total-bold" style="background:#f0f9ff">${rupiah(d.gaji_total)}</td>
-        <td>${d.nohp}</td>
+        <td class="total-bold" style="background:#f0f9ff">${rupiah(d.gaji_total || 0)}</td>        <td>${d.nohp || "-"}</td>
         <td>${statusBadge}</td>
         <td style="font-size:0.85rem;">${cancellationNoteDisplay}</td>
         <td class="text-center">${actionButtons}</td>
       `;
     } else {
-      let tanggalMasukFormatted = d.tanggal_masuk ? new Date(d.tanggal_masuk).toISOString().split("T")[0] : "";
+      let tanggalMasukFormatted = d.awal_masuk ? new Date(d.awal_masuk).toISOString().split("T")[0] : "";
       tr.innerHTML = `
-        <td><input type="checkbox" class="chk chk-slip" data-noinduk="${d.no_induk}" ${checked}>
+        <td><input type="checkbox" class="chk chk-slip" data-id="${d.id}" ${checked}>
         <td class="text-center">${start + i + 1}</td>
-        <td>${d.no_induk}</td>
-        <td style="font-weight:600">${d.nama_karyawan || d.nama}</td>
+        <td>${d.no_induk || "-"}</td>
+        <td style="font-weight:600">${d.nama || "-"}</td>
         <td>${tanggalMasukFormatted}</td>
         <td>${d.jabatan || "-"}</td>
-        <td>${d.penempatan || "-"}</td>
-        <td class="money">${rupiah(d.gaji_utuh || 0)}</td>
+        <td>${d.store_name || "-"}</td>
         <td class="money">${rupiah(d.gaji_pokok || 0)}</td>
         <td>${rupiah(d.bpjs_kesehatan || 0)}</td>
         <td>${rupiah(d.insentif || 0)}</td>
         <td class="total-bold">${rupiah(d.total_gaji || 0)}</td>
         <td style="font-style:italic; color:var(--text-muted)">${d.keterangan || "-"}</td>
-        <td>${d.nohp}</td>
+        <td>${d.nohp || "-"}</td>
         <td>${statusBadge}</td>
         <td style="font-size:0.85rem;">${cancellationNoteDisplay}</td>
         <td class="text-center">${actionButtons}</td>
@@ -3854,11 +4082,11 @@ function attachIndividualCheckboxHandlers() {
 
     if (!newChk.disabled) {
       newChk.onchange = (e) => {
-        const no = e.target.dataset.noinduk;
+        const id = parseInt(e.target.dataset.id);
         if (e.target.checked) {
-          checkedSet.add(no);
+          checkedSet.add(id);
         } else {
-          checkedSet.delete(no);
+          checkedSet.delete(id);
         }
         updateSelectAllSlipStatus();
         updateCancelSlipButtonVisibility();
@@ -3881,11 +4109,11 @@ function setupSelectAllSlipListener() {
 
     checkboxes.forEach((chk) => {
       chk.checked = isChecked;
-      const noInduk = chk.dataset.noinduk;
+      const id = parseInt(chk.dataset.id);
       if (isChecked) {
-        checkedSet.add(noInduk);
+        checkedSet.add(id);
       } else {
-        checkedSet.delete(noInduk);
+        checkedSet.delete(id);
       }
     });
     updateCancelSlipButtonVisibility();
@@ -3915,8 +4143,8 @@ function updateSelectAllSlipStatus() {
 }
 
 function updateCancelSlipButtonVisibility() {
-  const selectedCancellable = Array.from(checkedSet).filter((noInduk) => {
-    const item = dataAll.find((d) => d.no_induk === noInduk);
+  const selectedCancellable = Array.from(checkedSet).filter((id) => {
+    const item = dataAll.find((d) => d.id === id);
     return item && item.status_slip === "terkirim";
   });
 
@@ -3927,8 +4155,8 @@ function updateCancelSlipButtonVisibility() {
 }
 
 async function cancelSelectedSlips() {
-  const selectedCancellable = Array.from(checkedSet).filter((noInduk) => {
-    const item = dataAll.find((d) => d.no_induk === noInduk);
+  const selectedCancellable = Array.from(checkedSet).filter((id) => {
+    const item = dataAll.find((d) => d.id === id);
     return item && item.status_slip === "terkirim";
   });
 
@@ -3943,7 +4171,6 @@ async function cancelSelectedSlips() {
   }
 
   const companyName = currentCompany === "hisana" ? "Hisana" : "Enakko";
-  const selectedIds = dataAll.filter((d) => selectedCancellable.includes(d.no_induk) && d.status_slip === "terkirim").map((d) => d.id);
 
   const result = await Swal.fire({
     title: "Konfirmasi Pembatalan Slip Gaji",
@@ -3968,9 +4195,6 @@ async function cancelSelectedSlips() {
     cancelButtonText: "Batal",
     input: "textarea",
     inputPlaceholder: "Alasan pembatalan (opsional)...",
-    inputAttributes: {
-      "aria-label": "Alasan pembatalan",
-    },
   });
 
   if (!result.isConfirmed) return;
@@ -3985,22 +4209,16 @@ async function cancelSelectedSlips() {
   const progressBar = document.getElementById("cancelSlipProgressBar");
   const progressStatus = document.getElementById("cancelSlipProgressStatus");
 
-  if (progressContainer) {
-    progressContainer.style.display = "block";
-  }
-  if (progressBar) {
-    progressBar.style.width = "0%";
-  }
-  if (progressStatus) {
-    progressStatus.innerText = `Memulai pembatalan ${selectedCancellable.length} slip...`;
-  }
+  if (progressContainer) progressContainer.style.display = "block";
+  if (progressBar) progressBar.style.width = "0%";
+  if (progressStatus) progressStatus.innerText = `Memulai pembatalan ${selectedCancellable.length} slip...`;
 
   try {
     const res = await fetch("/undo-send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        selected: selectedIds,
+        selected: selectedCancellable,
         company: currentCompany,
         cancellation_note: cancellationNote,
       }),
@@ -4046,9 +4264,7 @@ async function cancelSelectedSlips() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-ban"></i> Batalkan Kirim Terpilih';
-    if (progressContainer) {
-      progressContainer.style.display = "none";
-    }
+    if (progressContainer) progressContainer.style.display = "none";
   }
 }
 
@@ -4059,10 +4275,8 @@ if (cancelSlipBtn) {
 
 async function loadData() {
   try {
-    // Get current month/year for reference
     const { month: currentMonth, year: currentYear } = getCurrentMonthYear();
 
-    // Jika filter masih "all", set ke bulan dan tahun saat ini
     if (currentSlipMonth === "all") {
       currentSlipMonth = currentMonth;
       const monthSelect = document.getElementById("slipMonthSelect");
@@ -4079,7 +4293,6 @@ async function loadData() {
 
     let url = `/my-slip?company=${currentCompany}`;
 
-    // Tambahkan parameter filter
     if (currentSlipMonth && currentSlipMonth !== "all") {
       url += `&month=${currentSlipMonth}`;
       console.log(`Adding month filter: ${currentSlipMonth}`);
@@ -4098,7 +4311,7 @@ async function loadData() {
 
     console.log(`Loaded ${dataAll.length} records for ${currentCompany}`);
 
-    renderTable(); // Hanya render table kirim slip gaji
+    renderTable();
 
     await loadAvailableSlipYears();
 
@@ -4142,34 +4355,22 @@ function openModal(item = null) {
     document.getElementById("dataId").value = item.id;
 
     // Set employee selection based on item
+    const karyawanId = item.karyawan_id;
     const noInduk = item.no_induk;
-    const nama = item.nama || item.nama_karyawan;
+    const nama = item.nama;
     const nohp = item.nohp;
-
-    // Get jabatan/posisi and store/penempatan based on company
-    let jabatan = "";
-    let store = "";
-    if (currentCompany === "hisana") {
-      jabatan = item.posisi;
-      store = item.store;
-    } else {
-      jabatan = item.jabatan;
-      store = item.penempatan;
-    }
+    const jabatan = item.jabatan;
+    const awalMasuk = item.awal_masuk;
+    const storeName = item.store_name;
 
     // Select employee in dropdown (this will fill the hidden fields and search input)
-    selectSlipEmployee(noInduk, nama, nohp, jabatan, store, "");
+    selectSlipEmployee(karyawanId, noInduk, nama, nohp, jabatan, awalMasuk, storeName);
 
     if (currentCompany === "hisana") {
-      const fields = ["posisi", "store", "awal_masuk", "kerja", "keterangan"];
+      const fields = ["kerja", "keterangan"];
       fields.forEach((k) => {
         const el = document.getElementById(k);
-        if (!el) return;
-        if (k === "awal_masuk" && item[k]) {
-          el.value = new Date(item[k]).toISOString().split("T")[0];
-        } else {
-          el.value = item[k] || "";
-        }
+        if (el) el.value = item[k] || "";
       });
 
       const currencyFields = ["gaji", "iuran_bpjs_ketenagakerjaan", "kerajinan", "cuti", "tunj_bpjs_pulsa", "um", "jumlah", "gaji_total"];
@@ -4193,18 +4394,13 @@ function openModal(item = null) {
 
       calculatePayrollWithFormat();
     } else {
-      const fields = ["tanggal_masuk", "jabatan", "penempatan", "keterangan"];
+      const fields = ["keterangan"];
       fields.forEach((k) => {
         const el = document.getElementById(k);
-        if (!el) return;
-        if (k === "tanggal_masuk" && item[k]) {
-          el.value = new Date(item[k]).toISOString().split("T")[0];
-        } else {
-          el.value = item[k] || "";
-        }
+        if (el) el.value = item[k] || "";
       });
 
-      const currencyFields = ["gaji_utuh", "gaji_pokok", "bpjs_kesehatan", "insentif", "total_gaji"];
+      const currencyFields = ["gaji_pokok", "bpjs_kesehatan", "insentif", "total_gaji"];
       currencyFields.forEach((k) => {
         const el = document.getElementById(k);
         if (el && item[k] !== undefined && item[k] !== null) {
@@ -4245,7 +4441,7 @@ function openModal(item = null) {
 
       calculatePayrollWithFormat();
     } else {
-      const currencyFields = ["gaji_utuh", "gaji_pokok", "bpjs_kesehatan", "insentif", "total_gaji"];
+      const currencyFields = ["gaji_pokok", "bpjs_kesehatan", "insentif", "total_gaji"];
       currencyFields.forEach((k) => {
         const el = document.getElementById(k);
         if (el) el.value = "";
@@ -4315,36 +4511,25 @@ document.getElementById("dataForm").onsubmit = async (e) => {
 
   const id = document.getElementById("dataId").value;
 
-  // Ambil no_induk dari hidden field (dari selection karyawan)
-  const selectedNoInduk = document.getElementById("slip_no_induk")?.value || "";
+  // Ambil karyawan_id dari hidden field
+  const selectedKaryawanId = document.getElementById("slip_karyawan_id")?.value || "";
+  const selectedNohp = document.getElementById("nohp")?.value || "";
 
   let payload = {};
 
   if (currentCompany === "hisana") {
     // Validasi field wajib
-    if (!selectedNoInduk) {
+    if (!selectedKaryawanId) {
       Swal.fire("Error", "Pilih karyawan terlebih dahulu", "error");
       return;
     }
-    if (!document.getElementById("posisi")?.value) {
-      Swal.fire("Error", "Posisi wajib diisi", "error");
-      return;
-    }
-    if (!document.getElementById("store")?.value) {
-      Swal.fire("Error", "Store wajib diisi", "error");
-      return;
-    }
-    if (!document.getElementById("nohp")?.value) {
+    if (!selectedNohp) {
       Swal.fire("Error", "No HP wajib diisi", "error");
       return;
     }
 
     payload = {
-      no_induk: selectedNoInduk,
-      nama: document.getElementById("slip_nama")?.value || "",
-      posisi: document.getElementById("posisi")?.value || "",
-      store: document.getElementById("store")?.value || "",
-      awal_masuk: document.getElementById("awal_masuk")?.value || null,
+      karyawan_id: parseInt(selectedKaryawanId),
       kerja: parseInt(document.getElementById("kerja")?.value) || 0,
       gaji: parseCurrency(document.getElementById("gaji")?.value),
       iuran_bpjs_ketenagakerjaan: parseCurrency(document.getElementById("iuran_bpjs_ketenagakerjaan")?.value),
@@ -4355,45 +4540,35 @@ document.getElementById("dataForm").onsubmit = async (e) => {
       um: parseCurrency(document.getElementById("um")?.value),
       keterangan: document.getElementById("keterangan")?.value || "",
       gaji_total: parseCurrency(document.getElementById("gaji_total")?.value),
-      nohp: document.getElementById("nohp")?.value || "",
+      nohp: selectedNohp,
     };
   } else {
     // Enakko
-    if (!selectedNoInduk) {
+    if (!selectedKaryawanId) {
       Swal.fire("Error", "Pilih karyawan terlebih dahulu", "error");
       return;
     }
-    if (!document.getElementById("tanggal_masuk")?.value) {
-      Swal.fire("Error", "Tanggal Masuk wajib diisi", "error");
-      return;
-    }
-    if (!document.getElementById("jabatan")?.value) {
-      Swal.fire("Error", "Jabatan wajib diisi", "error");
-      return;
-    }
-    if (!document.getElementById("nohp")?.value) {
+    if (!selectedNohp) {
       Swal.fire("Error", "No HP wajib diisi", "error");
       return;
     }
 
     payload = {
-      no_induk: selectedNoInduk,
-      nama_karyawan: document.getElementById("slip_nama")?.value || "",
-      tanggal_masuk: document.getElementById("tanggal_masuk")?.value || null,
-      jabatan: document.getElementById("jabatan")?.value || "",
-      penempatan: document.getElementById("penempatan")?.value || "",
-      gaji_utuh: parseCurrency(document.getElementById("gaji_utuh")?.value),
+      karyawan_id: parseInt(selectedKaryawanId),
       gaji_pokok: parseCurrency(document.getElementById("gaji_pokok")?.value),
       bpjs_kesehatan: parseCurrency(document.getElementById("bpjs_kesehatan")?.value),
       insentif: parseCurrency(document.getElementById("insentif")?.value),
       total_gaji: parseCurrency(document.getElementById("total_gaji")?.value),
       keterangan: document.getElementById("keterangan")?.value || "",
-      nohp: document.getElementById("nohp")?.value || "",
+      nohp: selectedNohp,
     };
   }
 
   const method = id ? "PUT" : "POST";
   const url = id ? `/slip/${id}?company=${currentCompany}` : `/slip?company=${currentCompany}`;
+
+  console.log(`Sending ${method} request to ${url}`);
+  console.log("Payload:", payload);
 
   try {
     const res = await fetch(url, {
@@ -4403,11 +4578,12 @@ document.getElementById("dataForm").onsubmit = async (e) => {
     });
 
     const result = await res.json();
+    console.log("Response:", result);
 
     if (result.success) {
       closeGajiModal();
       await loadData();
-      // Refresh employee list
+      // Refresh employee list if needed
       if (slipEmployeeList.length > 0) {
         await loadSlipEmployeeList();
       }
@@ -4453,15 +4629,14 @@ document.getElementById("sendSelected")?.addEventListener("click", async () => {
   if (selected.length === 0) {
     Swal.fire({
       title: "Peringatan",
-      text: "Tidak ada karyawan yang dipilih. Silakan pilih karyawan terlebih dahulu.",
+      text: "Tidak ada slip yang dipilih. Silakan pilih slip terlebih dahulu.",
       icon: "warning",
       confirmButtonText: "OK",
     });
     return;
   }
 
-  // Filter data yang belum terkirim atau dibatalkan
-  const selectedData = dataAll.filter((d) => selected.includes(d.no_induk) && d.status_slip !== "terkirim");
+  const selectedData = dataAll.filter((d) => selected.includes(d.id) && d.status_slip !== "terkirim");
 
   if (selectedData.length === 0) {
     Swal.fire({
@@ -4473,7 +4648,6 @@ document.getElementById("sendSelected")?.addEventListener("click", async () => {
     return;
   }
 
-  // Jika ada data yang bisa dikirim, tampilkan konfirmasi dengan jumlah yang akan dikirim
   const result = await Swal.fire({
     title: "Konfirmasi",
     text: `Kirim slip ke ${selectedData.length} karyawan terpilih?`,
@@ -4488,7 +4662,7 @@ document.getElementById("sendSelected")?.addEventListener("click", async () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          selected: selectedData.map((d) => d.no_induk),
+          selected: selectedData.map((d) => d.id),
           company: currentCompany,
         }),
       });
@@ -4633,7 +4807,6 @@ function setupKirimSectionMenus() {
         if (currentValue && (currentValue === "all" || data.years.includes(parseInt(currentValue)))) {
           exportYearSelect.value = currentValue;
         } else {
-          // Set default to current year
           const currentYear = new Date().getFullYear();
           if (data.years.includes(currentYear)) {
             exportYearSelect.value = currentYear;
@@ -4653,11 +4826,8 @@ function setupKirimSectionMenus() {
     newExportBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-
-      // Load years when opening dropdown
       loadExportYears();
 
-      // Toggle dropdown
       if (exportDropdownMenu.style.display === "none" || exportDropdownMenu.style.display === "") {
         exportDropdownMenu.style.display = "block";
       } else {
@@ -4665,7 +4835,6 @@ function setupKirimSectionMenus() {
       }
     });
 
-    // Close dropdown when clicking outside
     document.addEventListener("click", (e) => {
       if (!newExportBtn.contains(e.target) && !exportDropdownMenu.contains(e.target)) {
         exportDropdownMenu.style.display = "none";
@@ -4673,7 +4842,7 @@ function setupKirimSectionMenus() {
     });
   }
 
-  // Export function
+  // Export function - FIXED: menggunakan blob response, bukan JSON
   if (doExportBtn) {
     const newDoExportBtn = doExportBtn.cloneNode(true);
     doExportBtn.parentNode.replaceChild(newDoExportBtn, doExportBtn);
@@ -4698,7 +4867,6 @@ function setupKirimSectionMenus() {
         }
       }
 
-      // Tampilkan loading
       Swal.fire({
         title: "Sedang mengexport...",
         text: "Mohon tunggu sebentar",
@@ -4710,56 +4878,50 @@ function setupKirimSectionMenus() {
 
       try {
         let url = `/export-slip?company=${currentCompany}`;
-
-        if (selectedMonth !== "all") {
-          url += `&month=${selectedMonth}`;
-        }
-        if (selectedYear !== "all") {
-          url += `&year=${selectedYear}`;
-        }
+        if (selectedMonth !== "all") url += `&month=${selectedMonth}`;
+        if (selectedYear !== "all") url += `&year=${selectedYear}`;
 
         console.log(`Exporting with URL: ${url}`);
 
         const response = await fetch(url);
-        const result = await response.json();
 
-        // Cek apakah response error (tidak ada data)
-        if (!response.ok && result.noData === true) {
+        // Cek apakah response error (tidak ada data) - response akan berupa JSON
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const result = await response.json();
           Swal.close();
 
-          // Tampilkan alert yang lebih bagus
-          Swal.fire({
-            title: "Maaf, Data Tidak Tersedia",
-            html: `
-            <div style="text-align: center; padding: 10px;">
-              <i class="fas fa-folder-open" style="font-size: 64px; color: #f59e0b; margin-bottom: 15px; display: inline-block;"></i>
-              <p style="font-size: 16px; color: #475569; margin-bottom: 10px;">${result.message}</p>
-              <div style="background: #fef2e8; border-radius: 12px; padding: 12px; margin-top: 15px;">
-                <i class="fas fa-info-circle" style="color: #f59e0b; margin-right: 8px;"></i>
-                <span style="color: #64748b; font-size: 13px;">Silakan pilih periode lain atau tambahkan data terlebih dahulu.</span>
+          if (result.noData === true) {
+            Swal.fire({
+              title: "Maaf, Data Tidak Tersedia",
+              html: `
+              <div style="text-align: center; padding: 10px;">
+                <i class="fas fa-folder-open" style="font-size: 64px; color: #f59e0b; margin-bottom: 15px; display: inline-block;"></i>
+                <p style="font-size: 16px; color: #475569; margin-bottom: 10px;">${result.message}</p>
+                <div style="background: #fef2e8; border-radius: 12px; padding: 12px; margin-top: 15px;">
+                  <i class="fas fa-info-circle" style="color: #f59e0b; margin-right: 8px;"></i>
+                  <span style="color: #64748b; font-size: 13px;">Silakan pilih periode lain atau tambahkan data terlebih dahulu.</span>
+                </div>
               </div>
-            </div>
-          `,
-            icon: "info",
-            confirmButtonText: "OK",
-            confirmButtonColor: "#2563eb",
-          });
-
-          // Close dropdown
-          if (exportDropdownMenu) {
+            `,
+              icon: "info",
+              confirmButtonText: "OK",
+              confirmButtonColor: "#2563eb",
+            });
             exportDropdownMenu.style.display = "none";
+            return;
+          } else {
+            throw new Error(result.message || "Gagal export data");
           }
-          return;
         }
 
-        // Jika response ok, proses download blob
+        // Jika response ok dan berupa file (blob)
         if (response.ok) {
           const blob = await response.blob();
           const downloadUrl = window.URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = downloadUrl;
 
-          // Ambil nama file dari Content-Disposition header jika ada
           let filename = "";
           const contentDisposition = response.headers.get("Content-Disposition");
           if (contentDisposition) {
@@ -4769,22 +4931,13 @@ function setupKirimSectionMenus() {
             }
           }
 
-          // Jika tidak ada di header, buat sendiri
           if (!filename) {
             const companyName = currentCompany === "hisana" ? "Hisana" : "Enakko";
             const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-
             filename = `Slip_Gaji_${companyName}`;
-
-            if (selectedMonth !== "all") {
-              filename += `_${monthNames[parseInt(selectedMonth) - 1]}`;
-            }
-            if (selectedYear !== "all") {
-              filename += `_${selectedYear}`;
-            }
-            if (selectedMonth === "all" && selectedYear === "all") {
-              filename += `_Semua_Data`;
-            }
+            if (selectedMonth !== "all") filename += `_${monthNames[parseInt(selectedMonth) - 1]}`;
+            if (selectedYear !== "all") filename += `_${selectedYear}`;
+            if (selectedMonth === "all" && selectedYear === "all") filename += `_Semua_Data`;
             filename += `.xlsx`;
           }
 
@@ -4794,11 +4947,8 @@ function setupKirimSectionMenus() {
           document.body.removeChild(a);
           window.URL.revokeObjectURL(downloadUrl);
 
-          // Close dropdown
-          if (exportDropdownMenu) {
-            exportDropdownMenu.style.display = "none";
-          }
-
+          exportDropdownMenu.style.display = "none";
+          Swal.close();
           Swal.fire({
             title: "Berhasil!",
             text: "Data slip gaji berhasil diexport",
@@ -4807,7 +4957,7 @@ function setupKirimSectionMenus() {
             showConfirmButton: false,
           });
         } else {
-          throw new Error(result.message || "Gagal export data");
+          throw new Error("Gagal export data");
         }
       } catch (err) {
         console.error("Export error:", err);
@@ -4821,25 +4971,197 @@ function setupKirimSectionMenus() {
     });
   }
 
-  // Download Template button
+  // =============================
+  // DOWNLOAD TEMPLATE BUTTON
+  // =============================
   const downloadTemplateBtnKirim = document.getElementById("downloadTemplateBtnKirim");
   if (downloadTemplateBtnKirim) {
     const newTemplateBtn = downloadTemplateBtnKirim.cloneNode(true);
     downloadTemplateBtnKirim.parentNode.replaceChild(newTemplateBtn, downloadTemplateBtnKirim);
-    newTemplateBtn.addEventListener("click", () => {
-      let wb = XLSX.utils.book_new();
-      let ws_data = [];
+    newTemplateBtn.addEventListener("click", async () => {
+      try {
+        Swal.fire({
+          title: "Mengunduh template...",
+          text: "Mohon tunggu sebentar",
+          allowOutsideClick: false,
+          didOpen: () => {
+            Swal.showLoading();
+          },
+        });
 
-      if (currentCompany === "hisana") {
-        ws_data = [["No Induk", "NAMA", "POSISI", "STORE", "AWAL MASUK", "KERJA", "GAJI", "Iuran BPJS Ketenagakerjaan", "KERAJINAN", "CUTI", "Tunj. BPJS & Pulsa", "JUMLAH", "UM", "KETERANGAN", "GAJI TOTAL", "NO HP"]];
-      } else {
-        ws_data = [["No Induk", "Nama Karyawan", "Tanggal Masuk", "Jabatan", "Penempatan", "Gaji Utuh", "Gaji Pokok", "BPJS Kesehatan", "Insentif", "Total Gaji", "Keterangan", "No HP"]];
+        const response = await fetch(`/download-template-slip?company=${currentCompany}`);
+
+        Swal.close();
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Gagal download template");
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+
+        const filename = currentCompany === "hisana" ? "template_slip_gaji_hisana.xlsx" : "template_slip_gaji_enakko.xlsx";
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        Swal.fire({
+          title: "Berhasil!",
+          text: "Template slip gaji berhasil didownload",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false,
+        });
+      } catch (err) {
+        console.error("Download template error:", err);
+        Swal.fire("Error", err.message || "Gagal download template", "error");
+      }
+    });
+  }
+
+  // =============================
+  // IMPORT EXCEL SLIP GAJI
+  // =============================
+  const uploadFormKirim = document.getElementById("uploadFormKirim");
+  if (uploadFormKirim) {
+    const newUploadForm = uploadFormKirim.cloneNode(true);
+    uploadFormKirim.parentNode.replaceChild(newUploadForm, uploadFormKirim);
+
+    // File input change handler
+    const fileInputKirim = document.getElementById("fileInputKirim");
+    const fileNameKirim = document.getElementById("fileNameKirim");
+    if (fileInputKirim && fileNameKirim) {
+      const newFileInput = fileInputKirim.cloneNode(true);
+      fileInputKirim.parentNode.replaceChild(newFileInput, fileInputKirim);
+
+      newFileInput.onchange = (e) => {
+        if (e.target.files.length > 0) {
+          fileNameKirim.textContent = e.target.files[0].name;
+          fileNameKirim.style.color = "#2563eb";
+        } else {
+          fileNameKirim.textContent = "Tidak ada file dipilih";
+          fileNameKirim.style.color = "#64748b";
+        }
+      };
+    }
+
+    newUploadForm.onsubmit = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const fileInput = document.getElementById("fileInputKirim");
+      if (!fileInput.files || fileInput.files.length === 0) {
+        Swal.fire("Error", "Silakan pilih file terlebih dahulu", "error");
+        return;
       }
 
-      let ws = XLSX.utils.aoa_to_sheet(ws_data);
-      XLSX.utils.book_append_sheet(wb, ws, "Template");
-      XLSX.writeFile(wb, `Template_${currentCompany}.xlsx`);
-    });
+      const fileName = fileInput.files[0].name;
+      const fileExt = fileName.split(".").pop().toLowerCase();
+      if (!["xlsx", "xls"].includes(fileExt)) {
+        Swal.fire("Error", "File harus berupa Excel (.xlsx atau .xls)", "error");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+
+      const statusEl = document.getElementById("uploadStatus");
+      if (statusEl) {
+        statusEl.innerText = "Sedang memproses...";
+        statusEl.style.color = "#2563eb";
+      }
+
+      Swal.fire({
+        title: "Sedang mengimport...",
+        text: "Mohon tunggu sebentar",
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+      });
+
+      try {
+        const res = await fetch(`/import-slip?company=${currentCompany}`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const result = await res.json();
+        console.log("Import result:", result);
+        Swal.close();
+
+        if (result.success) {
+          let messageHtml = `
+          <div style="text-align: left;">
+            <div style="margin-top: 15px;">
+              <div style="display: flex; justify-content: space-around; margin-bottom: 15px;">
+                <div style="text-align: center;">
+                  <div style="font-size: 0.8rem; color: #666;">BERHASIL</div>
+                  <div style="font-size: 1.5rem; font-weight: bold; color: #16a34a;">${result.successCount || 0}</div>
+                </div>
+                <div style="text-align: center;">
+                  <div style="font-size: 0.8rem; color: #666;">DILEWATI</div>
+                  <div style="font-size: 1.5rem; font-weight: bold; color: #f59e0b;">${result.skippedCount || 0}</div>
+                </div>
+                <div style="text-align: center;">
+                  <div style="font-size: 0.8rem; color: #666;">GAGAL</div>
+                  <div style="font-size: 1.5rem; font-weight: bold; color: #dc2626;">${result.errorCount || 0}</div>
+                </div>
+              </div>
+            </div>
+        `;
+
+          if (result.errors && result.errors.length > 0) {
+            messageHtml += `
+            <div style="margin-top: 15px; max-height: 200px; overflow-y: auto; background: #fef2e8; border-radius: 8px; padding: 10px;">
+              <p style="font-weight: 600; margin-bottom: 8px;">Detail Error:</p>
+              <ul style="margin: 0; padding-left: 20px; font-size: 0.8rem; color: #dc2626;">
+                ${result.errors
+                  .slice(0, 15)
+                  .map((err) => `<li>${escapeHtml(err)}</li>`)
+                  .join("")}
+                ${result.errors.length > 15 ? `<li>... dan ${result.errors.length - 15} error lainnya</li>` : ""}
+              </ul>
+            </div>
+          `;
+          }
+
+          messageHtml += `</div>`;
+
+          Swal.fire({
+            title: result.errorCount > 0 ? "Import Selesai dengan Peringatan" : "Import Berhasil!",
+            html: messageHtml,
+            icon: result.errorCount > 0 ? "warning" : "success",
+            confirmButtonText: "OK",
+            width: "500px",
+          });
+
+          await loadData();
+          newUploadForm.reset();
+
+          const fileNameSpan = document.getElementById("fileNameKirim");
+          if (fileNameSpan) {
+            fileNameSpan.textContent = "Tidak ada file dipilih";
+            fileNameSpan.style.color = "#64748b";
+          }
+        } else {
+          Swal.fire("Import Gagal", result.message || "Terjadi kesalahan saat import", "error");
+        }
+      } catch (err) {
+        console.error("Import error:", err);
+        Swal.close();
+        Swal.fire("Import Gagal", "Terjadi kesalahan saat upload: " + err.message, "error");
+      } finally {
+        if (statusEl) {
+          statusEl.innerText = "";
+        }
+      }
+    };
   }
 
   // Duplicate Data button

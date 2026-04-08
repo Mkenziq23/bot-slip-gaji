@@ -457,7 +457,7 @@ function renderProfile(data) {
               </div>
             </div>
             <div class="info-item">
-              <i class="fas fa-chart-line"></i>
+                <i class="fas fa-briefcase"></i>
               <div>
                 <div class="info-label">Jabatan</div>
                 <div class="info-value">${escapeHtml(profile.jabatan || "-")}</div>

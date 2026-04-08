@@ -3,6 +3,8 @@ import path from "path";
 import session from "express-session";
 import http from "http";
 import { WebSocketServer } from "ws";
+import sessionFileStore from "session-file-store";
+import fs from "fs";
 
 import dashboardDataRoutes from "./routes/dashboardDataRoutes.js";
 import slipRoutes from "./routes/slipGajiRoutes.js";
@@ -15,13 +17,16 @@ import karyawanProfileRoutes from "./routes/karyawanProfileRoutes.js";
 import absensiKaryawanRoutes from "./routes/absensiKaryawanRoutes.js";
 import lokasiStoreRoutes from "./routes/LokasiStoreRoutes.js";
 
-import { startBot, getSocketByNumber, logoutBot } from "../bot/index.js";
+import { startBot, getSocketByNumber, logoutBot, getActiveSessions } from "../bot/index.js";
 
 import db from "./db.js";
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
+
+// Session store setup
+const FileStore = sessionFileStore(session);
 
 // ============================
 // SESSION CONFIG
@@ -31,9 +36,15 @@ const sessionMiddleware = session({
   secret: "slipgajiwa",
   resave: false,
   saveUninitialized: false,
+  store: new FileStore({
+    path: "./sessions",
+    ttl: 30 * 24 * 60 * 60,
+    reapInterval: 60 * 60,
+  }),
   cookie: {
     maxAge: 30 * 24 * 60 * 60 * 1000,
     httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
   },
 });
 
@@ -42,13 +53,18 @@ app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
 
 // ============================
-// CHECK USER EXISTS ONLY
+// CHECK USER EXISTS IN DATABASE
 // ============================
 
 async function getUserIfExists(number) {
-  const [rows] = await db.query("SELECT * FROM users WHERE nomor_wa=?", [number]);
-
-  return rows.length ? rows[0] : null;
+  try {
+    const [rows] = await db.query("SELECT id, nomor_wa, nama FROM users WHERE nomor_wa = ?", [number]);
+    console.log(`[DB] Query for ${number}: ${rows.length > 0 ? "Found - " + rows[0].nama : "Not found"}`);
+    return rows.length ? rows[0] : null;
+  } catch (err) {
+    console.error("[DB ERROR] getUserIfExists:", err);
+    return null;
+  }
 }
 
 // ============================
@@ -58,14 +74,13 @@ async function getUserIfExists(number) {
 app.use(async (req, res, next) => {
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
-
     if (!user) {
-      req.session.destroy(() => {
+      req.session.destroy((err) => {
+        if (err) console.error("Session destroy error:", err);
         res.clearCookie("connect.sid");
       });
     }
   }
-
   next();
 });
 
@@ -89,20 +104,8 @@ app.use("/api/lokasi-store", lokasiStoreRoutes);
 // ============================
 
 app.get("/", async (req, res) => {
-  // Jika sudah login sebagai admin, redirect ke manage-users
-  if (req.session.admin) {
-    return res.redirect("/manage-users");
-  }
-
-  // Jika sudah login sebagai karyawan, redirect ke profile
-  if (req.session.karyawan) {
-    return res.redirect("/karyawan-profile");
-  }
-
-  // Jika sudah login via QR
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
-
     if (!user) {
       req.session.destroy(() => {
         res.clearCookie("connect.sid");
@@ -110,35 +113,28 @@ app.get("/", async (req, res) => {
       });
       return;
     }
-
     return res.redirect("/dashboard");
   }
-
   res.sendFile(path.join(process.cwd(), "public/scan.html"));
 });
 
 // ============================
-// DASHBOARD (HR via QR)
+// DASHBOARD
 // ============================
 app.get("/dashboard", async (req, res) => {
-  // Cek dulu apakah ini admin (harusnya tidak bisa akses dashboard)
-  if (req.session.admin) {
-    // Admin redirect ke manage-users
+  if (req.session.admin?.role === "admin") {
+    return res.status(404).sendFile(path.join(process.cwd(), "public/404.html"));
+  }
+
+  if (req.session.admin?.role === "superadmin") {
     return res.redirect("/manage-users");
   }
 
-  // Cek apakah ini karyawan (harusnya tidak bisa akses dashboard)
-  if (req.session.karyawan) {
-    return res.redirect("/karyawan-profile");
-  }
-
-  // Login via QR - harus ada session number
   if (!req.session.number) {
     return res.redirect("/");
   }
 
   const user = await getUserIfExists(req.session.number);
-
   if (!user) {
     req.session.destroy(() => {
       res.clearCookie("connect.sid");
@@ -148,8 +144,8 @@ app.get("/dashboard", async (req, res) => {
   }
 
   const number = req.session.number;
-
   if (!getSocketByNumber(number)) {
+    console.log(`[DASHBOARD] Starting bot for ${number}`);
     startBot({ number });
   }
 
@@ -159,18 +155,16 @@ app.get("/dashboard", async (req, res) => {
 // ============================
 // MANAGE USERS PAGE
 // ============================
+
 app.get("/manage-users", (req, res) => {
-  // blok login via QR
   if (req.session.number) {
     return res.status(403).sendFile(path.join(process.cwd(), "public/404.html"));
   }
 
-  // harus login admin
   if (!req.session.admin) {
-    return res.redirect("/login");
+    return res.redirect("/admin-login");
   }
 
-  // hanya admin & superadmin boleh
   if (req.session.admin.role !== "admin" && req.session.admin.role !== "superadmin") {
     return res.status(403).sendFile(path.join(process.cwd(), "public/404.html"));
   }
@@ -191,14 +185,12 @@ app.use(express.static(path.join(process.cwd(), "public")));
 app.post("/set-number", async (req, res) => {
   const { number } = req.body;
 
-  if (!number)
-    return res.status(400).json({
-      success: false,
-    });
+  if (!number) {
+    return res.status(400).json({ success: false });
+  }
 
   try {
     const user = await getUserIfExists(number);
-
     if (!user) {
       return res.status(403).json({
         success: false,
@@ -207,21 +199,19 @@ app.post("/set-number", async (req, res) => {
     }
 
     req.session.number = number;
-
     req.session.user_id = user.id;
+    req.session.user_name = user.nama;
 
-    req.session.save(() =>
+    req.session.save(() => {
       res.json({
         success: true,
         user_id: user.id,
-      }),
-    );
+        user_name: user.nama,
+      });
+    });
   } catch (err) {
     console.error("SET NUMBER ERROR:", err);
-
-    res.status(500).json({
-      success: false,
-    });
+    res.status(500).json({ success: false });
   }
 });
 
@@ -257,7 +247,6 @@ app.post("/request-otp", async (req, res) => {
     });
   }
 
-  // Validate phone number format
   const phoneRegex = /^62[0-9]{10,13}$/;
   if (!phoneRegex.test(phoneNumber)) {
     return res.status(400).json({
@@ -266,7 +255,6 @@ app.post("/request-otp", async (req, res) => {
     });
   }
 
-  // Check if user exists in database
   const user = await getUserIfExists(phoneNumber);
   if (!user) {
     return res.status(403).json({
@@ -275,7 +263,6 @@ app.post("/request-otp", async (req, res) => {
     });
   }
 
-  // Check for existing valid OTP (not expired and not used)
   const [existingOTP] = await db.query(
     `SELECT * FROM otp_codes 
      WHERE nomor_wa = ? 
@@ -299,15 +286,12 @@ app.post("/request-otp", async (req, res) => {
     }
   }
 
-  // Generate and store OTP
   const otp = generateOTP();
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
   try {
-    // Delete old OTPs for this number
     await db.query(`UPDATE otp_codes SET is_used = TRUE WHERE nomor_wa = ? AND is_used = FALSE`, [phoneNumber]);
 
-    // Insert new OTP to database
     await db.query(
       `INSERT INTO otp_codes (nomor_wa, otp_code, attempts, expires_at, is_used) 
        VALUES (?, ?, 0, ?, FALSE)`,
@@ -317,8 +301,8 @@ app.post("/request-otp", async (req, res) => {
     console.log(`[OTP] OTP ${otp} stored for ${phoneNumber}`);
     res.json({
       success: true,
-      message: `Kode OTP: ${otp} (cek console server untuk kode)`,
-      otp: otp, // Kirim OTP ke frontend untuk testing (opsional)
+      message: `Kode OTP: ${otp}`,
+      otp: otp,
     });
   } catch (error) {
     console.error("[OTP] Database error:", error);
@@ -343,7 +327,6 @@ app.post("/verify-otp", async (req, res) => {
   }
 
   try {
-    // Get OTP from database
     const [otpRecords] = await db.query(
       `SELECT * FROM otp_codes 
        WHERE nomor_wa = ? 
@@ -356,7 +339,6 @@ app.post("/verify-otp", async (req, res) => {
     );
 
     if (otpRecords.length === 0) {
-      // Check if OTP exists but expired or used
       const [expiredOTP] = await db.query(
         `SELECT * FROM otp_codes 
          WHERE nomor_wa = ? 
@@ -388,20 +370,16 @@ app.post("/verify-otp", async (req, res) => {
 
     const otpRecord = otpRecords[0];
 
-    // Check attempts (max 5 attempts)
     if (otpRecord.attempts >= 5) {
       await db.query(`UPDATE otp_codes SET is_used = TRUE WHERE id = ?`, [otpRecord.id]);
-
       return res.status(400).json({
         success: false,
         message: "Terlalu banyak percobaan gagal. Silakan minta kode baru.",
       });
     }
 
-    // Verify OTP
     if (otpRecord.otp_code !== otpCode) {
       await db.query(`UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?`, [otpRecord.id]);
-
       const remaining = 5 - (otpRecord.attempts + 1);
       return res.status(400).json({
         success: false,
@@ -409,10 +387,8 @@ app.post("/verify-otp", async (req, res) => {
       });
     }
 
-    // OTP verified successfully - mark as used
     await db.query(`UPDATE otp_codes SET is_used = TRUE WHERE id = ?`, [otpRecord.id]);
 
-    // Check if user exists again
     const user = await getUserIfExists(phoneNumber);
     if (!user) {
       return res.status(403).json({
@@ -423,9 +399,35 @@ app.post("/verify-otp", async (req, res) => {
 
     console.log(`[OTP] User ${phoneNumber} verified successfully`);
 
-    res.json({
-      success: true,
-      message: "Verifikasi berhasil",
+    // Set session for OTP login
+    req.session.number = phoneNumber;
+    req.session.user_id = user.id;
+    req.session.user_name = user.nama;
+
+    // Start bot untuk connect WhatsApp
+    console.log(`[OTP] Starting WhatsApp bot for ${phoneNumber}`);
+
+    if (!getSocketByNumber(phoneNumber)) {
+      startBot({
+        number: phoneNumber,
+        onConnected: async (waNumber) => {
+          console.log(`[OTP] ✅ Bot connected successfully for ${waNumber}`);
+        },
+        onLogout: (number) => {
+          console.log(`[OTP] Bot logout for ${number}`);
+        },
+      }).catch((err) => {
+        console.error("[OTP] Failed to start bot:", err);
+      });
+    } else {
+      console.log(`[OTP] Bot already running for ${phoneNumber}`);
+    }
+
+    req.session.save(() => {
+      res.json({
+        success: true,
+        message: "Verifikasi berhasil",
+      });
     });
   } catch (error) {
     console.error("[OTP] Verify error:", error);
@@ -437,17 +439,57 @@ app.post("/verify-otp", async (req, res) => {
 });
 
 // ============================
-// LOGOUT HR
+// CEK BOT STATUS UNTUK MULTI USER
+// ============================
+
+app.get("/api/bot-status", async (req, res) => {
+  if (!req.session.number) {
+    return res.json({
+      status: "not_logged_in",
+      message: "Belum login",
+    });
+  }
+
+  const number = req.session.number;
+  const isConnected = getSocketByNumber(number) !== null;
+  const sessionExists = fs.existsSync(`./session/${number}`);
+
+  res.json({
+    success: true,
+    number: number,
+    isConnected: isConnected,
+    sessionExists: sessionExists,
+    message: isConnected ? "Bot terhubung" : "Bot tidak terhubung",
+  });
+});
+
+// ============================
+// GET ALL ACTIVE SESSIONS (DEBUG)
+// ============================
+
+app.get("/api/active-sessions", async (req, res) => {
+  // Hanya yang sudah login yang bisa lihat
+  if (!req.session.admin && !req.session.number) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  const sessions = getActiveSessions ? getActiveSessions() : [];
+
+  res.json({
+    activeSessions: sessions,
+    total: sessions.length,
+  });
+});
+
+// ============================
+// LOGOUT
 // ============================
 
 app.get("/logout", async (req, res) => {
   const number = req.session.number;
-
   if (number) await logoutBot(number);
-
   req.session.destroy(() => {
     res.clearCookie("connect.sid");
-
     res.redirect("/");
   });
 });
@@ -459,134 +501,118 @@ app.get("/logout", async (req, res) => {
 let userSessions = {};
 
 wss.on("connection", async (ws, req) => {
-  const tempId = `temp_${Date.now()}`;
+  const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+  console.log(`[WS] New connection: ${tempId}`);
 
   userSessions[tempId] = {
     wsClients: [ws],
-    sessionIds: [],
+    sessionId: req.sessionID,
   };
 
-  ws.on("close", () => delete userSessions[tempId]);
+  let botStarted = false;
 
-  await startBot({
-    onQR: (number, qr) => {
-      userSessions[tempId]?.wsClients.forEach((client) => {
-        if (client.readyState === 1) client.send(JSON.stringify({ qr }));
+  const startBotForQR = async () => {
+    if (botStarted) return;
+    botStarted = true;
+
+    console.log(`[WS] Starting bot for QR generation`);
+
+    try {
+      await startBot({
+        onQR: (number, qr) => {
+          console.log(`[WS] QR generated, sending to client`);
+          if (userSessions[tempId]) {
+            userSessions[tempId].wsClients.forEach((client) => {
+              if (client.readyState === 1) {
+                client.send(JSON.stringify({ qr }));
+              }
+            });
+          }
+        },
+        onConnected: async (waNumber) => {
+          console.log(`[WS] Bot connected with number: ${waNumber}`);
+
+          const user = await getUserIfExists(waNumber);
+
+          if (!user) {
+            console.log(`[LOGIN DITOLAK] ${waNumber} belum terdaftar di tabel users`);
+            if (userSessions[tempId]) {
+              userSessions[tempId].wsClients.forEach((client) => {
+                if (client.readyState === 1) {
+                  client.send(
+                    JSON.stringify({
+                      status: "not_registered",
+                      message: "Nomor WhatsApp belum terdaftar. Hubungi admin untuk pendaftaran.",
+                    }),
+                  );
+                }
+              });
+            }
+            await logoutBot(waNumber);
+            return;
+          }
+
+          console.log(`[LOGIN BERHASIL] ${waNumber} (${user.nama}) terdaftar`);
+
+          if (!userSessions[waNumber]) {
+            userSessions[waNumber] = {
+              wsClients: [],
+              sessionIds: [],
+            };
+          }
+
+          if (userSessions[tempId]) {
+            userSessions[waNumber].wsClients.push(...userSessions[tempId].wsClients);
+            userSessions[waNumber].sessionIds.push(userSessions[tempId].sessionId);
+            delete userSessions[tempId];
+          }
+
+          userSessions[waNumber].wsClients.forEach((client) => {
+            if (client.readyState === 1) {
+              client.send(
+                JSON.stringify({
+                  status: "connected",
+                  number: waNumber,
+                  user_id: user.id,
+                  user_name: user.nama,
+                }),
+              );
+            }
+          });
+        },
+        onLogout: (number) => {
+          console.log(`[WS] Force logout: ${number}`);
+          if (userSessions[number]) {
+            userSessions[number].wsClients.forEach((client) => {
+              if (client.readyState === 1) {
+                client.send(
+                  JSON.stringify({
+                    status: "force_logout",
+                    message: "Sesi WhatsApp berakhir, silakan scan ulang QR",
+                  }),
+                );
+              }
+            });
+            delete userSessions[number];
+          }
+        },
       });
-    },
+    } catch (err) {
+      console.error("[WS] Failed to start bot:", err);
+    }
+  };
 
-    onConnected: async (number) => {
-      const user = await getUserIfExists(number);
+  setTimeout(startBotForQR, 100);
 
-      // BLOK LOGIN JIKA BELUM TERDAFTAR
-
-      if (!user) {
-        console.log(`[LOGIN DITOLAK] ${number} belum terdaftar`);
-
-        userSessions[tempId]?.wsClients.forEach((client) => {
-          if (client.readyState === 1)
-            client.send(
-              JSON.stringify({
-                status: "not_registered",
-              }),
-            );
-        });
-
-        await logoutBot(number);
-
-        return;
-      }
-
-      if (!userSessions[number])
-        userSessions[number] = {
-          wsClients: [],
-          sessionIds: [],
-        };
-
+  ws.on("close", () => {
+    console.log(`[WS] Connection closed: ${tempId}`);
+    setTimeout(() => {
       if (userSessions[tempId]) {
-        userSessions[number].wsClients.push(...userSessions[tempId].wsClients);
-
         delete userSessions[tempId];
       }
-
-      const sessionId = req.headers.cookie?.split("connect.sid=s%3A")[1]?.split(".")[0];
-
-      if (sessionId && !userSessions[number].sessionIds.includes(sessionId)) {
-        userSessions[number].sessionIds.push(sessionId);
-      }
-
-      userSessions[number].wsClients.forEach((client) => {
-        if (client.readyState === 1)
-          client.send(
-            JSON.stringify({
-              status: "connected",
-
-              number,
-
-              user_id: user.id,
-            }),
-          );
-      });
-    },
-
-    onLogout: (number) => {
-      console.log(`[WS] Force logout: ${number}`);
-
-      if (userSessions[number]) {
-        userSessions[number].wsClients.forEach((client) => {
-          if (client.readyState === 1)
-            client.send(
-              JSON.stringify({
-                status: "force_logout",
-              }),
-            );
-        });
-
-        userSessions[number].sessionIds.forEach((id) => {
-          sessionMiddleware.store.destroy(
-            id,
-
-            (err) => {
-              if (err) console.error(err);
-            },
-          );
-        });
-
-        delete userSessions[number];
-      }
-    },
+    }, 5000);
   });
-});
-
-// ============================
-// CHECK SESSION ROUTE
-// ============================
-
-app.get("/api/check-session", (req, res) => {
-  if (req.session.admin) {
-    return res.json({
-      loggedIn: true,
-      type: "admin",
-      role: req.session.admin.role,
-    });
-  }
-
-  if (req.session.karyawan) {
-    return res.json({
-      loggedIn: true,
-      type: "karyawan",
-      nama: req.session.karyawan.nama_lengkap,
-    });
-  }
-
-  if (req.session.number) {
-    return res.json({
-      loggedIn: true,
-      type: "qr",
-    });
-  }
-
-  res.json({ loggedIn: false });
 });
 
 // ============================
@@ -595,8 +621,11 @@ app.get("/api/check-session", (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-server.listen(
-  PORT,
-
-  () => console.log("Server jalan di port " + PORT),
-);
+server.listen(PORT, () => {
+  console.log(`========================================`);
+  console.log(`🚀 Server berjalan di port ${PORT}`);
+  console.log(`📱 Akses: http://localhost:${PORT}`);
+  console.log(`✅ QR Login: Scan QR Code untuk connect WhatsApp`);
+  console.log(`✅ OTP Login: Verifikasi OTP dan otomatis connect WhatsApp`);
+  console.log(`========================================`);
+});
