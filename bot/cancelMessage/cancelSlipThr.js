@@ -48,34 +48,39 @@ async function sendCancelThrNotification(thr, company, senderNumber, cancellatio
     const adminNumber = senderNumber.replace(/[^0-9]/g, "");
     const adminDisplay = adminNumber.length > 8 ? "Admin ***" + adminNumber.slice(-4) : "Admin";
 
-    // TEMPLATE PESAN (Konsisten dengan Slip Gaji & Bonus)
-    const message = `*🛑 PEMBERITAHUAN PEMBATALAN THR*
----
-Halo, *${namaKaryawan}*
-Mohon maaf, rincian Tunjangan Hari Raya (THR) Anda telah ditarik kembali:
+    const companyDisplay = company === "hisana" ? "HISANA" : "ENAKKO";
 
-🆔 *DATA KARYAWAN*
+    // TEMPLATE PESAN
+    const message = `*🛑 PEMBERITAHUAN PEMBATALAN THR*
+━━━━━━━━━━━━━━━━━━━━
+Halo, *${namaKaryawan}*
+Mohon maaf, rincian Tunjangan Hari Raya (THR) Anda telah ditarik kembali.
+
+*📋 DATA KARYAWAN*
 • No. Induk: ${thr.no_induk || "-"}
 • Tahun THR: ${thr.tahun || "-"}
+• Perusahaan: ${companyDisplay}
 
-💰 *RINGKASAN THR*
-▫️ Kategori: Tunjangan Hari Raya Keagamaan
-*TOTAL: ${rupiah(thr.jumlah_thr || 0)}*
+*💰 RINCIAN THR*
+• Kategori: Tunjangan Hari Raya Keagamaan
+• Jumlah: ${rupiah(thr.jumlah_thr || 0)}
 
-⚠️ *STATUS: DIBATALKAN*
-Alasan: ${cancellationNote || "Revisi data oleh admin"}
-Waktu: ${tanggal} | ${jam} WIB
+*⚠️ STATUS: DIBATALKAN*
+• Alasan: ${cancellationNote || "Revisi data oleh admin"}
+• Waktu: ${tanggal} | ${jam} WIB
 
----
-*KETERANGAN:*
-Rincian THR ini telah dibatalkan dari sistem untuk proses sinkronisasi ulang. Mohon tunggu notifikasi terbaru atau hubungi *${adminDisplay}* jika ada pertanyaan.
+━━━━━━━━━━━━━━━━━━━━
+*📝 KETERANGAN:*
+Rincian THR ini telah dibatalkan dari sistem untuk proses sinkronisasi ulang. 
+Mohon tunggu notifikasi terbaru atau hubungi *${adminDisplay}* jika ada pertanyaan.
 
-_Pesan otomatis - Sistem Payroll ${company.toUpperCase()}_`;
+_${new Date().toLocaleString("id-ID")}_
+_Pesan otomatis - Sistem Payroll ${companyDisplay}_`;
 
     await sock.sendMessage(jid, { text: message });
 
     console.log(`✅ Notifikasi pembatalan THR terkirim: ${namaKaryawan}`);
-    return true;
+    return { success: true, message: "Notifikasi terkirim" };
   } catch (error) {
     console.error(`❌ Error sendCancelThr:`, error.message);
     throw error;
@@ -93,6 +98,7 @@ export async function kirimPembatalanThrEnakko(thr, senderNumber, cancellationNo
   return await sendCancelThrNotification(thr, "enakko", senderNumber, cancellationNote);
 }
 
+// Untuk kompatibilitas dengan pemanggilan lama
 export async function kirimPembatalanThr(thr, senderNumber, cancellationNote) {
   return await sendCancelThrNotification(thr, "payroll", senderNumber, cancellationNote);
 }

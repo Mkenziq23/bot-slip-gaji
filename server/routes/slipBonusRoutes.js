@@ -1,89 +1,60 @@
-// server/routes/slipBonusRoutes.js
 import express from "express";
 import db from "../db.js";
-import { body, validationResult } from "express-validator";
 import kirimBonusHisana from "../../bot/sendMessage/kirimBonusHisana.js";
 import kirimBonusEnakko from "../../bot/sendMessage/kirimBonusEnakko.js";
 import { kirimPembatalanBonusHisana, kirimPembatalanBonusEnakko } from "../../bot/cancelMessage/cancelSlipBonus.js";
+import { getSocketByNumber } from "../../bot/index.js";
 
 const router = express.Router();
 
-// ========================
-// BONUS PROGRESS TRACKING (SERVER-SIDE)
-// ========================
-let bonusProgress = {
-  running: false,
-  total: 0,
-  sent: 0,
-  failed: 0,
-  startTime: null,
-  endTime: null,
-};
+// Helper function untuk mendapatkan nama tabel
+function getBonusTableName(company) {
+  return company === "hisana" ? "bonus_hisana" : "bonus_enakko";
+}
 
-// ========================
-// CHECK LOGIN
-// ========================
+function getKaryawanTableName(company) {
+  return company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
+}
+
 function checkLogin(req, res) {
   const number = req.session.number;
-
   if (!number) {
-    res.status(401).json({
-      success: false,
-      message: "Belum login",
-    });
+    res.status(401).json({ success: false, message: "Belum login" });
     return null;
   }
-
   return number;
 }
 
-// ========================
-// GET EMPLOYEE LIST FROM DATA KARYAWAN
-// ========================
-router.get("/bonus-employees", async (req, res) => {
-  try {
-    const number = req.session.number;
-    if (!number) {
-      return res.status(401).json({ success: false, message: "Belum login" });
+// Helper untuk mendapatkan socket yang valid
+async function getValidSocket(senderNumber, maxRetries = 5) {
+  console.log(`[SOCKET CHECK] Checking socket for ${senderNumber}`);
+
+  for (let i = 0; i < maxRetries; i++) {
+    const sock = getSocketByNumber(senderNumber);
+
+    if (sock && sock.user && sock.user.id) {
+      console.log(`✅ Socket valid untuk ${senderNumber}`);
+      return sock;
     }
 
-    const company = req.query.company || "hisana";
-    const tableName = company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
-
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
+    if (i === 2) {
+      console.log(`[SOCKET CHECK] Attempting to restart bot for ${senderNumber}`);
+      try {
+        const { startBot } = await import("../../bot/index.js");
+        await startBot({ number: senderNumber });
+      } catch (err) {
+        console.error(`Failed to restart bot:`, err.message);
+      }
     }
 
-    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-    if (!users.length) {
-      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
-    }
-
-    const userId = users[0].id;
-
-    // Ambil data karyawan hanya no_induk, nama, no_hp
-    const [employees] = await db.query(
-      `SELECT no_induk, nama_lengkap as nama, no_hp 
-       FROM ${tableName} 
-       WHERE user_id = ? 
-       ORDER BY no_induk ASC`,
-      [userId],
-    );
-
-    console.log(`[BONUS EMPLOYEES] Loaded ${employees.length} employees for ${company}`);
-
-    res.json({
-      success: true,
-      employees: employees,
-    });
-  } catch (err) {
-    console.error("[GET BONUS EMPLOYEES ERROR]:", err);
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+    await new Promise((r) => setTimeout(r, 3000));
   }
-});
+
+  throw new Error(`Bot WhatsApp tidak aktif untuk nomor ${senderNumber}`);
+}
 
 // ========================
-// GET BONUS DATA
+// GET BONUS DATA (dengan JOIN karyawan)
 // ========================
 router.get("/bonus", async (req, res) => {
   try {
@@ -91,340 +62,281 @@ router.get("/bonus", async (req, res) => {
     if (!number) return;
 
     const company = req.query.company || "hisana";
-    const month = req.query.month;
-    const year = req.query.year;
-    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-
-    // Validasi company
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
-
-    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-    if (!users.length) {
-      return res.json([]);
-    }
-
-    const userId = users[0].id;
-
-    // Build query dengan filter menggunakan kolom bulan dan tahun
-    let query = `
-      SELECT id, no_induk, nama, bulan, tahun, jumlah_bonus, nohp, status, 
-            created_at, is_duplicated, cancelled_at, cancellation_note, cancelled_by 
-      FROM ${tableName} 
-      WHERE user_id = ? 
-    `;
-
-    const queryParams = [userId];
-
-    // Add month filter if provided and not "all"
-    if (month && month !== "all" && month !== "") {
-      query += ` AND bulan = ?`;
-      queryParams.push(parseInt(month));
-      console.log(`[BONUS] Adding month filter: ${month}`);
-    }
-
-    // Add year filter if provided and not "all"
-    if (year && year !== "all" && year !== "") {
-      query += ` AND tahun = ?`;
-      queryParams.push(parseInt(year));
-      console.log(`[BONUS] Adding year filter: ${year}`);
-    }
-
-    // Add order by
-    query += ` ORDER BY tahun DESC, bulan DESC, id DESC`;
-
-    console.log(`[BONUS] Query: ${query}, Params:`, queryParams);
-
-    const [rows] = await db.query(query, queryParams);
-
-    console.log(`[BONUS] Found ${rows.length} records for ${company} with month=${month}, year=${year}`);
-
-    // Sanitize data sebelum dikirim
-    const sanitizedRows = rows.map((row) => ({
-      ...row,
-      nama: escapeHtml(String(row.nama)),
-      no_induk: escapeHtml(String(row.no_induk)),
-    }));
-
-    res.json(sanitizedRows);
-  } catch (err) {
-    console.error("[GET BONUS ERROR]:", err);
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
-  }
-});
-
-// ========================
-// GET AVAILABLE BONUS YEARS
-// ========================
-router.get("/bonus-years", async (req, res) => {
-  try {
-    const number = req.session.number;
-    if (!number) {
-      return res.status(401).json({ success: false, message: "Belum login" });
-    }
-
-    const company = req.query.company || "hisana";
-    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
+    const bonusTable = getBonusTableName(company);
+    const karyawanTable = getKaryawanTableName(company);
 
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
-
     const userId = users[0].id;
 
-    // Get distinct years from kolom tahun (bukan created_at)
-    const [rows] = await db.query(
-      `SELECT DISTINCT tahun FROM ${tableName} 
-       WHERE user_id = ? 
-       ORDER BY tahun DESC`,
-      [userId],
-    );
+    let query = `
+      SELECT 
+        b.*,
+        k.no_induk,
+        k.nama_lengkap as nama,
+        k.no_hp as nohp
+      FROM ${bonusTable} b
+      INNER JOIN ${karyawanTable} k ON b.karyawan_id = k.id AND k.user_id = ?
+      WHERE b.user_id = ?
+    `;
+    let queryParams = [userId, userId];
 
-    const years = rows.map((row) => row.tahun);
+    const month = req.query.month;
+    const year = req.query.year;
 
-    console.log(`[BONUS YEARS] Available years for ${company}:`, years);
+    if (month && month !== "all" && month !== "") {
+      query += ` AND b.bulan = ?`;
+      queryParams.push(parseInt(month));
+    }
 
-    res.json({ success: true, years });
+    if (year && year !== "all" && year !== "") {
+      query += ` AND b.tahun = ?`;
+      queryParams.push(parseInt(year));
+    }
+
+    query += ` ORDER BY b.created_at DESC`;
+
+    const [rows] = await db.query(query, queryParams);
+    res.json(rows);
   } catch (err) {
-    console.error("[GET BONUS YEARS ERROR]:", err);
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+    console.error("[GET BONUS ERROR]:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
 // ========================
-// INSERT BONUS
+// GET BONUS YEARS
 // ========================
-router.post(
-  "/bonus",
-  [
-    body("no_induk").notEmpty().withMessage("No Induk harus diisi").trim().escape(),
-    body("nama").notEmpty().withMessage("Nama harus diisi").trim().escape(),
-    body("periode").optional().isISO8601().withMessage("Format periode tidak valid"),
-    body("jumlah_bonus").isNumeric().withMessage("Jumlah bonus harus angka").toFloat(),
-    body("nohp")
-      .matches(/^\d{10,15}$/)
-      .withMessage("Nomor HP tidak valid")
-      .trim(),
-  ],
-  async (req, res) => {
-    try {
-      // Check validation errors
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: "Validasi gagal",
-          errors: errors.array(),
-        });
-      }
+router.get("/bonus-years", async (req, res) => {
+  try {
+    const number = checkLogin(req, res);
+    if (!number) return;
 
-      const number = checkLogin(req, res);
-      if (!number) return;
+    const company = req.query.company || "hisana";
+    const bonusTable = getBonusTableName(company);
 
-      const company = req.query.company || "hisana";
-      const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+    const userId = users[0].id;
 
-      if (!["hisana", "enakko"].includes(company)) {
-        return res.status(400).json({ success: false, message: "Company tidak valid" });
-      }
+    const [rows] = await db.query(`SELECT DISTINCT tahun FROM ${bonusTable} WHERE user_id = ? ORDER BY tahun DESC`, [userId]);
+    const years = rows.map((row) => row.tahun);
 
-      const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-      if (!users.length) {
-        return res.status(401).json({ success: false, message: "User tidak ditemukan" });
-      }
+    res.json({ success: true, years });
+  } catch (err) {
+    console.error("[GET BONUS YEARS ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
-      const userId = users[0].id;
-      const d = req.body;
+// ========================
+// GET EMPLOYEES FOR BONUS DROPDOWN
+// ========================
+router.get("/bonus-employees", async (req, res) => {
+  try {
+    const number = checkLogin(req, res);
+    if (!number) return;
 
-      // Parse periode (format: YYYY-MM)
-      let bulan, tahun;
-      if (d.periode) {
-        const [year, month] = d.periode.split("-");
-        tahun = parseInt(year);
-        bulan = parseInt(month);
+    const company = req.query.company || "hisana";
+    const karyawanTable = getKaryawanTableName(company);
 
-        // Validasi bulan dan tahun
-        if (bulan < 1 || bulan > 12 || tahun < 2000 || tahun > 2100) {
-          return res.status(400).json({
-            success: false,
-            message: "Bulan atau tahun tidak valid",
-          });
-        }
-      } else {
-        bulan = d.bulan;
-        tahun = d.tahun;
-      }
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+    const userId = users[0].id;
 
-      // Check if no_induk already exists for this user in current month
-      const [existing] = await db.query(
-        `SELECT COUNT(*) as count FROM ${tableName} 
+    const [rows] = await db.query(
+      `SELECT id as karyawan_id, no_induk, nama_lengkap as nama, no_hp 
+       FROM ${karyawanTable} 
        WHERE user_id = ? 
-       AND no_induk = ? 
-       AND bulan = ? 
-       AND tahun = ?`,
-        [userId, d.no_induk, bulan, tahun],
-      );
+       ORDER BY no_induk ASC`,
+      [userId],
+    );
 
-      if (existing[0].count > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Nomor induk ${d.no_induk} sudah memiliki data bonus untuk bulan ${bulan}/${tahun}. Silakan gunakan nomor induk yang berbeda atau edit data yang sudah ada.`,
-        });
+    res.json({ success: true, employees: rows });
+  } catch (err) {
+    console.error("[BONUS EMPLOYEES ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ========================
+// POST BONUS
+// ========================
+router.post("/bonus", async (req, res) => {
+  try {
+    const number = checkLogin(req, res);
+    if (!number) return;
+
+    const company = req.query.company || "hisana";
+    const bonusTable = getBonusTableName(company);
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+    const userId = users[0].id;
+
+    const { karyawan_id, bulan, tahun, jumlah_bonus, nohp } = req.body;
+
+    console.log("📝 Received bonus data:", { karyawan_id, bulan, tahun, jumlah_bonus, nohp, company });
+
+    // VALIDASI
+    if (!karyawan_id) {
+      return res.status(400).json({ success: false, message: "Pilih karyawan terlebih dahulu" });
+    }
+
+    if (!bulan || !tahun) {
+      return res.status(400).json({ success: false, message: "Bulan dan tahun harus diisi" });
+    }
+
+    if (!jumlah_bonus || jumlah_bonus <= 0) {
+      return res.status(400).json({ success: false, message: "Jumlah bonus harus lebih dari 0" });
+    }
+
+    // Validasi nohp (opsional, tapi jika ada harus valid)
+    if (nohp && nohp !== "") {
+      let cleanNohp = nohp.replace(/[^0-9]/g, "");
+      if (!cleanNohp.startsWith("62")) {
+        if (cleanNohp.startsWith("0")) {
+          cleanNohp = "62" + cleanNohp.substring(1);
+        } else if (cleanNohp.length >= 10 && cleanNohp.length <= 12) {
+          cleanNohp = "62" + cleanNohp;
+        }
       }
+      // Tidak perlu menyimpan nohp di tabel bonus, karena akan diambil dari data_karyawan
+    }
 
-      // Sanitasi input
-      const no_induk = String(d.no_induk).trim().substring(0, 50);
-      const nama = String(d.nama).trim().substring(0, 100);
-      const jumlah_bonus = Math.abs(parseFloat(d.jumlah_bonus));
-      const nohp = String(d.nohp)
-        .replace(/[^0-9]/g, "")
-        .substring(0, 15);
+    // Cek apakah karyawan_id valid dan milik user
+    const karyawanTable = getKaryawanTableName(company);
+    const [karyawanCheck] = await db.query(`SELECT id, no_hp FROM ${karyawanTable} WHERE id = ? AND user_id = ?`, [karyawan_id, userId]);
 
-      const query = `
-      INSERT INTO ${tableName}
-      (user_id, no_induk, nama, bulan, tahun, jumlah_bonus, nohp, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    if (karyawanCheck.length === 0) {
+      return res.status(400).json({ success: false, message: "Karyawan tidak ditemukan" });
+    }
+
+    // Cek apakah sudah ada bonus untuk karyawan di bulan/tahun yang sama
+    const [existing] = await db.query(
+      `SELECT COUNT(*) as count FROM ${bonusTable} 
+       WHERE user_id = ? AND karyawan_id = ? AND bulan = ? AND tahun = ?`,
+      [userId, karyawan_id, bulan, tahun],
+    );
+
+    if (existing[0].count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Karyawan ini sudah memiliki bonus untuk bulan ${bulan}/${tahun}`,
+      });
+    }
+
+    // INSERT ke database
+    const query = `
+      INSERT INTO ${bonusTable} 
+      (user_id, karyawan_id, bulan, tahun, jumlah_bonus, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, NOW())
     `;
 
-      const values = [userId, no_induk, nama, bulan, tahun, jumlah_bonus, nohp, "belum_dikirim"];
+    const [result] = await db.query(query, [userId, karyawan_id, bulan, tahun, jumlah_bonus, "belum_dikirim"]);
 
-      await db.query(query, values);
+    console.log(`✅ Bonus berhasil ditambahkan dengan ID: ${result.insertId}`);
 
-      res.json({ success: true, message: "Bonus berhasil ditambahkan" });
-    } catch (err) {
-      console.error("[INSERT BONUS ERROR]:", err);
-      res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
-    }
-  },
-);
+    res.json({
+      success: true,
+      id: result.insertId,
+      message: "Bonus berhasil ditambahkan",
+    });
+  } catch (err) {
+    console.error("[POST BONUS ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // ========================
-// UPDATE BONUS
+// PUT BONUS
 // ========================
-router.put(
-  "/bonus/:id",
-  [
-    body("no_induk").notEmpty().withMessage("No Induk harus diisi").trim().escape(),
-    body("nama").notEmpty().withMessage("Nama harus diisi").trim().escape(),
-    body("periode").optional().isISO8601().withMessage("Format periode tidak valid"),
-    body("jumlah_bonus").isNumeric().withMessage("Jumlah bonus harus angka").toFloat(),
-    body("nohp")
-      .matches(/^\d{10,15}$/)
-      .withMessage("Nomor HP tidak valid")
-      .trim(),
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: "Validasi gagal",
-          errors: errors.array(),
-        });
-      }
+router.put("/bonus/:id", async (req, res) => {
+  try {
+    const number = checkLogin(req, res);
+    if (!number) return;
 
-      const number = checkLogin(req, res);
-      if (!number) return;
+    const id = req.params.id;
+    const company = req.query.company || "hisana";
+    const bonusTable = getBonusTableName(company);
 
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ success: false, message: "ID tidak valid" });
-      }
-
-      const company = req.query.company || "hisana";
-      const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-
-      if (!["hisana", "enakko"].includes(company)) {
-        return res.status(400).json({ success: false, message: "Company tidak valid" });
-      }
-
-      const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-      if (!users.length) {
-        return res.status(401).json({ success: false, message: "User tidak ditemukan" });
-      }
-
-      const userId = users[0].id;
-      const d = req.body;
-
-      // Parse periode
-      let bulan, tahun;
-      if (d.periode) {
-        const [year, month] = d.periode.split("-");
-        tahun = parseInt(year);
-        bulan = parseInt(month);
-
-        if (bulan < 1 || bulan > 12 || tahun < 2000 || tahun > 2100) {
-          return res.status(400).json({
-            success: false,
-            message: "Bulan atau tahun tidak valid",
-          });
-        }
-      } else {
-        bulan = d.bulan;
-        tahun = d.tahun;
-      }
-
-      // Check if no_induk already exists for this user in current month (excluding current record)
-      const [existing] = await db.query(
-        `SELECT COUNT(*) as count FROM ${tableName} 
-       WHERE user_id = ? 
-       AND no_induk = ? 
-       AND bulan = ? 
-       AND tahun = ?
-       AND id != ?`,
-        [userId, d.no_induk, bulan, tahun, id],
-      );
-
-      if (existing[0].count > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Nomor induk ${d.no_induk} sudah memiliki data bonus untuk bulan ${bulan}/${tahun}. Silakan gunakan nomor induk yang berbeda.`,
-        });
-      }
-
-      // Sanitasi input
-      const no_induk = String(d.no_induk).trim().substring(0, 50);
-      const nama = String(d.nama).trim().substring(0, 100);
-      const jumlah_bonus = Math.abs(parseFloat(d.jumlah_bonus));
-      const nohp = String(d.nohp)
-        .replace(/[^0-9]/g, "")
-        .substring(0, 15);
-
-      const [result] = await db.query(
-        `
-      UPDATE ${tableName} SET
-        no_induk = ?,
-        nama = ?,
-        bulan = ?,
-        tahun = ?,
-        jumlah_bonus = ?,
-        nohp = ?
-      WHERE id = ? AND user_id = ? AND status != 'terkirim'
-    `,
-        [no_induk, nama, bulan, tahun, jumlah_bonus, nohp, id, userId],
-      );
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "Data tidak ditemukan, tidak memiliki akses, atau sudah terkirim",
-        });
-      }
-
-      res.json({ success: true, message: "Bonus berhasil diperbarui" });
-    } catch (err) {
-      console.error("[UPDATE BONUS ERROR]:", err);
-      res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
-  },
-);
+    const userId = users[0].id;
+
+    const { karyawan_id, bulan, tahun, jumlah_bonus } = req.body;
+
+    console.log("📝 Updating bonus data:", { id, karyawan_id, bulan, tahun, jumlah_bonus, company });
+
+    // VALIDASI
+    if (!karyawan_id) {
+      return res.status(400).json({ success: false, message: "Pilih karyawan terlebih dahulu" });
+    }
+
+    if (!bulan || !tahun) {
+      return res.status(400).json({ success: false, message: "Bulan dan tahun harus diisi" });
+    }
+
+    if (!jumlah_bonus || jumlah_bonus <= 0) {
+      return res.status(400).json({ success: false, message: "Jumlah bonus harus lebih dari 0" });
+    }
+
+    // Cek apakah data bonus milik user
+    const [check] = await db.query(`SELECT id, status FROM ${bonusTable} WHERE id = ? AND user_id = ?`, [id, userId]);
+
+    if (check.length === 0) {
+      return res.status(404).json({ success: false, message: "Data tidak ditemukan" });
+    }
+
+    // Jika status sudah terkirim, tidak bisa diedit
+    if (check[0].status === "terkirim") {
+      return res.status(400).json({
+        success: false,
+        message: "Bonus yang sudah terkirim tidak dapat diedit",
+      });
+    }
+
+    // Cek duplikasi untuk karyawan lain (selain data yang sedang diedit)
+    const [existing] = await db.query(
+      `SELECT COUNT(*) as count FROM ${bonusTable} 
+       WHERE user_id = ? AND karyawan_id = ? AND bulan = ? AND tahun = ? AND id != ?`,
+      [userId, karyawan_id, bulan, tahun, id],
+    );
+
+    if (existing[0].count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Karyawan ini sudah memiliki bonus untuk bulan ${bulan}/${tahun}`,
+      });
+    }
+
+    // UPDATE database
+    const query = `
+      UPDATE ${bonusTable} 
+      SET karyawan_id = ?, bulan = ?, tahun = ?, jumlah_bonus = ?
+      WHERE id = ? AND user_id = ?
+    `;
+
+    await db.query(query, [karyawan_id, bulan, tahun, jumlah_bonus, id, userId]);
+
+    console.log(`✅ Bonus berhasil diupdate: ID ${id}`);
+
+    res.json({ success: true, message: "Bonus berhasil diperbarui" });
+  } catch (err) {
+    console.error("[PUT BONUS ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // ========================
 // DELETE BONUS
@@ -434,288 +346,252 @@ router.delete("/bonus/:id", async (req, res) => {
     const number = checkLogin(req, res);
     if (!number) return;
 
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) {
-      return res.status(400).json({ success: false, message: "ID tidak valid" });
-    }
-
+    const id = req.params.id;
     const company = req.query.company || "hisana";
-    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
+    const bonusTable = getBonusTableName(company);
 
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
-
     const userId = users[0].id;
 
-    // Hanya bisa menghapus data yang belum terkirim
-    const [result] = await db.query(`DELETE FROM ${tableName} WHERE id = ? AND user_id = ? AND status != 'terkirim'`, [id, userId]);
+    // Cek status bonus sebelum hapus
+    const [check] = await db.query(`SELECT status FROM ${bonusTable} WHERE id = ? AND user_id = ?`, [id, userId]);
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
+    if (check.length === 0) {
+      return res.status(404).json({ success: false, message: "Data tidak ditemukan" });
+    }
+
+    if (check[0].status === "terkirim") {
+      return res.status(400).json({
         success: false,
-        message: "Data tidak ditemukan, tidak memiliki akses, atau sudah terkirim",
+        message: "Bonus yang sudah terkirim tidak dapat dihapus. Batalkan kirim terlebih dahulu.",
       });
     }
+
+    const [result] = await db.query(`DELETE FROM ${bonusTable} WHERE id = ? AND user_id = ?`, [id, userId]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Data tidak ditemukan" });
+    }
+
+    console.log(`✅ Bonus berhasil dihapus: ID ${id}`);
 
     res.json({ success: true, message: "Bonus berhasil dihapus" });
   } catch (err) {
     console.error("[DELETE BONUS ERROR]:", err);
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
 // ========================
-// KIRIM BONUS WHATSAPP (Dengan Progress Tracking)
+// KIRIM BONUS WHATSAPP
 // ========================
+let bonusProgress = { running: false, total: 0, sent: 0, failed: 0 };
+
 router.post("/send-bonus", async (req, res) => {
   try {
-    const number = req.session.number;
-    if (!number) {
-      return res.status(401).json({ success: false, message: "Belum login" });
-    }
+    const number = checkLogin(req, res);
+    if (!number) return;
 
-    const selected = req.body.selected || [];
-    const company = req.body.company || "hisana";
-
-    if (!Array.isArray(selected) || selected.length === 0) {
-      return res.status(400).json({ success: false, message: "Pilih bonus yang akan dikirim" });
-    }
-
-    if (selected.length > 100) {
-      return res.status(400).json({ success: false, message: "Maksimal 100 bonus per pengiriman" });
-    }
-
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
-
-    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-
-    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-    if (!users.length) {
-      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
-    }
-
-    const userId = users[0].id;
-
-    // Ambil data berdasarkan ID yang dipilih (validasi ID numeric)
-    const validIds = selected.filter((id) => !isNaN(parseInt(id))).map((id) => parseInt(id));
-    if (validIds.length === 0) {
-      return res.status(400).json({ success: false, message: "ID tidak valid" });
-    }
-
-    const placeholders = validIds.map(() => "?").join(",");
-    // Include both 'belum_dikirim' AND 'dibatalkan' status for resending
-    const [rows] = await db.query(`SELECT * FROM ${tableName} WHERE id IN (${placeholders}) AND user_id = ? AND (status = 'belum_dikirim' OR status = 'dibatalkan')`, [...validIds, userId]);
-
-    if (!rows.length) {
-      return res.status(400).json({
-        success: false,
-        message: "Tidak ada bonus yang dapat dikirim. Pastikan bonus yang dipilih berstatus 'Belum Dikirim' atau 'Dibatalkan'.",
-      });
-    }
-
-    // Setup bonus progress tracking
-    bonusProgress = {
-      running: true,
-      total: rows.length,
-      sent: 0,
-      failed: 0,
-      startTime: new Date(),
-      endTime: null,
-    };
-
-    // IMPORTANT: Send response BEFORE processing
-    res.json({ success: true, message: "Pengiriman bonus dimulai", total: rows.length });
-
-    // Proses pengiriman secara asynchronous
-    (async () => {
-      for (const bonus of rows) {
-        try {
-          if (company === "hisana") {
-            await kirimBonusHisana(bonus, number);
-          } else {
-            await kirimBonusEnakko(bonus, number);
-          }
-
-          // Update status to "terkirim" after successful send
-          await db.query(`UPDATE ${tableName} SET status = 'terkirim' WHERE id = ? AND user_id = ?`, [bonus.id, userId]);
-          bonusProgress.sent++;
-          console.log(`✅ Bonus terkirim: ${bonus.nama} (${bonus.no_induk})`);
-        } catch (err) {
-          console.error(`❌ Gagal kirim bonus ke ${bonus.nama} (${bonus.no_induk}):`, err.message);
-          bonusProgress.failed++;
-        }
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-      bonusProgress.running = false;
-      bonusProgress.endTime = new Date();
-      console.log(`🎉 Pengiriman bonus selesai: ${bonusProgress.sent} berhasil, ${bonusProgress.failed} gagal`);
-    })();
-  } catch (err) {
-    console.error("[SEND BONUS ERROR]:", err);
-    bonusProgress.running = false;
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server: " + err.message });
-  }
-});
-
-// ========================
-// CANCEL BONUS WHATSAPP
-// ========================
-router.post("/cancel-bonus", async (req, res) => {
-  try {
-    const number = req.session.number;
-    if (!number) {
-      return res.status(401).json({ success: false, message: "Belum login" });
-    }
-
-    const selected = req.body.selected || [];
-    const company = req.body.company || "hisana";
-    const cancellationNote = req.body.cancellation_note || "Pembatalan oleh user";
-
-    if (!Array.isArray(selected) || selected.length === 0) {
-      return res.status(400).json({ success: false, message: "Pilih bonus yang akan dibatalkan" });
-    }
-
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
-
-    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
+    const { selected, company } = req.body;
+    const bonusTable = getBonusTableName(company);
+    const karyawanTable = getKaryawanTableName(company);
 
     const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
-
     const userId = users[0].id;
     const senderNumber = users[0].nomor_wa;
 
-    // Validasi ID
-    const validIds = selected.filter((id) => !isNaN(parseInt(id))).map((id) => parseInt(id));
-    if (validIds.length === 0) {
-      return res.status(400).json({ success: false, message: "ID tidak valid" });
+    // CEK SOCKET
+    try {
+      await getValidSocket(senderNumber);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message });
     }
 
-    // Ambil data bonus yang akan dibatalkan
-    const placeholders = validIds.map(() => "?").join(",");
-    const [rows] = await db.query(`SELECT * FROM ${tableName} WHERE id IN (${placeholders}) AND user_id = ? AND status = 'terkirim'`, [...validIds, userId]);
-
-    if (!rows.length) {
-      return res.status(400).json({ success: false, message: "Tidak ada bonus terkirim yang dipilih" });
+    if (!selected || selected.length === 0) {
+      return res.status(400).json({ success: false, message: "Tidak ada data yang dipilih" });
     }
 
-    // Kirim response segera
-    res.json({ success: true, message: "Pembatalan bonus dimulai" });
+    const placeholders = selected.map(() => "?").join(",");
 
-    // Proses pembatalan secara asynchronous
+    const [rows] = await db.query(
+      `SELECT b.*, k.no_induk, k.nama_lengkap as nama, k.no_hp as nohp
+       FROM ${bonusTable} b
+       INNER JOIN ${karyawanTable} k ON b.karyawan_id = k.id
+       WHERE b.id IN (${placeholders}) AND b.user_id = ? AND b.status != 'terkirim'`,
+      [...selected, userId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Tidak ada data terpilih yang belum terkirim" });
+    }
+
+    bonusProgress = { running: true, total: rows.length, sent: 0, failed: 0 };
+    res.json({ success: true });
+
     (async () => {
-      let cancelledCount = 0;
-      let failedCount = 0;
-      let messageSentCount = 0;
-      let messageFailedCount = 0;
-
       for (const bonus of rows) {
         try {
-          // 1. Update status menjadi dibatalkan di database
-          const updateQuery = `
-            UPDATE ${tableName} 
-            SET status = 'dibatalkan', 
-                cancelled_at = NOW(), 
-                cancellation_note = ?,
-                cancelled_by = ?
-            WHERE id = ? AND user_id = ?
-          `;
-
-          await db.query(updateQuery, [cancellationNote, userId, bonus.id, userId]);
-          cancelledCount++;
-
-          // 2. Kirim pesan pembatalan ke karyawan
-          try {
-            if (company === "hisana") {
-              await kirimPembatalanBonusHisana(bonus, senderNumber, cancellationNote);
-            } else {
-              await kirimPembatalanBonusEnakko(bonus, senderNumber, cancellationNote);
-            }
-            messageSentCount++;
-          } catch (sendError) {
-            console.error(`Gagal kirim pesan ke ${bonus.nama}:`, sendError.message);
-            messageFailedCount++;
+          if (!bonus.nohp) {
+            throw new Error(`Nomor HP tidak tersedia untuk ${bonus.nama}`);
           }
 
-          // Delay 2 detik antar pengiriman untuk menghindari rate limit
-          await new Promise((r) => setTimeout(r, 2000));
-        } catch (err) {
-          console.error(`Gagal membatalkan bonus ID ${bonus.id}:`, err.message);
-          failedCount++;
-        }
-      }
+          const bonusData = {
+            id: bonus.id,
+            no_induk: bonus.no_induk,
+            nama: bonus.nama,
+            bulan: bonus.bulan,
+            tahun: bonus.tahun,
+            jumlah_bonus: bonus.jumlah_bonus,
+            nohp: bonus.nohp,
+          };
 
-      console.log(`
-        === LAPORAN PEMBATALAN BONUS ===
-        Total diproses: ${rows.length}
-        Berhasil dibatalkan: ${cancelledCount}
-        Gagal dibatalkan: ${failedCount}
-        Pesan terkirim: ${messageSentCount}
-        Pesan gagal: ${messageFailedCount}
-      `);
+          if (company === "hisana") {
+            await kirimBonusHisana(bonusData, senderNumber);
+          } else {
+            await kirimBonusEnakko(bonusData, senderNumber);
+          }
+
+          await db.query(`UPDATE ${bonusTable} SET status = 'terkirim' WHERE id = ?`, [bonus.id]);
+          bonusProgress.sent++;
+          console.log(`✅ Bonus ${company} terkirim: ${bonus.nama}`);
+        } catch (err) {
+          console.error(`❌ Gagal kirim bonus ke ${bonus.nama}:`, err.message);
+          bonusProgress.failed++;
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      bonusProgress.running = false;
     })();
   } catch (err) {
-    console.error("[CANCEL BONUS ERROR]:", err);
-    // Jika response belum dikirim
-    if (!res.headersSent) {
-      res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
-    }
+    console.error("[SEND BONUS ERROR]:", err);
+    bonusProgress.running = false;
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // ========================
-// GET BONUS PROGRESS
+// BONUS PROGRESS
 // ========================
 router.get("/bonus-progress", (req, res) => {
   res.json(bonusProgress);
 });
 
 // ========================
-// DUPLIKASI DATA BONUS DARI BULAN SEBELUMNYA (SEMUA STATUS)
+// BATAL KIRIM BONUS
 // ========================
-router.post("/duplicate-bonus-data", async (req, res) => {
+router.post("/cancel-bonus", async (req, res) => {
   try {
-    console.log("[DUPLICATE BONUS] Request received");
-    console.log("[DUPLICATE BONUS] Query params:", req.query);
-    console.log("[DUPLICATE BONUS] Session number:", req.session.number);
+    const number = checkLogin(req, res);
+    if (!number) return;
 
-    const number = req.session.number;
-    if (!number) {
-      console.log("[DUPLICATE BONUS] No session number found");
-      return res.status(401).json({ success: false, message: "Belum login" });
-    }
+    const { selected, company, cancellation_note } = req.body;
+    const bonusTable = getBonusTableName(company);
+    const karyawanTable = getKaryawanTableName(company);
 
-    const company = req.query.company || "hisana";
-    console.log(`[DUPLICATE BONUS] Company: ${company}`);
-
-    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-    console.log(`[DUPLICATE BONUS] Table name: ${tableName}`);
-
-    // Get user ID
-    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
-      console.log("[DUPLICATE BONUS] User not found for number:", number);
       return res.status(401).json({ success: false, message: "User tidak ditemukan" });
     }
     const userId = users[0].id;
-    console.log(`[DUPLICATE BONUS] User ID: ${userId}`);
+    const senderNumber = users[0].nomor_wa;
 
-    // Get current date and previous month
+    try {
+      await getValidSocket(senderNumber);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+
+    const placeholders = selected.map(() => "?").join(",");
+
+    const [rows] = await db.query(
+      `SELECT b.*, k.no_induk, k.nama_lengkap as nama, k.no_hp as nohp
+       FROM ${bonusTable} b
+       INNER JOIN ${karyawanTable} k ON b.karyawan_id = k.id
+       WHERE b.id IN (${placeholders}) AND b.user_id = ? AND b.status = 'terkirim'`,
+      [...selected, userId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Tidak ada bonus terkirim yang dipilih" });
+    }
+
+    let messageSentCount = 0;
+    let messageFailedCount = 0;
+
+    for (const bonus of rows) {
+      try {
+        const bonusData = {
+          id: bonus.id,
+          no_induk: bonus.no_induk,
+          nama: bonus.nama,
+          bulan: bonus.bulan,
+          tahun: bonus.tahun,
+          jumlah_bonus: bonus.jumlah_bonus,
+          nohp: bonus.nohp,
+        };
+
+        if (company === "hisana") {
+          await kirimPembatalanBonusHisana(bonusData, senderNumber, cancellation_note);
+        } else {
+          await kirimPembatalanBonusEnakko(bonusData, senderNumber, cancellation_note);
+        }
+        messageSentCount++;
+        await new Promise((r) => setTimeout(r, 1000));
+      } catch (err) {
+        console.error(`Error sending cancel notification:`, err);
+        messageFailedCount++;
+      }
+    }
+
+    const updateQuery = `
+      UPDATE ${bonusTable} 
+      SET status = 'dibatalkan', cancelled_at = NOW(), cancellation_note = ?, cancelled_by = ?
+      WHERE id IN (${placeholders}) AND user_id = ? AND status = 'terkirim'
+    `;
+
+    const finalNote = cancellation_note || `Pembatalan bonus pada ${new Date().toLocaleString("id-ID")}`;
+    const [updateResult] = await db.query(updateQuery, [finalNote, number, ...selected, userId]);
+
+    res.json({
+      success: true,
+      message: `Berhasil membatalkan ${updateResult.affectedRows} bonus. Notifikasi: ${messageSentCount} berhasil, ${messageFailedCount} gagal.`,
+      updatedCount: updateResult.affectedRows,
+      messageSentCount,
+      messageFailedCount,
+    });
+  } catch (err) {
+    console.error("[CANCEL BONUS ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ========================
+// DUPLIKASI BONUS DARI BULAN SEBELUMNYA
+// ========================
+router.post("/duplicate-bonus-data", async (req, res) => {
+  try {
+    const number = checkLogin(req, res);
+    if (!number) return;
+
+    const company = req.query.company || "hisana";
+    const bonusTable = getBonusTableName(company);
+    const karyawanTable = getKaryawanTableName(company);
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+    const userId = users[0].id;
+
     const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
+    let currentMonth = now.getMonth() + 1;
+    let currentYear = now.getFullYear();
 
     let previousMonth = currentMonth - 1;
     let previousYear = currentYear;
@@ -724,250 +600,53 @@ router.post("/duplicate-bonus-data", async (req, res) => {
       previousYear = currentYear - 1;
     }
 
-    console.log(`[DUPLICATE BONUS] Current: ${currentYear}-${currentMonth}, Previous: ${previousYear}-${previousMonth}`);
+    // Cek data yang sudah ada di bulan ini
+    const [existingCurrent] = await db.query(`SELECT karyawan_id FROM ${bonusTable} WHERE user_id = ? AND bulan = ? AND tahun = ?`, [userId, currentMonth, currentYear]);
+    const existingKaryawanIds = new Set(existingCurrent.map((row) => row.karyawan_id));
 
-    // Get ALL bonus data from previous month (semua status)
-    let previousData;
-    try {
-      const query = `
-        SELECT * FROM ${tableName} 
-        WHERE user_id = ? 
-        AND bulan = ? 
-        AND tahun = ?
-        ORDER BY id
-      `;
-      [previousData] = await db.query(query, [userId, previousMonth, previousYear]);
-      console.log(`[DUPLICATE BONUS] Found ${previousData.length} records from previous month`);
-
-      // Log breakdown status
-      const statusBreakdown = previousData.reduce((acc, item) => {
-        acc[item.status] = (acc[item.status] || 0) + 1;
-        return acc;
-      }, {});
-      console.log(`[DUPLICATE BONUS] Status breakdown:`, statusBreakdown);
-    } catch (err) {
-      console.error("[DUPLICATE BONUS] Error fetching previous data:", err);
-      return res.status(500).json({ success: false, message: "Error fetching data: " + err.message });
-    }
+    // Ambil data bonus bulan sebelumnya
+    const [previousData] = await db.query(
+      `SELECT b.*, k.no_induk, k.nama_lengkap as nama, k.no_hp
+       FROM ${bonusTable} b
+       INNER JOIN ${karyawanTable} k ON b.karyawan_id = k.id
+       WHERE b.user_id = ? AND b.bulan = ? AND b.tahun = ? AND k.user_id = ?`,
+      [userId, previousMonth, previousYear, userId],
+    );
 
     if (previousData.length === 0) {
       return res.status(400).json({
         success: false,
-        message: `Tidak ada data bonus dari bulan ${previousMonth}/${previousYear} untuk diduplikasi. Pastikan data bonus bulan lalu sudah ada.`,
+        message: `Tidak ada data bonus dari bulan sebelumnya (${previousMonth}/${previousYear}) untuk diduplikasi.`,
       });
     }
-
-    // Get existing bonus data in current month
-    let existingData;
-    try {
-      const query = `
-        SELECT no_induk FROM ${tableName} 
-        WHERE user_id = ? 
-        AND bulan = ? 
-        AND tahun = ?
-      `;
-      [existingData] = await db.query(query, [userId, currentMonth, currentYear]);
-      console.log(`[DUPLICATE BONUS] Existing employees in current month: ${existingData.length}`);
-    } catch (err) {
-      console.error("[DUPLICATE BONUS] Error checking existing data:", err);
-      return res.status(500).json({ success: false, message: "Error checking existing data: " + err.message });
-    }
-
-    // Create set of existing employee IDs
-    const existingEmployeeIds = new Set(existingData.map((item) => item.no_induk));
-    console.log(`[DUPLICATE BONUS] Existing employee IDs:`, Array.from(existingEmployeeIds));
-
-    // Filter data from previous month to only include employees NOT in current month
-    const dataToDuplicate = previousData.filter((item) => !existingEmployeeIds.has(item.no_induk));
-    console.log(`[DUPLICATE BONUS] Found ${dataToDuplicate.length} new employees to duplicate (out of ${previousData.length} total)`);
-
-    if (dataToDuplicate.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Tidak ada data bonus baru untuk diduplikasi. Semua karyawan dari bulan ${previousMonth}/${previousYear} sudah memiliki data bonus di bulan ini.`,
-      });
-    }
-
-    // Duplicate data menggunakan transaksi
-    const connection = await db.getConnection();
-    await connection.beginTransaction();
 
     let duplicatedCount = 0;
-    let skippedCount = previousData.length - dataToDuplicate.length;
-    let errors = [];
-    let duplicatedIds = [];
+    let skippedCount = 0;
 
-    try {
-      for (const oldData of dataToDuplicate) {
-        try {
-          // Create new data object
-          const newData = {
-            user_id: userId,
-            no_induk: oldData.no_induk,
-            nama: oldData.nama,
-            bulan: currentMonth,
-            tahun: currentYear,
-            jumlah_bonus: oldData.jumlah_bonus,
-            nohp: oldData.nohp,
-            status: "belum_dikirim", // Always reset to belum_dikirim
-            is_duplicated: 1,
-            duplicated_from_id: oldData.id,
-            duplicated_at: new Date(),
-            created_at: new Date(),
-          };
-
-          // Build insert query
-          const fields = Object.keys(newData);
-          const values = Object.values(newData);
-          const placeholders = fields.map(() => "?").join(",");
-
-          const insertQuery = `INSERT INTO ${tableName} (${fields.join(",")}) VALUES (${placeholders})`;
-
-          console.log(`[DUPLICATE BONUS] Duplicating employee: ${oldData.no_induk} (${oldData.nama}) from ID: ${oldData.id} (status asli: ${oldData.status})`);
-          const [result] = await connection.query(insertQuery, values);
-          duplicatedIds.push(result.insertId);
-          duplicatedCount++;
-        } catch (err) {
-          console.error(`[DUPLICATE BONUS] Error inserting record for ${oldData.no_induk}:`, err);
-          errors.push(`${oldData.no_induk}: ${err.message}`);
-        }
+    for (const sourceData of previousData) {
+      if (existingKaryawanIds.has(sourceData.karyawan_id)) {
+        skippedCount++;
+        continue;
       }
 
-      // Commit transaksi
-      await connection.commit();
-      console.log(`[DUPLICATE BONUS] Transaction committed successfully`);
-
-      // Prepare message HTML for SweetAlert
-      let messageHtml = `<div style="background:#f0fdf4;border-radius:12px;padding:15px">
-          <p><strong>✅ Berhasil menduplikasi data bonus dari bulan ${previousMonth}/${previousYear} ke bulan ${currentMonth}/${currentYear}.</strong></p>
-          <p style="margin-top: 10px;">
-            <i class="fas fa-check-circle" style="color:#16a34a"></i> <strong>${duplicatedCount}</strong> data bonus berhasil diduplikasi
-          </p>`;
-
-      if (skippedCount > 0) {
-        messageHtml += `<p style="margin-top: 5px;">
-          <i class="fas fa-info-circle" style="color:#f59e0b"></i> <strong>${skippedCount}</strong> data bonus dilewati (sudah ada di bulan ini)
-        </p>`;
-      }
-
-      if (errors.length > 0 && errors.length <= 5) {
-        messageHtml += `<div style="margin-top: 10px; padding: 10px; background: #fee2e2; border-radius: 8px;">
-          <p style="margin: 0 0 5px 0; font-weight: bold; color: #dc2626;">Data gagal diduplikasi:</p>
-          <ul style="margin: 0; padding-left: 20px; color: #dc2626;">`;
-        errors.forEach((error) => {
-          messageHtml += `<li>${error}</li>`;
-        });
-        messageHtml += `</ul></div>`;
-      }
-
-      messageHtml += `</div>`;
-
-      res.json({
-        success: true,
-        message: `Berhasil menduplikasi ${duplicatedCount} data bonus dari bulan ${previousMonth}/${previousYear} ke bulan ${currentMonth}/${currentYear}.`,
-        messageHtml: messageHtml,
-        duplicatedCount: duplicatedCount,
-        skippedCount: skippedCount,
-        totalPrevious: previousData.length,
-        duplicatedIds: duplicatedIds,
-        errors: errors.length > 0 ? errors : undefined,
-      });
-    } catch (err) {
-      // Rollback jika ada error
-      await connection.rollback();
-      console.error("[DUPLICATE BONUS] Transaction error, rolling back:", err);
-      throw err;
-    } finally {
-      connection.release();
-    }
-  } catch (err) {
-    console.error("[DUPLICATE BONUS ERROR]:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message || "Terjadi kesalahan saat menduplikasi data bonus",
-    });
-  }
-});
-
-// ========================
-// BATALKAN DUPLIKASI BONUS
-// ========================
-router.post("/cancel-duplicate-bonus", async (req, res) => {
-  try {
-    console.log("[CANCEL DUPLICATE BONUS] Request received");
-
-    const number = req.session.number;
-    if (!number) {
-      return res.status(401).json({ success: false, message: "Belum login" });
-    }
-
-    const company = req.query.company || "hisana";
-    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
-
-    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
-    if (!users.length) {
-      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
-    }
-    const userId = users[0].id;
-
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-
-    let currentData;
-    const getDataQuery = `
-      SELECT id, no_induk, nama, is_duplicated 
-      FROM ${tableName} 
-      WHERE user_id = ? 
-      AND bulan = ? 
-      AND tahun = ?
-    `;
-    [currentData] = await db.query(getDataQuery, [userId, currentMonth, currentYear]);
-
-    if (currentData.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Tidak ada data bonus dari bulan ${currentMonth}/${currentYear} untuk dibatalkan`,
-      });
-    }
-
-    const duplicatedData = currentData.filter((item) => item.is_duplicated === 1);
-    const manualData = currentData.filter((item) => item.is_duplicated !== 1);
-
-    if (duplicatedData.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Tidak ada data bonus hasil duplikasi di bulan ${currentMonth}/${currentYear} untuk dibatalkan.`,
-      });
-    }
-
-    const duplicatedIds = duplicatedData.map((item) => item.id);
-    const deleteQuery = `DELETE FROM ${tableName} WHERE id IN (${duplicatedIds.map(() => "?").join(",")})`;
-    const [result] = await db.query(deleteQuery, duplicatedIds);
-
-    let message = `Berhasil membatalkan duplikasi bonus. ${result.affectedRows} data hasil duplikasi telah dihapus.`;
-    if (manualData.length > 0) {
-      message += `\n\n${manualData.length} data bonus input manual tetap dipertahankan.`;
+      await db.query(
+        `INSERT INTO ${bonusTable} 
+         (user_id, karyawan_id, bulan, tahun, jumlah_bonus, status, is_duplicated, duplicated_from_id, duplicated_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [userId, sourceData.karyawan_id, currentMonth, currentYear, sourceData.jumlah_bonus, "belum_dikirim", 1, sourceData.id],
+      );
+      duplicatedCount++;
     }
 
     res.json({
       success: true,
-      message: message,
-      deletedCount: result.affectedRows,
-      manualDataCount: manualData.length,
-      duplicatedDataList: duplicatedData.map((d) => ({
-        id: d.id,
-        no_induk: d.no_induk,
-        nama: d.nama,
-      })),
+      message: `Berhasil menduplikasi ${duplicatedCount} data bonus`,
+      duplicatedCount,
+      skippedCount,
     });
   } catch (err) {
-    console.error("[CANCEL DUPLICATE BONUS ERROR]:", err);
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+    console.error("[DUPLICATE BONUS ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -976,17 +655,11 @@ router.post("/cancel-duplicate-bonus", async (req, res) => {
 // ========================
 router.get("/check-bonus-duplicate-status", async (req, res) => {
   try {
-    const number = req.session.number;
-    if (!number) {
-      return res.status(401).json({ success: false, message: "Belum login" });
-    }
+    const number = checkLogin(req, res);
+    if (!number) return;
 
     const company = req.query.company || "hisana";
-    const tableName = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-
-    if (!["hisana", "enakko"].includes(company)) {
-      return res.status(400).json({ success: false, message: "Company tidak valid" });
-    }
+    const bonusTable = getBonusTableName(company);
 
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
@@ -998,36 +671,55 @@ router.get("/check-bonus-duplicate-status", async (req, res) => {
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    // GUNAKAN kolom bulan dan tahun, BUKAN MONTH(created_at) dan YEAR(created_at)
-    const query = `
-      SELECT COUNT(*) as count FROM ${tableName} 
-      WHERE user_id = ? 
-      AND bulan = ? 
-      AND tahun = ?
-      AND is_duplicated = 1
-    `;
-    const [result] = await db.query(query, [userId, currentMonth, currentYear]);
+    const [result] = await db.query(
+      `SELECT COUNT(*) as count FROM ${bonusTable} 
+       WHERE user_id = ? AND bulan = ? AND tahun = ? AND is_duplicated = 1`,
+      [userId, currentMonth, currentYear],
+    );
 
-    const hasRecentDuplicate = result[0].count > 0;
-
-    console.log(`[CHECK BONUS STATUS] User ${userId}, Month ${currentMonth}/${currentYear}, Has duplicated data: ${hasRecentDuplicate}`);
-
-    res.json({
-      success: true,
-      hasRecentDuplicate,
-    });
+    res.json({ success: true, hasRecentDuplicate: result[0].count > 0 });
   } catch (err) {
     console.error("[CHECK BONUS DUPLICATE STATUS ERROR]:", err);
-    res.status(500).json({ success: false, message: "Terjadi kesalahan server" });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
 // ========================
-// HELPER FUNCTION
+// BATALKAN DUPLIKASI BONUS
 // ========================
-function escapeHtml(text) {
-  if (!text) return "";
-  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
+router.post("/cancel-duplicate-bonus", async (req, res) => {
+  try {
+    const number = checkLogin(req, res);
+    if (!number) return;
+
+    const company = req.query.company || "hisana";
+    const bonusTable = getBonusTableName(company);
+
+    const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
+    if (!users.length) {
+      return res.status(401).json({ success: false, message: "User tidak ditemukan" });
+    }
+    const userId = users[0].id;
+
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    const [result] = await db.query(
+      `DELETE FROM ${bonusTable} 
+       WHERE user_id = ? AND bulan = ? AND tahun = ? AND is_duplicated = 1`,
+      [userId, currentMonth, currentYear],
+    );
+
+    res.json({
+      success: true,
+      message: `Berhasil membatalkan duplikasi. ${result.affectedRows} data bonus hasil duplikasi telah dihapus.`,
+      deletedCount: result.affectedRows,
+    });
+  } catch (err) {
+    console.error("[CANCEL BONUS DUPLICATE ERROR]:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 export default router;

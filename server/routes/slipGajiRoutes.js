@@ -50,17 +50,39 @@ function parseCurrencyFromExcel(value) {
 }
 
 // Helper untuk mendapatkan socket yang valid
-async function getValidSocket(senderNumber, maxRetries = 3) {
+async function getValidSocket(senderNumber, maxRetries = 5) {
+  console.log(`[SOCKET CHECK] Checking socket for ${senderNumber}`);
+
   for (let i = 0; i < maxRetries; i++) {
     const sock = getSocketByNumber(senderNumber);
-    if (sock && sock.user && sock.user.id) {
-      console.log(`✅ Socket valid untuk ${senderNumber}`);
-      return sock;
+
+    // Log detail socket
+    if (sock) {
+      console.log(`[SOCKET CHECK] Socket found for ${senderNumber}, user: ${sock.user?.id ? "Yes" : "No"}`);
+      if (sock.user && sock.user.id) {
+        console.log(`✅ Socket valid untuk ${senderNumber}`);
+        return sock;
+      }
+    } else {
+      console.log(`[SOCKET CHECK] No socket found for ${senderNumber}, attempt ${i + 1}/${maxRetries}`);
     }
-    console.log(`⚠️ Socket belum siap untuk ${senderNumber}, percobaan ${i + 1}/${maxRetries}`);
-    await new Promise((r) => setTimeout(r, 2000));
+
+    // Jika belum ada, coba start bot ulang
+    if (i === 2) {
+      console.log(`[SOCKET CHECK] Attempting to restart bot for ${senderNumber}`);
+      try {
+        const { startBot } = await import("../../bot/index.js");
+        await startBot({ number: senderNumber });
+        console.log(`[SOCKET CHECK] Bot restart initiated for ${senderNumber}`);
+      } catch (err) {
+        console.error(`[SOCKET CHECK] Failed to restart bot:`, err.message);
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 3000));
   }
-  throw new Error(`Bot WhatsApp tidak aktif untuk nomor ${senderNumber}. Silakan scan QR code terlebih dahulu.`);
+
+  throw new Error(`Bot WhatsApp tidak aktif untuk nomor ${senderNumber}. Silakan scan QR code terlebih dahulu atau login ulang.`);
 }
 
 // ========================

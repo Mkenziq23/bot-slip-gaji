@@ -12,50 +12,11 @@
       <h2><i class="fas fa-file-invoice-dollar"></i> Payroll System</h2>
       <div class="subtitle">PT Hisana & PT Enakko</div>
 
-      <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('qr', this)">Login With QR Code</button>
-        <button class="tab-btn" onclick="switchTab('otp', this)">Login With Number</button>
-      </div>
+      <p style="text-align: center; margin-bottom: 20px; color: #64748b">Scan QR Code dengan WhatsApp untuk Login</p>
 
-      <!-- Tab QR -->
-      <div id="qr-tab" class="tab-content active">
-        <p style="text-align: center; margin-bottom: 20px; color: #64748b">Scan QR Code dengan WhatsApp</p>
-        <div class="qr-wrapper">
-          <div id="loading" class="spinner"></div>
-          <canvas id="qr"></canvas>
-        </div>
-      </div>
-
-      <!-- Tab OTP -->
-      <div id="otp-tab" class="tab-content">
-        <div id="otp-message"></div>
-
-        <div class="form-group">
-          <label><i class="fab fa-whatsapp"></i> Nomor WhatsApp</label>
-          <div class="phone-input-wrapper">
-            <span class="phone-prefix">+62</span>
-            <input type="tel" id="phone-number" placeholder="81234567890" autocomplete="off" />
-          </div>
-          <div class="info-text">Masukkan 10-13 digit setelah 62 (contoh: 81234567890)</div>
-        </div>
-
-        <button class="btn btn-primary" id="action-btn" onclick="handleAction()"><i class="fas fa-paper-plane"></i> Minta Kode OTP</button>
-
-        <div id="otp-section" style="display: none; margin-top: 20px">
-          <div class="otp-display">
-            <div><i class="fas fa-info-circle"></i> Kode OTP Anda</div>
-            <div class="code" id="displayed-otp">------</div>
-            <div class="info-text"><i class="fas fa-clock"></i> Berlaku 2 menit</div>
-          </div>
-
-          <div class="form-group">
-            <label><i class="fas fa-key"></i> Masukkan Kode OTP</label>
-            <div class="otp-input-group">
-              <input type="text" id="otp-code" placeholder="000000" maxlength="6" autocomplete="off" />
-            </div>
-          </div>
-          <div id="timer" class="timer"></div>
-        </div>
+      <div class="qr-wrapper">
+        <div id="loading" class="spinner"></div>
+        <canvas id="qr"></canvas>
       </div>
 
       <div id="status">Menghubungkan ke Server...</div>

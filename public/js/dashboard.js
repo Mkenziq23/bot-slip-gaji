@@ -18,6 +18,74 @@ document.getElementById("logoutBtn").onclick = async () => {
   }
 };
 
+// ============================================
+// SESSION CHECKER - WEBSOCKET FORCE LOGOUT
+// ============================================
+
+// WebSocket connection untuk menerima force logout dari server
+const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+const socket = new WebSocket(`${protocol}//${window.location.host}`);
+
+socket.onmessage = (event) => {
+  try {
+    const data = JSON.parse(event.data);
+    if (data.status === "force_logout") {
+      Swal.fire({
+        title: "Sesi Berakhir",
+        text: data.message || "Koneksi WhatsApp terputus. Silakan login kembali.",
+        icon: "warning",
+        confirmButtonText: "OK",
+        allowOutsideClick: false,
+      }).then(() => {
+        window.location.href = "/";
+      });
+    }
+  } catch (err) {
+    console.error("WebSocket message error:", err);
+  }
+};
+
+socket.onerror = (error) => {
+  console.error("WebSocket error:", error);
+};
+
+// Session checker via HTTP (fallback)
+let sessionCheckInterval = null;
+
+function startSessionCheck() {
+  if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+
+  sessionCheckInterval = setInterval(async () => {
+    try {
+      const response = await fetch("/check-session");
+      const data = await response.json();
+
+      if (!data.loggedIn) {
+        console.log("Session expired or device disconnected");
+
+        Swal.fire({
+          title: "Sesi Berakhir",
+          text: data.reason || "Sesi Anda telah berakhir. Silakan login ulang.",
+          icon: "warning",
+          confirmButtonText: "OK",
+          allowOutsideClick: false,
+        }).then(() => {
+          window.location.href = "/";
+        });
+      }
+    } catch (err) {
+      console.error("Session check error:", err);
+    }
+  }, 30000); // Check every 30 seconds
+}
+
+// Start session check when dashboard loads
+startSessionCheck();
+
+// ============================================
+// END OF SESSION CHECKER
+// ============================================
+
 async function checkAdminRole() {
   try {
     const res = await fetch("/api/admin/me");
@@ -2638,7 +2706,14 @@ let cancelBonusProgress = {
   sent: 0,
   failed: 0,
 };
+
 let cancelBonusProgressInterval = null;
+
+function parseRupiah(value) {
+  if (!value) return 0;
+  let cleanValue = value.toString().replace(/[^\d]/g, "");
+  return parseInt(cleanValue) || 0;
+}
 
 // =============================
 // THR GLOBAL
@@ -2646,16 +2721,16 @@ let cancelBonusProgressInterval = null;
 let thrData = [];
 let currentThrPage = 1;
 const pageSizeThr = 10;
+let thrProgressInterval = null;
+let selectedThrSet = new Set();
+let currentThrYear = new Date().getFullYear();
+let thrDuplicateCheckInterval = null;
 let thrProgress = {
   running: false,
   total: 0,
   sent: 0,
   failed: 0,
 };
-let thrProgressInterval = null;
-let selectedThrSet = new Set();
-let currentThrYear = new Date().getFullYear();
-let thrDuplicateCheckInterval = null;
 let cancelThrProgress = {
   running: false,
   total: 0,
@@ -2675,6 +2750,32 @@ let selectedThrEmployee = null;
 function rupiah(x) {
   if (!x) return "Rp 0";
   return "Rp " + Number(x).toLocaleString("id-ID");
+}
+
+function handleThrJumlahInput(e) {
+  const input = e.target;
+  let value = input.value;
+  const cursorPosition = input.selectionStart;
+  let cleanValue = value.replace(/[^\d]/g, "");
+
+  if (cleanValue) {
+    let formattedValue = "";
+    let counter = 0;
+    for (let i = cleanValue.length - 1; i >= 0; i--) {
+      counter++;
+      formattedValue = cleanValue[i] + formattedValue;
+      if (counter % 3 === 0 && i !== 0) {
+        formattedValue = "." + formattedValue;
+      }
+    }
+    input.value = formattedValue;
+    const newPosition = formattedValue.length - (cleanValue.length - cursorPosition);
+    setTimeout(() => {
+      input.setSelectionRange(newPosition, newPosition);
+    }, 0);
+  } else {
+    input.value = "";
+  }
 }
 
 async function loadAvailableSlipYears() {
@@ -3003,6 +3104,44 @@ document.getElementById("uploadFormKirim").onsubmit = async (e) => {
     if (statusEl) statusEl.innerText = "";
   }
 };
+
+function handleCurrencyInput(e) {
+  const input = e.target;
+  let value = input.value;
+  const cursorPosition = input.selectionStart;
+
+  // Hapus semua karakter non-digit
+  let cleanValue = value.replace(/[^\d]/g, "");
+
+  if (cleanValue) {
+    // Format dengan pemisah ribuan
+    let formattedValue = "";
+    let counter = 0;
+    for (let i = cleanValue.length - 1; i >= 0; i--) {
+      counter++;
+      formattedValue = cleanValue[i] + formattedValue;
+      if (counter % 3 === 0 && i !== 0) {
+        formattedValue = "." + formattedValue;
+      }
+    }
+    input.value = formattedValue;
+
+    // Kembalikan posisi kursor
+    const newPosition = formattedValue.length - (cleanValue.length - cursorPosition);
+    setTimeout(() => {
+      input.setSelectionRange(newPosition, newPosition);
+    }, 0);
+  } else {
+    input.value = "";
+  }
+}
+
+// Fungsi parse currency (sama seperti di atas)
+function parseCurrency(value) {
+  if (!value) return 0;
+  let cleanValue = value.toString().replace(/[^\d]/g, "");
+  return parseInt(cleanValue, 10) || 0;
+}
 
 // =============================
 // FORM RENDER FUNCTIONS
@@ -3474,28 +3613,38 @@ function resetSlipEmployeeSelection() {
   if (namaInput) namaInput.value = "";
 }
 
+// Fungsi untuk format currency (pemisah ribuan dengan titik)
 function formatCurrency(angka) {
   if (!angka) return "";
+  // Hapus semua karakter non-digit
   let cleanNumber = angka.toString().replace(/[^\d]/g, "");
   if (!cleanNumber) return "";
-  const number = parseInt(cleanNumber);
+  const number = parseInt(cleanNumber, 10);
   if (isNaN(number)) return "";
-  return number.toLocaleString("id-ID");
+  // Format dengan pemisah ribuan menggunakan titik
+  return number.toLocaleString("id-ID").replace(/,/g, ".");
 }
 
+// Fungsi untuk parse currency (mengembalikan angka)
 function parseCurrency(value) {
   if (!value) return 0;
   let cleanValue = value.toString().replace(/[^\d]/g, "");
-  return parseInt(cleanValue) || 0;
+  return parseInt(cleanValue, 10) || 0;
 }
 
-function handleCurrencyInput(e) {
+// Fungsi handle input untuk bonus jumlah
+function handleBonusJumlahInput(e) {
   const input = e.target;
   let value = input.value;
+
+  // Simpan posisi kursor
   const cursorPosition = input.selectionStart;
+
+  // Hapus semua karakter non-digit
   let cleanValue = value.replace(/[^\d]/g, "");
 
   if (cleanValue) {
+    // Format dengan pemisah ribuan
     let formattedValue = "";
     let counter = 0;
     for (let i = cleanValue.length - 1; i >= 0; i--) {
@@ -3506,6 +3655,8 @@ function handleCurrencyInput(e) {
       }
     }
     input.value = formattedValue;
+
+    // Kembalikan posisi kursor
     const newPosition = formattedValue.length - (cleanValue.length - cursorPosition);
     setTimeout(() => {
       input.setSelectionRange(newPosition, newPosition);
@@ -3616,6 +3767,7 @@ function switchMainMenu(company) {
   currentSlipYear = year;
   currentBonusMonth = month;
   currentBonusYear = year;
+  currentThrYear = "all";
 
   const slipMonthSelect = document.getElementById("slipMonthSelect");
   const slipYearSelect = document.getElementById("slipYearSelect");
@@ -3944,7 +4096,7 @@ function renderTableHeader() {
   } else {
     thead.innerHTML = `
       <tr>
-        <th><i class="fas fa-check-square"></i></th>
+        <th><input type="checkbox" id="selectAllSlip" class="select-all-checkbox"></th>
         <th>No</th>
         <th>No Induk</th>
         <th>Nama</th>
@@ -4077,6 +4229,7 @@ function renderTable() {
 
 function attachIndividualCheckboxHandlers() {
   document.querySelectorAll(".chk-slip").forEach((chk) => {
+    // Hapus event listener lama dengan clone
     const newChk = chk.cloneNode(true);
     chk.parentNode.replaceChild(newChk, chk);
 
@@ -4090,7 +4243,7 @@ function attachIndividualCheckboxHandlers() {
         }
         updateSelectAllSlipStatus();
         updateCancelSlipButtonVisibility();
-        console.log("Selected count:", checkedSet.size);
+        console.log(`Checkbox ${id} changed, selected count: ${checkedSet.size}`);
       };
     }
   });
@@ -4100,6 +4253,7 @@ function setupSelectAllSlipListener() {
   const selectAllCheckbox = document.getElementById("selectAllSlip");
   if (!selectAllCheckbox) return;
 
+  // Hapus event listener lama dengan clone
   const newSelectAll = selectAllCheckbox.cloneNode(true);
   selectAllCheckbox.parentNode.replaceChild(newSelectAll, selectAllCheckbox);
 
@@ -4117,6 +4271,7 @@ function setupSelectAllSlipListener() {
       }
     });
     updateCancelSlipButtonVisibility();
+    console.log(`Select All - checked: ${isChecked}, total selected: ${checkedSet.size}`);
   });
 }
 
@@ -5513,7 +5668,6 @@ async function loadBonusData() {
 
     let url = `/bonus?company=${currentCompany}`;
 
-    // Kirim filter bulan dan tahun
     if (currentBonusMonth && currentBonusMonth !== "all") {
       url += `&month=${currentBonusMonth}`;
     }
@@ -5528,26 +5682,41 @@ async function loadBonusData() {
     bonusData = await res.json();
     console.log("Bonus data loaded:", bonusData.length, "records");
 
-    // Log breakdown status untuk debugging
-    const statusBreakdown = bonusData.reduce((acc, item) => {
-      acc[item.status] = (acc[item.status] || 0) + 1;
-      return acc;
-    }, {});
-    console.log("Bonus status breakdown:", statusBreakdown);
+    // Log sample data untuk debugging
+    if (bonusData.length > 0) {
+      console.log("Sample bonus data:", bonusData[0]);
+    }
 
-    // Render tabel bonus
+    // Reset selected set (hapus ID yang tidak ada di data baru)
+    const validIds = new Set(bonusData.map((d) => d.id));
+    for (const id of selectedBonusSet) {
+      if (!validIds.has(id)) {
+        selectedBonusSet.delete(id);
+      }
+    }
+
     renderBonusTable();
-
-    // Load available years untuk filter
     await loadAvailableBonusYears();
 
-    // Setelah data dimuat, check duplicate status
     setTimeout(() => {
       checkBonusDuplicateStatus();
     }, 100);
   } catch (err) {
     console.error("Load bonus data error:", err);
-    Swal.fire("Error", "Gagal memuat data bonus: " + err.message, "error");
+    const tbody = document.querySelector("#tableBonus tbody");
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="12" style="text-align: center; padding: 40px;">
+            <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #ef4444; margin-bottom: 10px; display: block;"></i>
+            <p style="color: #64748b;">Gagal memuat data bonus: ${err.message}</p>
+            <button class="btn-primary" onclick="loadBonusData()" style="margin-top: 10px;">
+              <i class="fas fa-sync-alt"></i> Coba Lagi
+            </button>
+          </td>
+        </tr>
+      `;
+    }
   }
 }
 
@@ -5636,10 +5805,12 @@ function renderBonusTable() {
   tbody.innerHTML = "";
 
   const query = document.getElementById("searchBonusInput")?.value.toLowerCase() || "";
-  const filtered = bonusData.filter((d) => d.nama?.toLowerCase().includes(query) || d.no_induk?.toLowerCase().includes(query));
+  const filtered = bonusData.filter((d) => d.nama?.toLowerCase().includes(query) || false || d.no_induk?.toLowerCase().includes(query) || false);
 
   const totalPages = Math.ceil(filtered.length / pageSizeBonus);
-  if (currentBonusPage > totalPages) currentBonusPage = 1;
+  if (currentBonusPage > totalPages && totalPages > 0) currentBonusPage = totalPages;
+  if (currentBonusPage < 1) currentBonusPage = 1;
+
   const start = (currentBonusPage - 1) * pageSizeBonus;
   const pageData = filtered.slice(start, start + pageSizeBonus);
 
@@ -5650,7 +5821,7 @@ function renderBonusTable() {
       <tr>
         <td colspan="12" style="text-align: center; padding: 40px;">
           <i class="fas fa-calendar-alt" style="font-size: 48px; color: #cbd5e1; margin-bottom: 10px; display: block;"></i>
-          <p style="color: #64748b;">Belum ada data bonus${currentBonusMonth !== "all" ? ` untuk bulan ${bulanNames[currentBonusMonth - 1]}` : ""}${currentBonusYear !== "all" ? ` tahun ${currentBonusYear}` : ""}</p>
+          <p style="color: #64748b;">Belum ada data bonus</p>
           <button class="btn-primary" onclick="openBonusModal()" style="margin-top: 10px;">
             <i class="fas fa-plus"></i> Tambah Data Bonus
           </button>
@@ -5660,7 +5831,6 @@ function renderBonusTable() {
     const bonusPageInfo = document.getElementById("bonusPageInfo");
     if (bonusPageInfo) bonusPageInfo.innerText = `Halaman 0 dari 0`;
 
-    // Reset select all checkbox saat tidak ada data
     const selectAllCheckbox = document.getElementById("selectAllBonus");
     if (selectAllCheckbox) {
       selectAllCheckbox.checked = false;
@@ -5696,26 +5866,57 @@ function renderBonusTable() {
 
     const isChecked = selectedBonusSet.has(d.id) ? "checked" : "";
 
+    // Tombol Edit dan Delete (hanya untuk status belum_dikirim)
+    let actionButtons = "";
+    if (d.status !== "terkirim" && d.status !== "dibatalkan") {
+      actionButtons = `
+        <button class="btn-primary" style="padding: 5px 10px; margin-right: 5px;" onclick='openBonusModalById(${d.id})' title="Edit">
+          <i class="fas fa-edit"></i>
+        </button>
+        <button class="btn-danger" style="padding: 5px 10px;" onclick='deleteBonus(${d.id})' title="Hapus">
+          <i class="fas fa-trash"></i>
+        </button>
+      `;
+    } else if (d.status === "terkirim") {
+      actionButtons = '<span style="color: #64748b; font-size: 0.7rem;">Tidak dapat diedit</span>';
+    } else {
+      actionButtons = '<span style="color: #64748b; font-size: 0.7rem;">Dibatalkan</span>';
+    }
+
     tr.innerHTML = `
-      <td style="text-align: center;"><input type="checkbox" class="chk-bonus" data-id="${d.id}" ${isChecked}>
-      <td style="text-align: center;">${start + i + 1}
-      <td>${escapeHtml(d.no_induk)}
-      <td style="font-weight:600">${escapeHtml(d.nama)}
-      <td style="text-align: center;">${bulanNames[d.bulan - 1]}
-      <td style="text-align: center;">${d.tahun}
-      <td class="money">${rupiah(d.jumlah_bonus)}
-      <td>${escapeHtml(d.nohp)}
-      <td>${statusBadge}
-      <td style="font-size:0.85rem;">${cancellationNoteDisplay}
-      <td style="font-size:0.8rem; text-align: center;">${new Date(d.created_at).toLocaleDateString("id-ID")}
-      <td style="text-align: center;">
-        <button class="btn-primary" style="padding:5px 10px; margin-right: 5px;" onclick='openBonusModalById(${d.id})'><i class="fas fa-edit"></i></button>
-        <button class="btn-danger" style="padding:5px 10px;" onclick='deleteBonus(${d.id})'><i class="fas fa-trash"></i></button>
+      <td style="text-align: center;"><input type="checkbox" class="chk-bonus" data-id="${d.id}" ${isChecked}></td>
+      <td style="text-align: center;">${start + i + 1}</td>
+      <td style="font-weight: 500;">${escapeHtml(d.no_induk || "-")}</td>
+      <td style="font-weight: 600;">${escapeHtml(d.nama || "-")}</td>
+      <td style="text-align: center;">${bulanNames[d.bulan - 1] || "-"}</td>
+      <td style="text-align: center;">${d.tahun || "-"}</td>
+      <td class="money">${rupiah(d.jumlah_bonus || 0)}</td>
+      <td>${escapeHtml(d.nohp || "-")}</td>
+      <td>${statusBadge}</td>
+      <td style="font-size:0.85rem;">${cancellationNoteDisplay}</td>
+      <td style="font-size:0.8rem; text-align: center;">${d.created_at ? new Date(d.created_at).toLocaleDateString("id-ID") : "-"}</td>
+      <td class="text-center" style="white-space: nowrap;">${actionButtons}</td>
     `;
     tbody.appendChild(tr);
   });
 
   // Attach individual checkbox handlers
+  attachIndividualBonusCheckboxHandlers();
+
+  // Setup select all checkbox
+  setupSelectAllBonusListener();
+
+  // Update select all status
+  updateSelectAllBonusStatus();
+  updateCancelBonusButtonVisibility();
+
+  const bonusPageInfo = document.getElementById("bonusPageInfo");
+  if (bonusPageInfo) {
+    bonusPageInfo.innerText = `Halaman ${currentBonusPage} dari ${totalPages || 1}`;
+  }
+}
+
+function attachIndividualBonusCheckboxHandlers() {
   document.querySelectorAll(".chk-bonus").forEach((chk) => {
     const newChk = chk.cloneNode(true);
     chk.parentNode.replaceChild(newChk, chk);
@@ -5732,24 +5933,12 @@ function renderBonusTable() {
       console.log("Selected bonus count:", selectedBonusSet.size);
     };
   });
-
-  // Setup select all checkbox
-  setupSelectAllBonusListener();
-
-  // Update select all status
-  updateSelectAllBonusStatus();
-
-  const bonusPageInfo = document.getElementById("bonusPageInfo");
-  if (bonusPageInfo) bonusPageInfo.innerText = `Halaman ${currentBonusPage} dari ${totalPages || 1}`;
-
-  updateCancelBonusButtonVisibility();
 }
 
 function setupSelectAllBonusListener() {
   const selectAllCheckbox = document.getElementById("selectAllBonus");
   if (!selectAllCheckbox) return;
 
-  // Clone untuk menghindari multiple event listeners
   const newSelectAll = selectAllCheckbox.cloneNode(true);
   selectAllCheckbox.parentNode.replaceChild(newSelectAll, selectAllCheckbox);
 
@@ -5951,54 +6140,42 @@ function openBonusModal(item = null) {
   }
 }
 
+// Setup bonus form handler dengan format currency
 const bonusFormElement = document.getElementById("bonusForm");
 if (bonusFormElement) {
   const newBonusForm = bonusFormElement.cloneNode(true);
   bonusFormElement.parentNode.replaceChild(newBonusForm, bonusFormElement);
 
-  function parseRupiah(value) {
-    if (!value) return 0;
-    let cleanValue = value.toString().replace(/[^\d]/g, "");
-    return parseInt(cleanValue) || 0;
-  }
-
-  function handleBonusJumlahInput(e) {
-    const input = e.target;
-    let value = input.value;
-    let cleanValue = value.replace(/[^\d]/g, "");
-
-    if (cleanValue) {
-      let formattedValue = "";
-      let counter = 0;
-      for (let i = cleanValue.length - 1; i >= 0; i--) {
-        counter++;
-        formattedValue = cleanValue[i] + formattedValue;
-        if (counter % 3 === 0 && i !== 0) {
-          formattedValue = "." + formattedValue;
-        }
-      }
-      input.value = formattedValue;
-    } else {
-      input.value = "";
-    }
-  }
-
+  // Setup currency input untuk bonus_jumlah
   const bonusJumlahInput = document.getElementById("bonus_jumlah");
   if (bonusJumlahInput) {
-    bonusJumlahInput.addEventListener("input", handleBonusJumlahInput);
-    bonusJumlahInput.addEventListener("keypress", function (e) {
+    // Hapus event listener lama
+    const newBonusJumlahInput = bonusJumlahInput.cloneNode(true);
+    bonusJumlahInput.parentNode.replaceChild(newBonusJumlahInput, bonusJumlahInput);
+
+    // Tambahkan event listener untuk format currency
+    newBonusJumlahInput.addEventListener("input", handleBonusJumlahInput);
+
+    // Restrict input hanya angka
+    newBonusJumlahInput.addEventListener("keypress", function (e) {
       const charCode = e.which ? e.which : e.keyCode;
+      // Allow: backspace, delete, tab, escape, enter, arrow keys
+      if (charCode === 8 || charCode === 9 || charCode === 13 || charCode === 27 || charCode === 37 || charCode === 38 || charCode === 39 || charCode === 40 || charCode === 46) {
+        return;
+      }
+      // Allow only numbers
       if (charCode < 48 || charCode > 57) {
-        if (charCode !== 8 && charCode !== 9 && charCode !== 37 && charCode !== 39 && charCode !== 46) {
-          e.preventDefault();
-        }
+        e.preventDefault();
       }
     });
-    bonusJumlahInput.addEventListener("paste", function (e) {
+
+    // Handle paste event
+    newBonusJumlahInput.addEventListener("paste", function (e) {
       e.preventDefault();
       let pasteData = (e.clipboardData || window.clipboardData).getData("text");
       let cleanData = pasteData.replace(/[^\d]/g, "");
       if (cleanData) {
+        // Format the pasted number
         let formatted = "";
         let counter = 0;
         for (let i = cleanData.length - 1; i >= 0; i--) {
@@ -6010,6 +6187,7 @@ if (bonusFormElement) {
         }
         this.value = formatted;
       }
+      // Trigger input event to ensure any additional formatting
       const event = new Event("input", { bubbles: true });
       this.dispatchEvent(event);
     });
@@ -6019,24 +6197,24 @@ if (bonusFormElement) {
     e.preventDefault();
     e.stopPropagation();
 
-    console.log("Bonus form submitted");
+    console.log("📝 Bonus form submitted");
 
     const id = document.getElementById("bonus_id").value;
+    const karyawanId = document.getElementById("bonus_karyawan_id")?.value.trim() || "";
     const noInduk = document.getElementById("bonus_no_induk")?.value.trim() || "";
     const nama = document.getElementById("bonus_nama")?.value.trim() || "";
 
+    // Parse currency dengan benar
     const jumlahBonusInput = document.getElementById("bonus_jumlah")?.value || "0";
-    const jumlahBonus = parseRupiah(jumlahBonusInput);
+    const jumlahBonus = parseCurrency(jumlahBonusInput);
     const periode = document.getElementById("bonus_periode")?.value || "";
     const nohp = document.getElementById("bonus_nohp")?.value.trim() || "";
 
-    // Validasi
-    if (!noInduk) {
+    console.log("Form values:", { id, karyawanId, noInduk, nama, jumlahBonus, periode, nohp });
+
+    // VALIDASI
+    if (!karyawanId) {
       Swal.fire("Error", "Pilih karyawan terlebih dahulu", "error");
-      return;
-    }
-    if (!nama) {
-      Swal.fire("Error", "Nama karyawan tidak valid", "error");
       return;
     }
     if (!periode) {
@@ -6047,29 +6225,21 @@ if (bonusFormElement) {
       Swal.fire("Error", "Jumlah Bonus harus lebih dari 0", "error");
       return;
     }
-    if (!nohp) {
-      Swal.fire("Error", "No HP harus diisi", "error");
-      return;
-    }
 
-    // Parse periode
     const [year, month] = periode.split("-");
+
     const payload = {
-      no_induk: noInduk,
-      nama: nama,
-      periode: periode,
+      karyawan_id: parseInt(karyawanId),
       bulan: parseInt(month),
       tahun: parseInt(year),
       jumlah_bonus: jumlahBonus,
-      nohp: nohp,
+      nohp: nohp || "",
     };
 
-    console.log("Payload:", payload);
+    console.log("📤 Sending payload:", payload);
 
     const method = id ? "PUT" : "POST";
     const url = id ? `/bonus/${id}?company=${currentCompany}` : `/bonus?company=${currentCompany}`;
-
-    console.log(`Sending ${method} request to ${url}`);
 
     try {
       const res = await fetch(url, {
@@ -6082,16 +6252,28 @@ if (bonusFormElement) {
       console.log("Response:", result);
 
       if (result.success) {
+        // Tutup modal
         const modal = document.getElementById("bonusModal");
         if (modal) modal.style.display = "none";
 
+        // Reset form
         document.getElementById("bonusForm").reset();
         document.getElementById("bonus_id").value = "";
+        document.getElementById("bonus_karyawan_id").value = "";
+        document.getElementById("bonus_no_induk").value = "";
+        document.getElementById("bonus_nama").value = "";
         resetEmployeeSelection();
 
+        // Reload data
         await loadBonusData();
 
-        Swal.fire("Berhasil!", id ? "Bonus berhasil diperbarui." : "Bonus berhasil ditambahkan.", "success");
+        Swal.fire({
+          title: "Berhasil!",
+          text: id ? "Bonus berhasil diperbarui." : "Bonus berhasil ditambahkan.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false,
+        });
       } else {
         Swal.fire("Gagal", result.message || "Tidak dapat menyimpan data.", "error");
       }
@@ -6783,6 +6965,9 @@ function renderEmployeeDropdown(filterText = "") {
   const employeeListContainer = document.getElementById("employeeList");
   if (!employeeListContainer) return;
 
+  console.log("Rendering employee dropdown with filter:", filterText);
+  console.log("Employee list:", employeeList);
+
   const filtered = employeeList.filter((emp) => emp.no_induk.toLowerCase().includes(filterText.toLowerCase()) || emp.nama.toLowerCase().includes(filterText.toLowerCase()));
 
   if (filtered.length === 0) {
@@ -6793,45 +6978,77 @@ function renderEmployeeDropdown(filterText = "") {
   employeeListContainer.innerHTML = filtered
     .map(
       (emp) => `
-    <div class="employee-item" data-no-induk="${escapeHtml(emp.no_induk)}" data-nama="${escapeHtml(emp.nama)}" data-nohp="${escapeHtml(emp.no_hp || "")}">
+    <div class="employee-item" 
+         data-karyawan-id="${emp.karyawan_id}"
+         data-no-induk="${escapeHtml(emp.no_induk)}" 
+         data-nama="${escapeHtml(emp.nama)}" 
+         data-nohp="${escapeHtml(emp.no_hp || "")}">
       <div class="employee-no-induk">${escapeHtml(emp.no_induk)}</div>
       <div class="employee-name">${escapeHtml(emp.nama)}</div>
+      <div class="employee-detail" style="font-size: 11px; color: #666;">
+        ${emp.no_hp ? escapeHtml(emp.no_hp) : "No HP tidak tersedia"}
+      </div>
     </div>
   `,
     )
     .join("");
 
-  document.querySelectorAll(".employee-item").forEach((item) => {
-    item.addEventListener("click", () => {
-      const noInduk = item.dataset.noInduk;
-      const nama = item.dataset.nama;
-      const nohp = item.dataset.nohp;
-      selectEmployee(noInduk, nama, nohp);
+  // Attach click handlers
+  document.querySelectorAll("#employeeList .employee-item").forEach((item) => {
+    // Hapus event listener lama dengan clone
+    const newItem = item.cloneNode(true);
+    item.parentNode.replaceChild(newItem, item);
+
+    newItem.addEventListener("click", () => {
+      const karyawanId = newItem.dataset.karyawanId;
+      const noInduk = newItem.dataset.noInduk;
+      const nama = newItem.dataset.nama;
+      const nohp = newItem.dataset.nohp;
+
+      console.log("Employee selected:", { karyawanId, noInduk, nama, nohp });
+      selectEmployee(karyawanId, noInduk, nama, nohp);
     });
   });
 }
 
-function selectEmployee(noInduk, nama, nohp) {
-  selectedEmployee = { no_induk: noInduk, nama: nama, nohp: nohp };
+function selectEmployee(karyawanId, noInduk, nama, nohp) {
+  console.log("🔵 selectEmployee called:", { karyawanId, noInduk, nama, nohp });
 
-  document.getElementById("bonus_no_induk").value = noInduk;
-  document.getElementById("bonus_nama").value = nama;
+  selectedEmployee = {
+    karyawan_id: karyawanId,
+    no_induk: noInduk,
+    nama: nama,
+    nohp: nohp,
+  };
 
+  // Set hidden fields dengan pengecekan
+  const karyawanIdInput = document.getElementById("bonus_karyawan_id");
+  const noIndukInput = document.getElementById("bonus_no_induk");
+  const namaInput = document.getElementById("bonus_nama");
+
+  if (karyawanIdInput) karyawanIdInput.value = karyawanId || "";
+  if (noIndukInput) noIndukInput.value = noInduk || "";
+  if (namaInput) namaInput.value = nama || "";
+
+  // Set search input display
   const searchInput = document.getElementById("employeeSearch");
   if (searchInput) {
-    searchInput.value = `${noInduk} - ${nama}`;
+    searchInput.value = `${noInduk || ""} - ${nama || ""}`;
   }
 
+  // Set nohp field
   const nohpInput = document.getElementById("bonus_nohp");
   if (nohpInput) {
     if (nohp) {
       nohpInput.value = nohp;
-    } else if (!nohpInput.value || nohpInput.value === "") {
-      // Jika tidak ada no_hp dari data karyawan, biarkan user mengisi manual
-      nohpInput.placeholder = "Masukkan No HP (contoh: 628123456789)";
+    } else {
+      nohpInput.value = "";
+      nohpInput.placeholder = "No HP tidak tersedia, silakan isi manual";
+      nohpInput.readOnly = false; // Biarkan user mengisi manual jika tidak ada
     }
   }
 
+  // Close dropdown
   const dropdown = document.getElementById("employeeDropdown");
   if (dropdown) dropdown.style.display = "none";
 }
@@ -6890,22 +7107,37 @@ function setupEmployeeSearch() {
 
 function resetEmployeeSelection() {
   selectedEmployee = null;
+
   const searchInput = document.getElementById("employeeSearch");
+  const karyawanIdInput = document.getElementById("bonus_karyawan_id");
   const noIndukInput = document.getElementById("bonus_no_induk");
   const namaInput = document.getElementById("bonus_nama");
+  const nohpInput = document.getElementById("bonus_nohp");
 
   if (searchInput) searchInput.value = "";
+  if (karyawanIdInput) karyawanIdInput.value = "";
   if (noIndukInput) noIndukInput.value = "";
   if (namaInput) namaInput.value = "";
+  if (nohpInput) {
+    nohpInput.value = "";
+    nohpInput.placeholder = "Akan diisi otomatis dari data karyawan";
+    nohpInput.readOnly = true;
+  }
 }
 
 function openBonusModal(item = null) {
   const modal = document.getElementById("bonusModal");
   if (!modal) return;
 
+  console.log("Opening bonus modal, item:", item);
+
   // Reset form
-  document.getElementById("bonusForm").reset();
-  document.getElementById("bonus_id").value = "";
+  const form = document.getElementById("bonusForm");
+  if (form) form.reset();
+
+  const bonusIdInput = document.getElementById("bonus_id");
+  if (bonusIdInput) bonusIdInput.value = "";
+
   resetEmployeeSelection();
 
   const bonusJumlahInput = document.getElementById("bonus_jumlah");
@@ -6913,35 +7145,37 @@ function openBonusModal(item = null) {
     bonusJumlahInput.value = "";
   }
 
-  // Reset nohp placeholder
-  const nohpInput = document.getElementById("bonus_nohp");
-  if (nohpInput) {
-    nohpInput.placeholder = "Contoh: 628123456789";
-    nohpInput.value = "";
-  }
-
   if (item) {
     console.log("Editing bonus:", item);
-    document.getElementById("bonus_id").value = item.id;
+    const titleElement = document.getElementById("bonusModalTitle");
+    if (titleElement) titleElement.innerHTML = '<i class="fas fa-edit"></i> Edit Bonus';
+
+    if (bonusIdInput) bonusIdInput.value = item.id;
 
     // Pilih karyawan dari data yang ada
-    selectEmployee(item.no_induk, item.nama, item.nohp);
+    selectEmployee(item.karyawan_id, item.no_induk, item.nama, item.nohp);
 
     // Set periode
     const year = item.tahun;
     const month = String(item.bulan).padStart(2, "0");
-    document.getElementById("bonus_periode").value = `${year}-${month}`;
+    const periodeInput = document.getElementById("bonus_periode");
+    if (periodeInput) periodeInput.value = `${year}-${month}`;
 
-    // Set jumlah bonus
+    // Set jumlah bonus dengan format currency
     if (bonusJumlahInput && item.jumlah_bonus) {
-      const formatted = item.jumlah_bonus.toLocaleString("id-ID");
+      // Format dengan pemisah ribuan
+      const formatted = item.jumlah_bonus.toLocaleString("id-ID").replace(/,/g, ".");
       bonusJumlahInput.value = formatted;
     }
   } else {
+    const titleElement = document.getElementById("bonusModalTitle");
+    if (titleElement) titleElement.innerHTML = '<i class="fas fa-plus"></i> Tambah Bonus Baru';
+
     // Set default periode ke bulan saat ini
     const now = new Date();
     const defaultPeriode = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    document.getElementById("bonus_periode").value = defaultPeriode;
+    const periodeInput = document.getElementById("bonus_periode");
+    if (periodeInput) periodeInput.value = defaultPeriode;
   }
 
   modal.style.display = "flex";
@@ -6949,7 +7183,6 @@ function openBonusModal(item = null) {
   // Load employee list from data_karyawan API
   if (employeeList.length === 0) {
     loadEmployeeList().then(() => {
-      // Re-render dropdown jika ada pencarian
       const searchInput = document.getElementById("employeeSearch");
       if (searchInput && searchInput.value) {
         renderEmployeeDropdown(searchInput.value.split(" - ")[0] || "");
@@ -7008,6 +7241,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initializeThrDuplicationButtons();
 
   updateMonthYearDisplay();
+  startSessionCheck();
 
   setTimeout(() => {
     checkDuplicateStatus();
@@ -7044,43 +7278,64 @@ function resetThrProgress() {
 
 async function loadThrData() {
   try {
-    console.log("Loading THR data for company:", currentCompany);
-    console.log("Loading THR data for year:", currentThrYear);
+    console.log("Loading THR data - Company:", currentCompany, "Year filter:", currentThrYear);
 
-    let url;
-    if (currentThrYear && currentThrYear !== "all") {
-      url = `/thr/year/${currentThrYear}?company=${currentCompany}`;
-    } else {
-      url = `/thr?company=${currentCompany}&year=all`;
+    let url = `/thr?company=${currentCompany}`;
+
+    // PERBAIKAN: Selalu kirim filter tahun, default ke tahun sekarang jika "all"
+    let yearToSend = currentThrYear;
+    if (!yearToSend || yearToSend === "all") {
+      // Jika tidak ada filter atau "all", gunakan tahun sekarang
+      yearToSend = new Date().getFullYear().toString();
+      currentThrYear = yearToSend; // Update currentThrYear
+
+      // Update dropdown select
+      const yearSelect = document.getElementById("thrYearSelect");
+      if (yearSelect && yearSelect.value !== yearToSend) {
+        yearSelect.value = yearToSend;
+      }
+      console.log(`[loadThrData] No year filter, defaulting to current year: ${yearToSend}`);
     }
 
+    url += `&year=${yearToSend}`;
     console.log(`Fetching THR URL: ${url}`);
 
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+
     thrData = await res.json();
-    console.log("THR data loaded:", thrData.length, "records");
+    console.log("THR data loaded:", thrData.length, "records for year:", yearToSend);
 
-    // Log breakdown status untuk debugging
-    const statusBreakdown = thrData.reduce((acc, item) => {
-      acc[item.status] = (acc[item.status] || 0) + 1;
-      return acc;
-    }, {});
-    console.log("THR status breakdown:", statusBreakdown);
+    // Reset selected set
+    const validIds = new Set(thrData.map((d) => d.id));
+    for (const id of selectedThrSet) {
+      if (!validIds.has(id)) {
+        selectedThrSet.delete(id);
+      }
+    }
 
-    // Render tabel THR
     renderThrTable();
-
-    // Load available years untuk filter
     await loadAvailableThrYears();
 
-    // Setelah data dimuat, check duplicate status
     setTimeout(() => {
       checkThrDuplicateStatus();
     }, 100);
   } catch (err) {
     console.error("Load THR data error:", err);
-    Swal.fire("Error", "Gagal memuat data THR: " + err.message, "error");
+    const tbody = document.querySelector("#tableTHR tbody");
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="11" style="text-align: center; padding: 40px;">
+            <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #ef4444; margin-bottom: 10px; display: block;"></i>
+            <p style="color: #64748b;">Gagal memuat data THR: ${err.message}</p>
+            <button class="btn-primary" onclick="loadThrData()" style="margin-top: 10px;">
+              <i class="fas fa-sync-alt"></i> Coba Lagi
+            </button>
+          </td>
+        </tr>
+      `;
+    }
   }
 }
 
@@ -7090,10 +7345,12 @@ function renderThrTable() {
   tbody.innerHTML = "";
 
   const query = document.getElementById("searchThrInput")?.value.toLowerCase() || "";
-  const filtered = thrData.filter((d) => d.nama?.toLowerCase().includes(query) || d.no_induk?.toLowerCase().includes(query));
+  const filtered = thrData.filter((d) => d.nama?.toLowerCase().includes(query) || false || d.no_induk?.toLowerCase().includes(query) || false);
 
   const totalPages = Math.ceil(filtered.length / pageSizeThr);
-  if (currentThrPage > totalPages) currentThrPage = 1;
+  if (currentThrPage > totalPages && totalPages > 0) currentThrPage = totalPages;
+  if (currentThrPage < 1) currentThrPage = 1;
+
   const start = (currentThrPage - 1) * pageSizeThr;
   const pageData = filtered.slice(start, start + pageSizeThr);
 
@@ -7102,15 +7359,20 @@ function renderThrTable() {
       <tr>
         <td colspan="11" style="text-align: center; padding: 40px;">
           <i class="fas fa-calendar-alt" style="font-size: 48px; color: #cbd5e1; margin-bottom: 10px; display: block;"></i>
-          <p style="color: #64748b;">Belum ada data THR${currentThrYear !== "all" ? ` untuk tahun ${currentThrYear}` : ""}</p>
-          <button class="btn-primary" onclick="openThrModal()" style="margin-top: 10px;">
-            <i class="fas fa-plus"></i> Tambah Data THR
-          </button>
+          <p style="color: #64748b;">${filtered.length === 0 && query ? "Tidak ada data yang sesuai dengan pencarian" : "Belum ada data THR"}</p>
+          ${filtered.length === 0 && !query ? '<button class="btn-primary" onclick="openThrModal()" style="margin-top: 10px;"><i class="fas fa-plus"></i> Tambah Data THR</button>' : ""}
         </td>
       </tr>
     `;
     const thrPageInfo = document.getElementById("thrPageInfo");
     if (thrPageInfo) thrPageInfo.innerText = `Halaman 0 dari 0`;
+
+    // Reset select all checkbox
+    const selectAllCheckbox = document.getElementById("selectAllThr");
+    if (selectAllCheckbox) {
+      selectAllCheckbox.checked = false;
+      selectAllCheckbox.indeterminate = false;
+    }
     return;
   }
 
@@ -7135,30 +7397,59 @@ function renderThrTable() {
     let cancellationNoteDisplay = "-";
     if (d.status === "dibatalkan" && d.cancellation_note) {
       cancellationNoteDisplay = `<span class="cancellation-note" title="${escapeHtml(d.cancellation_note)}">${escapeHtml(d.cancellation_note.length > 30 ? d.cancellation_note.substring(0, 30) + "..." : d.cancellation_note)}</span>`;
-    } else if (d.status === "dibatalkan") {
-      cancellationNoteDisplay = '<span class="cancellation-note" style="color: #f59e0b;"><i class="fas fa-info-circle"></i> Alasan tidak tersedia</span>';
     }
 
     const isChecked = selectedThrSet.has(d.id) ? "checked" : "";
 
+    let actionButtons = "";
+    if (d.status !== "terkirim" && d.status !== "dibatalkan") {
+      actionButtons = `
+        <button class="btn-primary" style="padding:5px 10px; margin-right: 5px;" onclick='openThrModalById(${d.id})' title="Edit">
+          <i class="fas fa-edit"></i>
+        </button>
+        <button class="btn-danger" style="padding:5px 10px;" onclick='deleteThr(${d.id})' title="Hapus">
+          <i class="fas fa-trash"></i>
+        </button>
+      `;
+    } else if (d.status === "terkirim") {
+      actionButtons = '<span style="color: #64748b; font-size: 0.7rem;">Tidak dapat diedit</span>';
+    } else {
+      actionButtons = '<span style="color: #64748b; font-size: 0.7rem;">Dibatalkan</span>';
+    }
+
     tr.innerHTML = `
-      <td style="text-align: center;"><input type="checkbox" class="chk-thr" data-id="${d.id}" ${isChecked}>
-      <td style="text-align: center;">${start + i + 1}
-      <td>${escapeHtml(d.no_induk)}
-      <td style="font-weight:600">${escapeHtml(d.nama)}
-      <td style="text-align: center;">${d.tahun}
-      <td class="money">${rupiah(d.jumlah_thr)}
-      <td>${escapeHtml(d.nohp)}
-      <td>${statusBadge}
-      <td style="font-size:0.85rem;">${cancellationNoteDisplay}
-      <td style="font-size:0.8rem; text-align: center;">${new Date(d.created_at).toLocaleDateString("id-ID")}
-      <td style="text-align: center;">
-        <button class="btn-primary" style="padding:5px 10px; margin-right: 5px;" onclick='openThrModalById(${d.id})'><i class="fas fa-edit"></i></button>
-        <button class="btn-danger" style="padding:5px 10px;" onclick='deleteThr(${d.id})'><i class="fas fa-trash"></i></button>
+      <td style="text-align: center;"><input type="checkbox" class="chk-thr" data-id="${d.id}" ${isChecked} ${d.status === "terkirim" ? "" : ""}></td>
+      <td style="text-align: center;">${start + i + 1}</td>
+      <td style="font-weight: 500;">${escapeHtml(d.no_induk || "-")}</td>
+      <td style="font-weight: 600;">${escapeHtml(d.nama || "-")}</td>
+      <td style="text-align: center;">${d.tahun || "-"}</td>
+      <td class="money">${rupiah(d.jumlah_thr || 0)}</td>
+      <td>${escapeHtml(d.nohp || "-")}</td>
+      <td>${statusBadge}</td>
+      <td style="font-size:0.85rem;">${cancellationNoteDisplay}</td>
+      <td style="font-size:0.8rem; text-align: center;">${d.created_at ? new Date(d.created_at).toLocaleDateString("id-ID") : "-"}</td>
+      <td class="text-center" style="white-space: nowrap;">${actionButtons}</td>
     `;
     tbody.appendChild(tr);
   });
 
+  // Attach individual checkbox handlers
+  attachIndividualThrCheckboxHandlers();
+
+  // Setup select all checkbox
+  setupSelectAllThrListener();
+
+  // Update select all status
+  updateSelectAllThrStatus();
+  updateCancelThrButtonVisibility();
+
+  const thrPageInfo = document.getElementById("thrPageInfo");
+  if (thrPageInfo) {
+    thrPageInfo.innerText = `Halaman ${currentThrPage} dari ${totalPages || 1}`;
+  }
+}
+
+function attachIndividualThrCheckboxHandlers() {
   document.querySelectorAll(".chk-thr").forEach((chk) => {
     const newChk = chk.cloneNode(true);
     chk.parentNode.replaceChild(newChk, chk);
@@ -7170,14 +7461,60 @@ function renderThrTable() {
       } else {
         selectedThrSet.delete(id);
       }
+      updateSelectAllThrStatus();
       updateCancelThrButtonVisibility();
+      console.log(`Checkbox THR ${id} changed, selected count: ${selectedThrSet.size}`);
     };
   });
+}
 
-  const thrPageInfo = document.getElementById("thrPageInfo");
-  if (thrPageInfo) thrPageInfo.innerText = `Halaman ${currentThrPage} dari ${totalPages || 1}`;
+function setupSelectAllThrListener() {
+  const selectAllCheckbox = document.getElementById("selectAllThr");
+  if (!selectAllCheckbox) return;
 
-  updateCancelThrButtonVisibility();
+  // Hapus event listener lama dengan clone
+  const newSelectAll = selectAllCheckbox.cloneNode(true);
+  selectAllCheckbox.parentNode.replaceChild(newSelectAll, selectAllCheckbox);
+
+  newSelectAll.addEventListener("change", (e) => {
+    const isChecked = e.target.checked;
+    const checkboxes = document.querySelectorAll(".chk-thr");
+
+    checkboxes.forEach((chk) => {
+      chk.checked = isChecked;
+      const id = parseInt(chk.dataset.id);
+      if (isChecked) {
+        selectedThrSet.add(id);
+      } else {
+        selectedThrSet.delete(id);
+      }
+    });
+
+    updateCancelThrButtonVisibility();
+    console.log(`Select All THR - checked: ${isChecked}, total selected: ${selectedThrSet.size}`);
+  });
+}
+
+function updateSelectAllThrStatus() {
+  const selectAllCheckbox = document.getElementById("selectAllThr");
+  if (!selectAllCheckbox) return;
+
+  const checkboxes = document.querySelectorAll(".chk-thr:not(:disabled)");
+  const checkedCheckboxes = document.querySelectorAll(".chk-thr:checked:not(:disabled)");
+
+  if (checkboxes.length === 0) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+  } else if (checkedCheckboxes.length === 0) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+  } else if (checkedCheckboxes.length === checkboxes.length) {
+    selectAllCheckbox.checked = true;
+    selectAllCheckbox.indeterminate = false;
+  } else {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = true;
+  }
 }
 
 function updateCancelThrButtonVisibility() {
@@ -7192,6 +7529,44 @@ function updateCancelThrButtonVisibility() {
   }
 }
 
+function resetThrCheckboxSelection() {
+  if (selectedThrSet.size === 0) {
+    Swal.fire({
+      title: "Info",
+      text: "Tidak ada checkbox THR yang dipilih untuk direset.",
+      icon: "info",
+      toast: true,
+      timer: 2000,
+      showConfirmButton: false,
+    });
+    return;
+  }
+
+  selectedThrSet.clear();
+
+  const checkboxes = document.querySelectorAll(".chk-thr");
+  checkboxes.forEach((chk) => {
+    chk.checked = false;
+  });
+
+  const selectAllCheckbox = document.getElementById("selectAllThr");
+  if (selectAllCheckbox) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+  }
+
+  updateCancelThrButtonVisibility();
+
+  Swal.fire({
+    title: "Berhasil!",
+    text: "Semua pilihan checkbox THR telah direset.",
+    icon: "success",
+    toast: true,
+    timer: 2000,
+    showConfirmButton: false,
+  });
+}
+
 // =============================
 // THR MODAL FUNCTIONS
 // =============================
@@ -7199,9 +7574,14 @@ function openThrModal(item = null) {
   const modal = document.getElementById("thrModal");
   if (!modal) return;
 
-  // Reset form
-  document.getElementById("thrForm").reset();
-  document.getElementById("thr_id").value = "";
+  console.log("Opening THR modal, item:", item);
+
+  const form = document.getElementById("thrForm");
+  if (form) form.reset();
+
+  const thrIdInput = document.getElementById("thr_id");
+  if (thrIdInput) thrIdInput.value = "";
+
   resetThrEmployeeSelection();
 
   const thrJumlahInput = document.getElementById("thr_jumlah_thr");
@@ -7209,40 +7589,46 @@ function openThrModal(item = null) {
     thrJumlahInput.value = "";
   }
 
-  // Reset nohp placeholder
   const nohpInput = document.getElementById("thr_nohp");
   if (nohpInput) {
-    nohpInput.placeholder = "Contoh: 628123456789";
+    nohpInput.placeholder = "Akan diisi otomatis dari data karyawan";
     nohpInput.value = "";
+    nohpInput.readOnly = true;
   }
 
   if (item) {
     console.log("Editing THR:", item);
-    document.getElementById("thr_id").value = item.id;
+    const titleElement = document.getElementById("thrModalTitle");
+    if (titleElement) titleElement.innerHTML = '<i class="fas fa-edit"></i> Edit THR';
 
-    // Pilih karyawan dari data yang ada
-    selectThrEmployee(item.no_induk, item.nama, item.nohp);
+    if (thrIdInput) thrIdInput.value = item.id;
 
-    // Set tahun
-    document.getElementById("thr_tahun").value = item.tahun;
+    selectThrEmployee(item.karyawan_id, item.no_induk, item.nama, item.nohp);
 
-    // Set jumlah THR
+    const tahunInput = document.getElementById("thr_tahun");
+    if (tahunInput) tahunInput.value = item.tahun;
+
     if (thrJumlahInput && item.jumlah_thr) {
-      const formatted = item.jumlah_thr.toLocaleString("id-ID");
+      const formatted = item.jumlah_thr.toLocaleString("id-ID").replace(/,/g, ".");
       thrJumlahInput.value = formatted;
     }
   } else {
-    // Set default tahun ke tahun saat ini
-    const currentYear = new Date().getFullYear();
-    document.getElementById("thr_tahun").value = currentYear;
+    const titleElement = document.getElementById("thrModalTitle");
+    if (titleElement) titleElement.innerHTML = '<i class="fas fa-plus"></i> Tambah THR Baru';
+
+    // Set default tahun ke tahun yang sedang difilter
+    let defaultYear = new Date().getFullYear();
+    if (currentThrYear && currentThrYear !== "all") {
+      defaultYear = parseInt(currentThrYear);
+    }
+    const tahunInput = document.getElementById("thr_tahun");
+    if (tahunInput) tahunInput.value = defaultYear;
   }
 
   modal.style.display = "flex";
 
-  // Load employee list from data_karyawan API
   if (thrEmployeeList.length === 0) {
     loadThrEmployeeList().then(() => {
-      // Re-render dropdown jika ada pencarian
       const searchInput = document.getElementById("thrEmployeeSearch");
       if (searchInput && searchInput.value) {
         renderThrEmployeeDropdown(searchInput.value.split(" - ")[0] || "");
@@ -7252,6 +7638,7 @@ function openThrModal(item = null) {
 }
 
 window.openThrModalById = (id) => {
+  console.log("Open THR by ID:", id);
   const item = thrData.find((d) => d.id == id);
   if (item) {
     openThrModal(item);
@@ -7261,9 +7648,6 @@ window.openThrModalById = (id) => {
   }
 };
 
-// =============================
-// THR DELETE FUNCTION
-// =============================
 window.deleteThr = async (id) => {
   const result = await Swal.fire({
     title: "Apakah Anda yakin?",
@@ -7283,6 +7667,10 @@ window.deleteThr = async (id) => {
 
     if (resultData.success) {
       Swal.fire("Berhasil!", "Data THR berhasil dihapus.", "success");
+      if (selectedThrSet.has(id)) {
+        selectedThrSet.delete(id);
+      }
+      // Reload data dengan filter yang SAMA
       await loadThrData();
     } else {
       Swal.fire("Gagal!", resultData.message || "Data tidak ditemukan.", "error");
@@ -7301,45 +7689,25 @@ if (thrFormElement) {
   const newThrForm = thrFormElement.cloneNode(true);
   thrFormElement.parentNode.replaceChild(newThrForm, thrFormElement);
 
-  function parseThrRupiah(value) {
-    if (!value) return 0;
-    let cleanValue = value.toString().replace(/[^\d]/g, "");
-    return parseInt(cleanValue) || 0;
-  }
-
-  function handleThrJumlahInput(e) {
-    const input = e.target;
-    let value = input.value;
-    let cleanValue = value.replace(/[^\d]/g, "");
-
-    if (cleanValue) {
-      let formattedValue = "";
-      let counter = 0;
-      for (let i = cleanValue.length - 1; i >= 0; i--) {
-        counter++;
-        formattedValue = cleanValue[i] + formattedValue;
-        if (counter % 3 === 0 && i !== 0) {
-          formattedValue = "." + formattedValue;
-        }
-      }
-      input.value = formattedValue;
-    } else {
-      input.value = "";
-    }
-  }
-
+  // Setup currency input
   const thrJumlahInput = document.getElementById("thr_jumlah_thr");
   if (thrJumlahInput) {
-    thrJumlahInput.addEventListener("input", handleThrJumlahInput);
-    thrJumlahInput.addEventListener("keypress", function (e) {
+    const newThrJumlahInput = thrJumlahInput.cloneNode(true);
+    thrJumlahInput.parentNode.replaceChild(newThrJumlahInput, thrJumlahInput);
+
+    newThrJumlahInput.addEventListener("input", handleThrJumlahInput);
+
+    newThrJumlahInput.addEventListener("keypress", function (e) {
       const charCode = e.which ? e.which : e.keyCode;
+      if (charCode === 8 || charCode === 9 || charCode === 13 || charCode === 27 || charCode === 37 || charCode === 38 || charCode === 39 || charCode === 40 || charCode === 46) {
+        return;
+      }
       if (charCode < 48 || charCode > 57) {
-        if (charCode !== 8 && charCode !== 9 && charCode !== 37 && charCode !== 39 && charCode !== 46) {
-          e.preventDefault();
-        }
+        e.preventDefault();
       }
     });
-    thrJumlahInput.addEventListener("paste", function (e) {
+
+    newThrJumlahInput.addEventListener("paste", function (e) {
       e.preventDefault();
       let pasteData = (e.clipboardData || window.clipboardData).getData("text");
       let cleanData = pasteData.replace(/[^\d]/g, "");
@@ -7364,23 +7732,19 @@ if (thrFormElement) {
     e.preventDefault();
     e.stopPropagation();
 
-    console.log("THR form submitted");
+    console.log("📝 THR form submitted");
 
     const id = document.getElementById("thr_id").value;
-    const noInduk = document.getElementById("thr_no_induk")?.value.trim() || "";
-    const nama = document.getElementById("thr_nama")?.value.trim() || "";
+    const karyawanId = document.getElementById("thr_karyawan_id")?.value.trim() || "";
     const tahun = document.getElementById("thr_tahun")?.value.trim() || "";
     const jumlahThrInput = document.getElementById("thr_jumlah_thr")?.value || "0";
-    const jumlahThr = parseThrRupiah(jumlahThrInput);
+    const jumlahThr = parseCurrency(jumlahThrInput);
     const nohp = document.getElementById("thr_nohp")?.value.trim() || "";
 
-    // Validasi
-    if (!noInduk) {
+    console.log("Form values:", { id, karyawanId, tahun, jumlahThr, nohp });
+
+    if (!karyawanId) {
       Swal.fire("Error", "Pilih karyawan terlebih dahulu", "error");
-      return;
-    }
-    if (!nama) {
-      Swal.fire("Error", "Nama karyawan tidak valid", "error");
       return;
     }
     if (!tahun) {
@@ -7391,26 +7755,34 @@ if (thrFormElement) {
       Swal.fire("Error", "Jumlah THR harus lebih dari 0", "error");
       return;
     }
-    if (!nohp) {
-      Swal.fire("Error", "No HP harus diisi", "error");
-      return;
+
+    // Validasi: Pastikan tahun yang dipilih sesuai dengan filter tahun yang aktif
+    if (currentThrYear && currentThrYear !== "all" && parseInt(tahun) !== parseInt(currentThrYear)) {
+      const confirmResult = await Swal.fire({
+        title: "Perhatian!",
+        text: `Anda akan menambahkan data untuk tahun ${tahun}, tetapi filter saat ini menampilkan tahun ${currentThrYear}. Data akan tetap tersimpan, tetapi tidak akan tampil di halaman ini sampai filter diubah. Lanjutkan?`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Ya, Lanjutkan",
+        cancelButtonText: "Batal",
+      });
+
+      if (!confirmResult.isConfirmed) {
+        return;
+      }
     }
 
     const payload = {
-      no_induk: noInduk,
-      nama: nama,
+      karyawan_id: parseInt(karyawanId),
       tahun: parseInt(tahun),
       jumlah_thr: jumlahThr,
-      nohp: nohp,
-      company: currentCompany,
+      nohp: nohp || "",
     };
 
-    console.log("Payload THR:", payload);
+    console.log("📤 Sending payload:", payload);
 
     const method = id ? "PUT" : "POST";
     const url = id ? `/thr/${id}?company=${currentCompany}` : `/thr?company=${currentCompany}`;
-
-    console.log(`Sending ${method} request to ${url}`);
 
     try {
       const res = await fetch(url, {
@@ -7426,13 +7798,21 @@ if (thrFormElement) {
         const modal = document.getElementById("thrModal");
         if (modal) modal.style.display = "none";
 
-        document.getElementById("thrForm").reset();
+        newThrForm.reset();
         document.getElementById("thr_id").value = "";
+        document.getElementById("thr_karyawan_id").value = "";
         resetThrEmployeeSelection();
 
+        // Reload data dengan filter tahun yang SAMA
         await loadThrData();
 
-        Swal.fire("Berhasil!", id ? "THR berhasil diperbarui." : "THR berhasil ditambahkan.", "success");
+        Swal.fire({
+          title: "Berhasil!",
+          text: id ? "THR berhasil diperbarui." : "THR berhasil ditambahkan.",
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false,
+        });
       } else {
         Swal.fire("Gagal", result.message || "Tidak dapat menyimpan data.", "error");
       }
@@ -7625,7 +8005,7 @@ async function cancelSelectedThr() {
         title: "Berhasil!",
         html: `
           <div style="text-align: left;">
-            <p><strong>${data.message}</strong></p>
+            <p><strong>Berhasil membatalkan ${selectedCancellable.length} THR ${companyName}.</strong></p>
             ${data.messageSentCount > 0 ? `<p style="margin-top: 10px; color: #16a34a;"><i class="fas fa-check-circle"></i> ${data.messageSentCount} notifikasi berhasil terkirim</p>` : ""}
             ${data.messageFailedCount > 0 ? `<p style="margin-top: 10px; color: #f59e0b;"><i class="fas fa-exclamation-triangle"></i> ${data.messageFailedCount} notifikasi gagal terkirim</p>` : ""}
           </div>
@@ -7644,6 +8024,14 @@ async function cancelSelectedThr() {
     btn.innerHTML = '<i class="fas fa-ban"></i> Batalkan Kirim Terpilih';
     if (progressContainer) progressContainer.style.display = "none";
   }
+}
+
+const resetThrCheckbox = document.getElementById("resetThrCheckbox");
+if (resetThrCheckbox) {
+  const newResetThrBtn = resetThrCheckbox.cloneNode(true);
+  resetThrCheckbox.parentNode.replaceChild(newResetThrBtn, resetThrCheckbox);
+
+  newResetThrBtn.addEventListener("click", resetThrCheckboxSelection);
 }
 
 function startThrProgressTracking() {
@@ -7733,7 +8121,6 @@ function updateThrProgressDisplay() {
 function initializeThrDuplicationButtons() {
   console.log("Initializing THR duplication buttons for company:", currentCompany);
 
-  // Tombol duplikasi THR
   const duplicateThrBtn = document.getElementById("duplicateThrBtn");
   if (duplicateThrBtn) {
     const newDuplicateThrBtn = duplicateThrBtn.cloneNode(true);
@@ -7742,15 +8129,11 @@ function initializeThrDuplicationButtons() {
     newDuplicateThrBtn.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      console.log("✅ Duplicate THR button clicked for company:", currentCompany);
+      console.log("✅ Duplicate THR button clicked");
       await duplicatePreviousYearThr();
     });
-    console.log("✅ Duplicate THR button listener attached");
-  } else {
-    console.warn("⚠️ Duplicate THR button not found in DOM");
   }
 
-  // Tombol batal duplikasi THR
   const cancelDuplicateThrBtn = document.getElementById("cancelDuplicateThrBtn");
   if (cancelDuplicateThrBtn) {
     const newCancelDuplicateThrBtn = cancelDuplicateThrBtn.cloneNode(true);
@@ -7759,12 +8142,9 @@ function initializeThrDuplicationButtons() {
     newCancelDuplicateThrBtn.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      console.log("✅ Cancel duplicate THR button clicked for company:", currentCompany);
+      console.log("✅ Cancel duplicate THR button clicked");
       await cancelThrDuplicate();
     });
-    console.log("✅ Cancel duplicate THR button listener attached");
-  } else {
-    console.warn("⚠️ Cancel duplicate THR button not found in DOM");
   }
 }
 
@@ -7779,7 +8159,7 @@ async function loadAvailableThrYears() {
       if (yearSelect) {
         const currentSelection = yearSelect.value;
 
-        // Simpan nilai yang dipilih saat ini
+        // PERBAIKAN: Simpan "Semua Tahun" sebagai opsi, tapi tetap tampilkan
         yearSelect.innerHTML = '<option value="all">Pilih Tahun</option>';
 
         data.years.forEach((year) => {
@@ -7789,14 +8169,24 @@ async function loadAvailableThrYears() {
           yearSelect.appendChild(option);
         });
 
-        // Kembalikan pilihan sebelumnya jika masih valid
-        if (currentSelection && (currentSelection === "all" || data.years.includes(parseInt(currentSelection)))) {
+        // PERBAIKAN: Jika currentSelection adalah "all", tetap set ke tahun sekarang
+        // karena API akan default ke tahun sekarang
+        if (currentSelection && currentSelection !== "all" && data.years.includes(parseInt(currentSelection))) {
           yearSelect.value = currentSelection;
-          currentThrYear = currentSelection === "all" ? "all" : parseInt(currentSelection);
-        } else if (currentThrYear !== "all") {
-          // Jika tahun yang dipilih sebelumnya tidak tersedia, set ke "all"
-          yearSelect.value = "all";
-          currentThrYear = "all";
+          currentThrYear = currentSelection;
+        } else {
+          // Default ke tahun sekarang
+          const currentYear = new Date().getFullYear();
+          if (data.years.includes(currentYear)) {
+            yearSelect.value = currentYear;
+            currentThrYear = currentYear;
+          } else if (data.years.length > 0) {
+            yearSelect.value = data.years[0];
+            currentThrYear = data.years[0];
+          } else {
+            yearSelect.value = "all";
+            currentThrYear = currentYear;
+          }
         }
 
         console.log(`Available THR years loaded: ${data.years.join(", ")}`);
@@ -7812,17 +8202,16 @@ async function duplicatePreviousYearThr() {
   console.log("🚀 duplicatePreviousYearThr called for company:", currentCompany);
 
   try {
-    const currentYear = new Date().getFullYear();
-    const previousYear = currentYear - 1;
+    const currentYearForDuplicate = new Date().getFullYear();
+    const previousYear = currentYearForDuplicate - 1;
 
-    // Tampilkan konfirmasi seperti bonus
     const result = await Swal.fire({
       title: "Duplikasi Data THR Tahun Lalu?",
       html: `
         <div style="text-align: left;">
-          <p>Anda akan menduplikasi data THR dari <strong>tahun sebelumnya</strong> untuk <strong>${currentCompany === "hisana" ? "Hisana" : "Enakko"}</strong>.</p>
+          <p>Anda akan menduplikasi data THR dari <strong>tahun ${previousYear}</strong> ke <strong>tahun ${currentYearForDuplicate}</strong> untuk <strong>${currentCompany === "hisana" ? "Hisana" : "Enakko"}</strong>.</p>
           <p style="margin-top: 10px; color: #f59e0b;">
-            <i class="fas fa-info-circle"></i> Hanya data karyawan yang belum memiliki data THR di tahun ini yang akan diduplikasi.
+            <i class="fas fa-info-circle"></i> Hanya data karyawan yang belum memiliki data THR di tahun ${currentYearForDuplicate} yang akan diduplikasi.
           </p>
         </div>
       `,
@@ -7844,13 +8233,9 @@ async function duplicatePreviousYearThr() {
       },
     });
 
-    console.log(`📡 Sending duplicate THR request to /duplicate-thr`);
-
     const response = await fetch("/duplicate-thr", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ company: currentCompany }),
     });
 
@@ -7859,18 +8244,17 @@ async function duplicatePreviousYearThr() {
     Swal.close();
 
     if (response.ok && data.success) {
-      // Buat tampilan alert sama seperti bonus
       let messageHtml = `
         <div style="background:#f0fdf4;border-radius:12px;padding:15px">
           <p>${data.message}</p>
       `;
 
       if (data.duplicatedCount) {
-        messageHtml += `<p style="margin-top: 10px;"><strong>${data.duplicatedCount}</strong> data THR berhasil diduplikasi</p>`;
+        messageHtml += `<p style="margin-top: 10px;"><strong>${data.duplicatedCount}</strong> data THR berhasil diduplikasi ke tahun ${currentYearForDuplicate}</p>`;
       }
 
       if (data.skippedCount) {
-        messageHtml += `<p style="margin-top: 5px; color: #f59e0b;">${data.skippedCount} data THR dilewati (sudah ada di tahun ini)</p>`;
+        messageHtml += `<p style="margin-top: 5px; color: #f59e0b;">${data.skippedCount} data THR dilewati (sudah ada di tahun ${currentYearForDuplicate})</p>`;
       }
 
       messageHtml += `</div>`;
@@ -7882,10 +8266,29 @@ async function duplicatePreviousYearThr() {
         confirmButtonText: "OK",
       });
 
-      // Reload data THR
+      // Set filter tahun ke tahun yang baru diduplikasi (tahun ini)
+      // agar data hasil duplikasi langsung terlihat
+      if (currentThrYear !== "all" && parseInt(currentThrYear) !== currentYearForDuplicate) {
+        // Jika filter tahun bukan tahun ini, tawarkan untuk beralih
+        const switchFilter = await Swal.fire({
+          title: "Lihat Data Hasil Duplikasi?",
+          text: `Data THR tahun ${currentYearForDuplicate} berhasil diduplikasi. Apakah Anda ingin beralih ke filter tahun ${currentYearForDuplicate} untuk melihat data yang baru?`,
+          icon: "question",
+          showCancelButton: true,
+          confirmButtonText: `Ya, Tampilkan Tahun ${currentYearForDuplicate}`,
+          cancelButtonText: "Tetap di Filter Saat Ini",
+        });
+
+        if (switchFilter.isConfirmed) {
+          currentThrYear = currentYearForDuplicate.toString();
+          const yearSelect = document.getElementById("thrYearSelect");
+          if (yearSelect) yearSelect.value = currentThrYear;
+        }
+      }
+
+      // Reload data dengan filter yang mungkin sudah berubah
       await loadThrData();
 
-      // Update tombol
       const duplicateBtn = document.getElementById("duplicateThrBtn");
       const cancelBtn = document.getElementById("cancelDuplicateThrBtn");
       if (duplicateBtn && cancelBtn) {
@@ -7898,7 +8301,6 @@ async function duplicatePreviousYearThr() {
         }
       }
 
-      // Mulai cek status duplikasi
       startThrDuplicateStatusCheck();
     } else {
       Swal.fire({
@@ -7924,9 +8326,6 @@ async function cancelThrDuplicate() {
   console.log("🚀 cancelThrDuplicate called for company:", currentCompany);
 
   try {
-    const currentYear = new Date().getFullYear();
-
-    // Tampilkan konfirmasi seperti bonus
     const result = await Swal.fire({
       title: "Batalkan Duplikasi THR?",
       html: `<p>Data THR hasil duplikasi akan dihapus permanen!</p>`,
@@ -7948,13 +8347,9 @@ async function cancelThrDuplicate() {
       },
     });
 
-    console.log(`📡 Sending cancel duplicate request to /cancel-duplicate-thr?company=${currentCompany}`);
-
     const response = await fetch(`/cancel-duplicate-thr?company=${currentCompany}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
     });
 
     const data = await response.json();
@@ -7962,7 +8357,6 @@ async function cancelThrDuplicate() {
     Swal.close();
 
     if (response.ok && data.success) {
-      // Buat tampilan alert sama seperti bonus
       Swal.fire({
         title: "Berhasil!",
         html: `<div style="background:#fef2e8;border-radius:12px;padding:15px"><p>${data.message}</p></div>`,
@@ -7970,10 +8364,8 @@ async function cancelThrDuplicate() {
         confirmButtonText: "OK",
       });
 
-      // Reload data THR
       await loadThrData();
 
-      // Update tombol
       const duplicateBtn = document.getElementById("duplicateThrBtn");
       const cancelBtn = document.getElementById("cancelDuplicateThrBtn");
       if (duplicateBtn && cancelBtn) {
@@ -7981,7 +8373,6 @@ async function cancelThrDuplicate() {
         cancelBtn.style.display = "none";
       }
 
-      // Stop cek status duplikasi
       stopThrDuplicateStatusCheck();
     } else {
       Swal.fire({
@@ -8005,11 +8396,9 @@ async function cancelThrDuplicate() {
 
 async function checkThrDuplicateStatus() {
   try {
-    console.log("🔍 Checking THR duplicate status for company:", currentCompany);
     const response = await fetch(`/check-thr-duplicate-status?company=${currentCompany}`);
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
-    console.log("THR duplicate status:", data);
 
     const duplicateBtn = document.getElementById("duplicateThrBtn");
     const cancelBtn = document.getElementById("cancelDuplicateThrBtn");
@@ -8018,11 +8407,9 @@ async function checkThrDuplicateStatus() {
       if (data.hasRecentDuplicate) {
         duplicateBtn.style.display = "none";
         cancelBtn.style.display = "inline-block";
-        console.log("✅ THR - Showing cancel button (has duplicate data)");
       } else {
         duplicateBtn.style.display = "inline-block";
         cancelBtn.style.display = "none";
-        console.log("✅ THR - Showing duplicate button (no duplicate data)");
       }
     }
   } catch (err) {
@@ -8031,17 +8418,23 @@ async function checkThrDuplicateStatus() {
 }
 
 function startThrDuplicateStatusCheck() {
-  console.log("Starting THR duplicate status check interval");
   if (thrDuplicateCheckInterval) clearInterval(thrDuplicateCheckInterval);
   thrDuplicateCheckInterval = setInterval(() => checkThrDuplicateStatus(), 5000);
 }
 
 function stopThrDuplicateStatusCheck() {
-  console.log("Stopping THR duplicate status check interval");
   if (thrDuplicateCheckInterval) {
     clearInterval(thrDuplicateCheckInterval);
     thrDuplicateCheckInterval = null;
   }
+}
+
+function initThrForCompany() {
+  const currentYear = new Date().getFullYear();
+  currentThrYear = currentYear.toString();
+  const yearSelect = document.getElementById("thrYearSelect");
+  if (yearSelect) yearSelect.value = currentThrYear;
+  loadThrData();
 }
 
 // =============================
@@ -8049,13 +8442,13 @@ function stopThrDuplicateStatusCheck() {
 // =============================
 async function loadThrEmployeeList() {
   try {
-    console.log(`Loading THR employee list from data_karyawan for company: ${currentCompany}`);
+    console.log(`Loading THR employee list for company: ${currentCompany}`);
     const res = await fetch(`/thr-employees?company=${currentCompany}`);
     const data = await res.json();
 
     if (data.success && data.employees) {
       thrEmployeeList = data.employees;
-      console.log(`THR Employee list loaded for ${currentCompany}:`, thrEmployeeList.length, "employees");
+      console.log(`THR Employee list loaded: ${thrEmployeeList.length} employees`);
       return thrEmployeeList;
     } else {
       console.error("Failed to load THR employees:", data);
@@ -8083,41 +8476,66 @@ function renderThrEmployeeDropdown(filterText = "") {
   employeeListContainer.innerHTML = filtered
     .map(
       (emp) => `
-    <div class="employee-item" data-no-induk="${escapeHtml(emp.no_induk)}" data-nama="${escapeHtml(emp.nama)}" data-nohp="${escapeHtml(emp.no_hp || "")}">
+    <div class="employee-item" 
+         data-karyawan-id="${emp.karyawan_id}"
+         data-no-induk="${escapeHtml(emp.no_induk)}" 
+         data-nama="${escapeHtml(emp.nama)}" 
+         data-nohp="${escapeHtml(emp.no_hp || "")}">
       <div class="employee-no-induk">${escapeHtml(emp.no_induk)}</div>
       <div class="employee-name">${escapeHtml(emp.nama)}</div>
+      <div class="employee-detail" style="font-size: 11px; color: #666;">
+        ${emp.no_hp ? escapeHtml(emp.no_hp) : "No HP tidak tersedia"}
+      </div>
     </div>
   `,
     )
     .join("");
 
   document.querySelectorAll("#thrEmployeeList .employee-item").forEach((item) => {
-    item.addEventListener("click", () => {
-      const noInduk = item.dataset.noInduk;
-      const nama = item.dataset.nama;
-      const nohp = item.dataset.nohp;
-      selectThrEmployee(noInduk, nama, nohp);
+    const newItem = item.cloneNode(true);
+    item.parentNode.replaceChild(newItem, item);
+
+    newItem.addEventListener("click", () => {
+      const karyawanId = newItem.dataset.karyawanId;
+      const noInduk = newItem.dataset.noInduk;
+      const nama = newItem.dataset.nama;
+      const nohp = newItem.dataset.nohp;
+      selectThrEmployee(karyawanId, noInduk, nama, nohp);
     });
   });
 }
 
-function selectThrEmployee(noInduk, nama, nohp) {
-  selectedThrEmployee = { no_induk: noInduk, nama: nama, nohp: nohp };
+function selectThrEmployee(karyawanId, noInduk, nama, nohp) {
+  console.log("🔵 selectThrEmployee called:", { karyawanId, noInduk, nama, nohp });
 
-  document.getElementById("thr_no_induk").value = noInduk;
-  document.getElementById("thr_nama").value = nama;
+  selectedThrEmployee = {
+    karyawan_id: karyawanId,
+    no_induk: noInduk,
+    nama: nama,
+    nohp: nohp,
+  };
+
+  const karyawanIdInput = document.getElementById("thr_karyawan_id");
+  const noIndukInput = document.getElementById("thr_no_induk");
+  const namaInput = document.getElementById("thr_nama");
+
+  if (karyawanIdInput) karyawanIdInput.value = karyawanId || "";
+  if (noIndukInput) noIndukInput.value = noInduk || "";
+  if (namaInput) namaInput.value = nama || "";
 
   const searchInput = document.getElementById("thrEmployeeSearch");
   if (searchInput) {
-    searchInput.value = `${noInduk} - ${nama}`;
+    searchInput.value = `${noInduk || ""} - ${nama || ""}`;
   }
 
   const nohpInput = document.getElementById("thr_nohp");
   if (nohpInput) {
     if (nohp) {
       nohpInput.value = nohp;
-    } else if (!nohpInput.value || nohpInput.value === "") {
-      nohpInput.placeholder = "Masukkan No HP (contoh: 628123456789)";
+    } else {
+      nohpInput.value = "";
+      nohpInput.placeholder = "No HP tidak tersedia, silakan isi manual";
+      nohpInput.readOnly = false;
     }
   }
 
@@ -8132,7 +8550,6 @@ function setupThrEmployeeSearch() {
 
   if (!searchInput || !dropdown) return;
 
-  // Hapus event listener lama dengan clone
   const newSearchInput = searchInput.cloneNode(true);
   searchInput.parentNode.replaceChild(newSearchInput, searchInput);
 
@@ -8179,13 +8596,22 @@ function setupThrEmployeeSearch() {
 
 function resetThrEmployeeSelection() {
   selectedThrEmployee = null;
+
   const searchInput = document.getElementById("thrEmployeeSearch");
+  const karyawanIdInput = document.getElementById("thr_karyawan_id");
   const noIndukInput = document.getElementById("thr_no_induk");
   const namaInput = document.getElementById("thr_nama");
+  const nohpInput = document.getElementById("thr_nohp");
 
   if (searchInput) searchInput.value = "";
+  if (karyawanIdInput) karyawanIdInput.value = "";
   if (noIndukInput) noIndukInput.value = "";
   if (namaInput) namaInput.value = "";
+  if (nohpInput) {
+    nohpInput.value = "";
+    nohpInput.placeholder = "Akan diisi otomatis dari data karyawan";
+    nohpInput.readOnly = true;
+  }
 }
 
 // THR Event Listeners
@@ -8228,13 +8654,19 @@ document.getElementById("resetThrCheckbox")?.addEventListener("click", () => {
   });
 });
 
+// THR Year Filter - Perbaiki agar default ke tahun sekarang
 document.getElementById("thrYearSelect")?.addEventListener("change", (e) => {
   const selectedYear = e.target.value;
+  console.log("THR year filter changed to:", selectedYear);
+
   if (selectedYear === "all") {
-    currentThrYear = "all";
+    currentThrYear = new Date().getFullYear().toString();
+    e.target.value = currentThrYear; // Reset dropdown value
+    console.log(`"All" selected, defaulting to current year: ${currentThrYear}`);
   } else {
-    currentThrYear = parseInt(selectedYear);
+    currentThrYear = selectedYear;
   }
+
   currentThrPage = 1;
   selectedThrSet.clear();
   loadThrData();
@@ -8259,7 +8691,9 @@ if (selectAllThr) {
 
 const prevThrPage = document.getElementById("prevThrPage");
 if (prevThrPage) {
-  prevThrPage.addEventListener("click", () => {
+  const newPrevThrPage = prevThrPage.cloneNode(true);
+  prevThrPage.parentNode.replaceChild(newPrevThrPage, prevThrPage);
+  newPrevThrPage.addEventListener("click", () => {
     if (currentThrPage > 1) {
       currentThrPage--;
       renderThrTable();
@@ -8269,7 +8703,9 @@ if (prevThrPage) {
 
 const nextThrPage = document.getElementById("nextThrPage");
 if (nextThrPage) {
-  nextThrPage.addEventListener("click", () => {
+  const newNextThrPage = nextThrPage.cloneNode(true);
+  nextThrPage.parentNode.replaceChild(newNextThrPage, nextThrPage);
+  newNextThrPage.addEventListener("click", () => {
     const query = document.getElementById("searchThrInput")?.value.toLowerCase() || "";
     const filtered = thrData.filter((d) => d.nama?.toLowerCase().includes(query) || d.no_induk?.toLowerCase().includes(query));
     if (currentThrPage * pageSizeThr < filtered.length) {
@@ -8279,9 +8715,12 @@ if (nextThrPage) {
   });
 }
 
+// THR Search
 const searchThrInput = document.getElementById("searchThrInput");
 if (searchThrInput) {
-  searchThrInput.addEventListener("input", () => {
+  const newSearchThr = searchThrInput.cloneNode(true);
+  searchThrInput.parentNode.replaceChild(newSearchThr, searchThrInput);
+  newSearchThr.addEventListener("input", () => {
     currentThrPage = 1;
     renderThrTable();
   });
@@ -8294,7 +8733,6 @@ const addThrBtn = document.getElementById("addThrBtn");
 if (addThrBtn) {
   const newAddThrBtn = addThrBtn.cloneNode(true);
   addThrBtn.parentNode.replaceChild(newAddThrBtn, addThrBtn);
-
   newAddThrBtn.addEventListener("click", () => {
     openThrModal();
   });
@@ -8470,24 +8908,6 @@ function initMobileMenu() {
     });
   });
 }
-
-// =============================
-// WEBSOCKET & OTHER FUNCTIONS
-// =============================
-const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-const socket = new WebSocket(`${protocol}//${window.location.host}`);
-
-socket.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  if (data.status === "force_logout") {
-    Swal.fire({
-      title: "Sesi Berakhir",
-      text: "Koneksi WhatsApp terputus. Silakan login kembali.",
-      icon: "warning",
-      confirmButtonText: "OK",
-    }).then(() => (window.location.href = "/"));
-  }
-};
 
 // Initialize
 loadData();

@@ -21,7 +21,11 @@ export default async function kirimThrHisana(thr, senderNumber) {
     console.log(`✅ PDF generated: ${fileThr}`);
 
     // 2. Format nomor tujuan
-    let nomorTujuan = thr.nohp.replace(/[^0-9]/g, "");
+    let nomorTujuan = thr.nohp?.replace(/[^0-9]/g, "") || "";
+
+    if (!nomorTujuan) {
+      throw new Error(`Nomor HP tidak tersedia untuk ${thr.nama}`);
+    }
 
     if (nomorTujuan.startsWith("0")) {
       nomorTujuan = "62" + nomorTujuan.substring(1);
@@ -34,7 +38,8 @@ export default async function kirimThrHisana(thr, senderNumber) {
     const jid = `${nomorTujuan}@s.whatsapp.net`;
 
     // 3. Format nama file
-    const namaFile = `THR_${thr.nama.replace(/[^a-z0-9]/gi, "_")}_${thr.tahun}.pdf`;
+    const safeNama = thr.nama?.replace(/[^a-z0-9]/gi, "_") || "karyawan";
+    const namaFile = `THR_${safeNama}_${thr.tahun}.pdf`;
 
     // 4. Kirim PDF
     console.log(`📤 Sending THR Hisana to ${thr.nama} (${nomorTujuan})...`);
@@ -51,7 +56,7 @@ export default async function kirimThrHisana(thr, senderNumber) {
       caption: captionFinal,
     });
 
-    console.log(`✅ THR Hisana terkirim ke ${thr.nama} (${thr.nohp}) - Rp ${thr.jumlah_thr}`);
+    console.log(`✅ THR Hisana terkirim ke ${thr.nama} (${thr.nohp}) - Rp ${thr.jumlah_thr?.toLocaleString()}`);
 
     // 5. Hapus file setelah kirim
     if (fs.existsSync(fileThr)) {

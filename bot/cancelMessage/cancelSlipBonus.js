@@ -1,5 +1,3 @@
-// bot/cancelMessage/cancelSlipBonus.js
-
 import { getSocketByNumber } from "../index.js";
 
 function rupiah(x) {
@@ -52,34 +50,39 @@ async function sendCancelBonusNotification(bonus, company, senderNumber, cancell
     const adminNumber = senderNumber.replace(/[^0-9]/g, "");
     const adminDisplay = adminNumber.length > 8 ? "Admin ***" + adminNumber.slice(-4) : "Admin";
 
-    // TEMPLATE PESAN (Konsisten dengan Slip Gaji)
-    const message = `*🛑 PEMBERITAHUAN PEMBATALAN BONUS*
----
-Halo, *${namaKaryawan}*
-Mohon maaf, rincian bonus Anda telah ditarik kembali:
+    const companyDisplay = company === "hisana" ? "HISANA" : "ENAKKO";
 
-🆔 *DATA KARYAWAN*
+    // TEMPLATE PESAN
+    const message = `*🛑 PEMBERITAHUAN PEMBATALAN BONUS*
+━━━━━━━━━━━━━━━━━━━━
+Halo, *${namaKaryawan}*
+Mohon maaf, rincian bonus Anda telah ditarik kembali.
+
+*📋 DATA KARYAWAN*
 • No. Induk: ${bonus.no_induk || "-"}
 • Periode: ${periodeBulan} ${bonus.tahun || ""}
+• Perusahaan: ${companyDisplay}
 
-💰 *RINGKASAN BONUS*
-▫️ Jenis: Bonus Kinerja/Tahunan
-*TOTAL: ${rupiah(bonus.jumlah_bonus || 0)}*
+*💰 RINCIAN BONUS*
+• Jenis: Bonus Kinerja
+• Jumlah: ${rupiah(bonus.jumlah_bonus || 0)}
 
-⚠️ *STATUS: DIBATALKAN*
-Alasan: ${cancellationNote || "Revisi data oleh admin"}
-Waktu: ${tanggal} | ${jam} WIB
+*⚠️ STATUS: DIBATALKAN*
+• Alasan: ${cancellationNote || "Revisi data oleh admin"}
+• Waktu: ${tanggal} | ${jam} WIB
 
----
-*KETERANGAN:*
-Bonus ini telah dibatalkan dari sistem untuk proses perbaikan data. Mohon tunggu notifikasi terbaru atau hubungi *${adminDisplay}* jika ada pertanyaan.
+━━━━━━━━━━━━━━━━━━━━
+*📝 KETERANGAN:*
+Bonus ini telah dibatalkan dari sistem untuk proses perbaikan data. 
+Mohon tunggu notifikasi terbaru atau hubungi *${adminDisplay}* jika ada pertanyaan.
 
-_Pesan otomatis - Sistem Payroll ${company.toUpperCase()}_`;
+_${new Date().toLocaleString("id-ID")}_
+_Pesan otomatis - Sistem Payroll ${companyDisplay}_`;
 
     await sock.sendMessage(jid, { text: message });
 
-    console.log(`✅ Notifikasi pembatalan bonus terkirim: ${namaKaryawan}`);
-    return true;
+    console.log(`✅ Notifikasi pembatalan bonus terkirim ke ${namaKaryawan}`);
+    return { success: true, message: "Notifikasi terkirim" };
   } catch (error) {
     console.error(`❌ Error sendCancelBonus:`, error.message);
     throw error;
@@ -97,7 +100,7 @@ export async function kirimPembatalanBonusEnakko(bonus, senderNumber, cancellati
   return await sendCancelBonusNotification(bonus, "enakko", senderNumber, cancellationNote);
 }
 
-// Menjaga kompatibilitas dengan pemanggilan fungsi lama jika ada
+// Untuk kompatibilitas dengan pemanggilan lama
 export async function kirimPembatalanBonus(bonus, senderNumber, cancellationNote) {
   return await sendCancelBonusNotification(bonus, "payroll", senderNumber, cancellationNote);
 }

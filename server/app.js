@@ -4,7 +4,6 @@ import session from "express-session";
 import http from "http";
 import { WebSocketServer } from "ws";
 import sessionFileStore from "session-file-store";
-import fs from "fs";
 
 import dashboardDataRoutes from "./routes/dashboardDataRoutes.js";
 import slipRoutes from "./routes/slipGajiRoutes.js";
@@ -17,7 +16,7 @@ import karyawanProfileRoutes from "./routes/karyawanProfileRoutes.js";
 import absensiKaryawanRoutes from "./routes/absensiKaryawanRoutes.js";
 import lokasiStoreRoutes from "./routes/LokasiStoreRoutes.js";
 
-import { startBot, getSocketByNumber, logoutBot, getActiveSessions } from "../bot/index.js";
+import { startBot, getSocketByNumber, logoutBot, logoutAllSessions } from "../bot/index.js";
 
 import db from "./db.js";
 
@@ -57,9 +56,9 @@ app.use(sessionMiddleware);
 // ============================
 
 async function getUserIfExists(number) {
+  console.log(`[DB] Looking for number: "${number}"`);
   try {
     const [rows] = await db.query("SELECT id, nomor_wa, nama FROM users WHERE nomor_wa = ?", [number]);
-    console.log(`[DB] Query for ${number}: ${rows.length > 0 ? "Found - " + rows[0].nama : "Not found"}`);
     return rows.length ? rows[0] : null;
   } catch (err) {
     console.error("[DB ERROR] getUserIfExists:", err);
@@ -145,7 +144,6 @@ app.get("/dashboard", async (req, res) => {
 
   const number = req.session.number;
   if (!getSocketByNumber(number)) {
-    console.log(`[DASHBOARD] Starting bot for ${number}`);
     startBot({ number });
   }
 
@@ -185,24 +183,36 @@ app.use(express.static(path.join(process.cwd(), "public")));
 app.post("/set-number", async (req, res) => {
   const { number } = req.body;
 
+  console.log(`[SET-NUMBER] Request received for number: ${number}`);
+
   if (!number) {
-    return res.status(400).json({ success: false });
+    console.log(`[SET-NUMBER] No number provided`);
+    return res.status(400).json({ success: false, message: "No number provided" });
   }
 
   try {
     const user = await getUserIfExists(number);
     if (!user) {
+      console.log(`[SET-NUMBER] Number not registered: ${number}`);
       return res.status(403).json({
         success: false,
         message: "Nomor belum terdaftar. Hubungi admin.",
       });
     }
 
+    console.log(`[SET-NUMBER] User found: ${user.id} - ${user.nama}`);
+
     req.session.number = number;
     req.session.user_id = user.id;
     req.session.user_name = user.nama;
 
-    req.session.save(() => {
+    req.session.save((err) => {
+      if (err) {
+        console.error("[SET-NUMBER] Session save error:", err);
+        return res.status(500).json({ success: false, message: "Session save failed" });
+      }
+
+      console.log(`[SET-NUMBER] Session saved successfully for ${number}`);
       res.json({
         success: true,
         user_id: user.id,
@@ -210,295 +220,81 @@ app.post("/set-number", async (req, res) => {
       });
     });
   } catch (err) {
-    console.error("SET NUMBER ERROR:", err);
-    res.status(500).json({ success: false });
+    console.error("[SET-NUMBER] ERROR:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
 
 // ============================
-// OTP STORAGE (DATABASE VERSION)
-// ============================
-
-// Cleanup expired OTPs every minute
-setInterval(async () => {
-  try {
-    await db.query("DELETE FROM otp_codes WHERE expires_at < NOW()");
-    console.log("[OTP] Cleaned up expired OTPs");
-  } catch (err) {
-    console.error("[OTP] Cleanup error:", err);
-  }
-}, 60000);
-
-// Generate random 6-digit OTP
-function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-// Request OTP endpoint
-app.post("/request-otp", async (req, res) => {
-  const { phoneNumber } = req.body;
-
-  console.log(`[OTP] Request received for ${phoneNumber}`);
-
-  if (!phoneNumber) {
-    return res.status(400).json({
-      success: false,
-      message: "Nomor WhatsApp diperlukan",
-    });
-  }
-
-  const phoneRegex = /^62[0-9]{10,13}$/;
-  if (!phoneRegex.test(phoneNumber)) {
-    return res.status(400).json({
-      success: false,
-      message: "Format nomor tidak valid. Gunakan format 62xxxxxxxxxxx",
-    });
-  }
-
-  const user = await getUserIfExists(phoneNumber);
-  if (!user) {
-    return res.status(403).json({
-      success: false,
-      message: "Nomor WhatsApp tidak terdaftar. Hubungi admin untuk pendaftaran.",
-    });
-  }
-
-  const [existingOTP] = await db.query(
-    `SELECT * FROM otp_codes 
-     WHERE nomor_wa = ? 
-     AND expires_at > NOW() 
-     AND is_used = FALSE 
-     ORDER BY created_at DESC 
-     LIMIT 1`,
-    [phoneNumber],
-  );
-
-  if (existingOTP.length > 0) {
-    const expiresAt = new Date(existingOTP[0].expires_at);
-    const now = new Date();
-    const timeLeft = Math.ceil((expiresAt - now) / 1000);
-
-    if (timeLeft > 0 && timeLeft < 300) {
-      return res.status(429).json({
-        success: false,
-        message: `Tunggu ${timeLeft} detik sebelum meminta kode baru`,
-      });
-    }
-  }
-
-  const otp = generateOTP();
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-  try {
-    await db.query(`UPDATE otp_codes SET is_used = TRUE WHERE nomor_wa = ? AND is_used = FALSE`, [phoneNumber]);
-
-    await db.query(
-      `INSERT INTO otp_codes (nomor_wa, otp_code, attempts, expires_at, is_used) 
-       VALUES (?, ?, 0, ?, FALSE)`,
-      [phoneNumber, otp, expiresAt],
-    );
-
-    console.log(`[OTP] OTP ${otp} stored for ${phoneNumber}`);
-    res.json({
-      success: true,
-      message: `Kode OTP: ${otp}`,
-      otp: otp,
-    });
-  } catch (error) {
-    console.error("[OTP] Database error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Terjadi kesalahan sistem, silakan coba lagi",
-    });
-  }
-});
-
-// Verify OTP endpoint
-app.post("/verify-otp", async (req, res) => {
-  const { phoneNumber, otpCode } = req.body;
-
-  console.log(`[OTP] Verify request for ${phoneNumber} with code ${otpCode}`);
-
-  if (!phoneNumber || !otpCode) {
-    return res.status(400).json({
-      success: false,
-      message: "Nomor WhatsApp dan kode OTP diperlukan",
-    });
-  }
-
-  try {
-    const [otpRecords] = await db.query(
-      `SELECT * FROM otp_codes 
-       WHERE nomor_wa = ? 
-       AND otp_code = ? 
-       AND is_used = FALSE 
-       AND expires_at > NOW()
-       ORDER BY created_at DESC 
-       LIMIT 1`,
-      [phoneNumber, otpCode],
-    );
-
-    if (otpRecords.length === 0) {
-      const [expiredOTP] = await db.query(
-        `SELECT * FROM otp_codes 
-         WHERE nomor_wa = ? 
-         AND otp_code = ? 
-         ORDER BY created_at DESC 
-         LIMIT 1`,
-        [phoneNumber, otpCode],
-      );
-
-      if (expiredOTP.length > 0) {
-        if (expiredOTP[0].is_used) {
-          return res.status(400).json({
-            success: false,
-            message: "Kode OTP sudah digunakan. Silakan minta kode baru.",
-          });
-        } else if (new Date(expiredOTP[0].expires_at) < new Date()) {
-          return res.status(400).json({
-            success: false,
-            message: "Kode OTP telah kadaluarsa. Silakan minta kode baru.",
-          });
-        }
-      }
-
-      return res.status(400).json({
-        success: false,
-        message: "Kode OTP tidak valid",
-      });
-    }
-
-    const otpRecord = otpRecords[0];
-
-    if (otpRecord.attempts >= 5) {
-      await db.query(`UPDATE otp_codes SET is_used = TRUE WHERE id = ?`, [otpRecord.id]);
-      return res.status(400).json({
-        success: false,
-        message: "Terlalu banyak percobaan gagal. Silakan minta kode baru.",
-      });
-    }
-
-    if (otpRecord.otp_code !== otpCode) {
-      await db.query(`UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?`, [otpRecord.id]);
-      const remaining = 5 - (otpRecord.attempts + 1);
-      return res.status(400).json({
-        success: false,
-        message: `Kode OTP salah. Sisa percobaan: ${remaining}`,
-      });
-    }
-
-    await db.query(`UPDATE otp_codes SET is_used = TRUE WHERE id = ?`, [otpRecord.id]);
-
-    const user = await getUserIfExists(phoneNumber);
-    if (!user) {
-      return res.status(403).json({
-        success: false,
-        message: "Nomor WhatsApp tidak terdaftar",
-      });
-    }
-
-    console.log(`[OTP] User ${phoneNumber} verified successfully`);
-
-    // Set session for OTP login
-    req.session.number = phoneNumber;
-    req.session.user_id = user.id;
-    req.session.user_name = user.nama;
-
-    // Start bot untuk connect WhatsApp
-    console.log(`[OTP] Starting WhatsApp bot for ${phoneNumber}`);
-
-    if (!getSocketByNumber(phoneNumber)) {
-      startBot({
-        number: phoneNumber,
-        onConnected: async (waNumber) => {
-          console.log(`[OTP] ✅ Bot connected successfully for ${waNumber}`);
-        },
-        onLogout: (number) => {
-          console.log(`[OTP] Bot logout for ${number}`);
-        },
-      }).catch((err) => {
-        console.error("[OTP] Failed to start bot:", err);
-      });
-    } else {
-      console.log(`[OTP] Bot already running for ${phoneNumber}`);
-    }
-
-    req.session.save(() => {
-      res.json({
-        success: true,
-        message: "Verifikasi berhasil",
-      });
-    });
-  } catch (error) {
-    console.error("[OTP] Verify error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Terjadi kesalahan sistem, silakan coba lagi",
-    });
-  }
-});
-
-// ============================
-// CEK BOT STATUS UNTUK MULTI USER
-// ============================
-
-app.get("/api/bot-status", async (req, res) => {
-  if (!req.session.number) {
-    return res.json({
-      status: "not_logged_in",
-      message: "Belum login",
-    });
-  }
-
-  const number = req.session.number;
-  const isConnected = getSocketByNumber(number) !== null;
-  const sessionExists = fs.existsSync(`./session/${number}`);
-
-  res.json({
-    success: true,
-    number: number,
-    isConnected: isConnected,
-    sessionExists: sessionExists,
-    message: isConnected ? "Bot terhubung" : "Bot tidak terhubung",
-  });
-});
-
-// ============================
-// GET ALL ACTIVE SESSIONS (DEBUG)
-// ============================
-
-app.get("/api/active-sessions", async (req, res) => {
-  // Hanya yang sudah login yang bisa lihat
-  if (!req.session.admin && !req.session.number) {
-    return res.status(403).json({ error: "Unauthorized" });
-  }
-
-  const sessions = getActiveSessions ? getActiveSessions() : [];
-
-  res.json({
-    activeSessions: sessions,
-    total: sessions.length,
-  });
-});
-
-// ============================
-// LOGOUT
+// LOGOUT HR (DIPERBAIKI - HAPUS PERANGKAT TERTAUT)
 // ============================
 
 app.get("/logout", async (req, res) => {
   const number = req.session.number;
-  if (number) await logoutBot(number);
-  req.session.destroy(() => {
+  console.log(`[LOGOUT] User logout: ${number}`);
+
+  if (number) {
+    // Hapus session WhatsApp dan logout dari perangkat tertaut
+    await logoutBot(number);
+  }
+
+  req.session.destroy((err) => {
+    if (err) console.error("[LOGOUT] Session destroy error:", err);
     res.clearCookie("connect.sid");
     res.redirect("/");
   });
 });
 
 // ============================
-// WEBSOCKET BOT LOGIN SYSTEM
+// CHECK SESSION STATUS (UNTUK DETECT FORCE LOGOUT DARI WA)
+// ============================
+
+app.get("/check-session", async (req, res) => {
+  if (!req.session.number) {
+    return res.json({ loggedIn: false });
+  }
+
+  const number = req.session.number;
+  const socket = getSocketByNumber(number);
+
+  // Cek apakah socket masih ada dan terhubung
+  const isConnected = socket && socket.user;
+
+  if (!isConnected) {
+    // Jika socket tidak ada, hapus session
+    req.session.destroy((err) => {
+      if (err) console.error("[CHECK-SESSION] Destroy error:", err);
+    });
+    return res.json({ loggedIn: false, reason: "Device disconnected from WhatsApp" });
+  }
+
+  res.json({ loggedIn: true });
+});
+
+// ============================
+// WEBSOCKET BOT LOGIN SYSTEM (DIPERBAIKI UNTUK DETECT FORCE LOGOUT)
 // ============================
 
 let userSessions = {};
+
+// Function to notify force logout to all connected clients
+function notifyForceLogout(number) {
+  console.log(`[WS] Notifying force logout for ${number}`);
+  if (userSessions[number]) {
+    userSessions[number].wsClients.forEach((client) => {
+      if (client && client.readyState === 1) {
+        client.send(
+          JSON.stringify({
+            status: "force_logout",
+            message: "Perangkat WhatsApp telah dihapus dari perangkat tertaut. Silakan login ulang.",
+          }),
+        );
+      }
+    });
+    // Hapus session dari memory
+    delete userSessions[number];
+  }
+}
 
 wss.on("connection", async (ws, req) => {
   const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -511,90 +307,96 @@ wss.on("connection", async (ws, req) => {
   };
 
   let botStarted = false;
+  let currentBot = null;
 
   const startBotForQR = async () => {
     if (botStarted) return;
     botStarted = true;
 
-    console.log(`[WS] Starting bot for QR generation`);
+    console.log(`[WS] Starting bot for QR generation (${tempId})`);
 
     try {
-      await startBot({
+      currentBot = await startBot({
+        number: tempId,
         onQR: (number, qr) => {
-          console.log(`[WS] QR generated, sending to client`);
-          if (userSessions[tempId]) {
+          console.log(`[WS] QR generated for ${number}, sending to client`);
+          if (userSessions[tempId] && userSessions[tempId].wsClients) {
             userSessions[tempId].wsClients.forEach((client) => {
-              if (client.readyState === 1) {
+              if (client && client.readyState === 1) {
                 client.send(JSON.stringify({ qr }));
               }
             });
           }
         },
         onConnected: async (waNumber) => {
-          console.log(`[WS] Bot connected with number: ${waNumber}`);
+          console.log(`[WS] WhatsApp connected: ${waNumber}`);
 
           const user = await getUserIfExists(waNumber);
 
           if (!user) {
-            console.log(`[LOGIN DITOLAK] ${waNumber} belum terdaftar di tabel users`);
+            console.log(`[WS] Number not registered: ${waNumber}`);
             if (userSessions[tempId]) {
               userSessions[tempId].wsClients.forEach((client) => {
-                if (client.readyState === 1) {
+                if (client && client.readyState === 1) {
                   client.send(
                     JSON.stringify({
                       status: "not_registered",
+                      number: waNumber,
                       message: "Nomor WhatsApp belum terdaftar. Hubungi admin untuk pendaftaran.",
                     }),
                   );
                 }
               });
             }
+            // Logout bot for unregistered number
             await logoutBot(waNumber);
             return;
           }
 
-          console.log(`[LOGIN BERHASIL] ${waNumber} (${user.nama}) terdaftar`);
+          console.log(`[WS] User registered: ${user.id} - ${user.nama}`);
 
-          if (!userSessions[waNumber]) {
-            userSessions[waNumber] = {
-              wsClients: [],
-              sessionIds: [],
-            };
-          }
-
+          // Move session from temp to permanent number
           if (userSessions[tempId]) {
+            if (!userSessions[waNumber]) {
+              userSessions[waNumber] = {
+                wsClients: [],
+                sessionIds: [],
+              };
+            }
+
             userSessions[waNumber].wsClients.push(...userSessions[tempId].wsClients);
             userSessions[waNumber].sessionIds.push(userSessions[tempId].sessionId);
+
+            // Clean up temp session
             delete userSessions[tempId];
           }
 
-          userSessions[waNumber].wsClients.forEach((client) => {
-            if (client.readyState === 1) {
-              client.send(
-                JSON.stringify({
-                  status: "connected",
-                  number: waNumber,
-                  user_id: user.id,
-                  user_name: user.nama,
-                }),
-              );
-            }
-          });
-        },
-        onLogout: (number) => {
-          console.log(`[WS] Force logout: ${number}`);
-          if (userSessions[number]) {
-            userSessions[number].wsClients.forEach((client) => {
-              if (client.readyState === 1) {
+          // Send success to all clients
+          if (userSessions[waNumber]) {
+            userSessions[waNumber].wsClients.forEach((client) => {
+              if (client && client.readyState === 1) {
                 client.send(
                   JSON.stringify({
-                    status: "force_logout",
-                    message: "Sesi WhatsApp berakhir, silakan scan ulang QR",
+                    status: "connected",
+                    number: waNumber,
+                    user_id: user.id,
+                    user_name: user.nama,
                   }),
                 );
               }
             });
-            delete userSessions[number];
+          }
+        },
+        onLogout: (number) => {
+          console.log(`[WS] Force logout detected for: ${number}`);
+          // Notify all clients connected to this number
+          notifyForceLogout(number);
+
+          // Also destroy session if exists
+          if (number && !number.startsWith("temp_")) {
+            // Find and destroy session for this number
+            const sessionFile = `./sessions/${userSessions[number]?.sessionIds?.[0] || ""}`;
+            // Session will be destroyed on next request check
           }
         },
       });
@@ -603,10 +405,12 @@ wss.on("connection", async (ws, req) => {
     }
   };
 
+  // Start bot after a short delay
   setTimeout(startBotForQR, 100);
 
   ws.on("close", () => {
     console.log(`[WS] Connection closed: ${tempId}`);
+    // Don't clean up immediately, give time for reconnection
     setTimeout(() => {
       if (userSessions[tempId]) {
         delete userSessions[tempId];
@@ -625,7 +429,5 @@ server.listen(PORT, () => {
   console.log(`========================================`);
   console.log(`🚀 Server berjalan di port ${PORT}`);
   console.log(`📱 Akses: http://localhost:${PORT}`);
-  console.log(`✅ QR Login: Scan QR Code untuk connect WhatsApp`);
-  console.log(`✅ OTP Login: Verifikasi OTP dan otomatis connect WhatsApp`);
   console.log(`========================================`);
 });

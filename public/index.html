@@ -870,16 +870,19 @@
     </div>
 
     <!-- MODAL UNTUK BONUS -->
-    <div id="bonusModal" style="display: none">
-      <div class="modalContent">
+    <div id="bonusModal" class="modal" style="display: none">
+      <div class="modalContent" style="max-width: 600px">
         <div class="modal-header">
-          <h2>Tambah / Edit Bonus</h2>
+          <h2 id="bonusModalTitle">Tambah / Edit Bonus</h2>
           <button id="closeBonusModal" class="modal-close">&times;</button>
         </div>
         <form id="bonusForm">
           <input type="hidden" id="bonus_id" />
+          <input type="hidden" id="bonus_karyawan_id" />
+          <input type="hidden" id="bonus_no_induk" />
+          <input type="hidden" id="bonus_nama" />
           <div class="formGrid">
-            <div class="formGroup">
+            <div class="formGroup" style="grid-column: span 2">
               <label>Pilih Karyawan *</label>
               <div class="employee-search-container">
                 <input type="text" id="employeeSearch" placeholder="Cari berdasarkan No Induk atau Nama..." class="employee-search-input" autocomplete="off" />
@@ -890,21 +893,21 @@
                   <div id="employeeList" class="employee-list"></div>
                 </div>
               </div>
-              <input type="hidden" id="bonus_no_induk" />
-              <input type="hidden" id="bonus_nama" />
+              <small><i class="fas fa-info-circle"></i> Pilih karyawan dari daftar</small>
             </div>
             <div class="formGroup">
-              <label>Bulan dan Tahun</label>
+              <label>Bulan dan Tahun *</label>
               <input type="month" id="bonus_periode" required />
             </div>
             <div class="formGroup">
               <label>Jumlah Bonus *</label>
               <input type="text" id="bonus_jumlah" required placeholder="Masukkan nominal bonus" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" />
-              <small><i class="fas fa-info-circle"></i> Masukkan nominal berapa saja (tanpa titik atau koma)</small>
+              <small><i class="fas fa-info-circle"></i> Masukkan nominal (contoh: 500000)</small>
             </div>
-            <div class="formGroup">
+            <div class="formGroup" style="grid-column: span 2">
               <label>No HP</label>
-              <input type="text" id="bonus_nohp" required placeholder="Contoh: 628123456789" />
+              <input type="text" id="bonus_nohp" placeholder="Akan diisi otomatis dari data karyawan" style="background: #f3f4f6" />
+              <small><i class="fas fa-info-circle"></i> No HP akan terisi otomatis saat memilih karyawan</small>
             </div>
           </div>
           <div class="modal-footer">
@@ -916,16 +919,19 @@
     </div>
 
     <!-- MODAL UNTUK THR -->
-    <div id="thrModal" style="display: none">
-      <div class="modalContent">
+    <div id="thrModal" class="modal" style="display: none">
+      <div class="modalContent" style="max-width: 600px">
         <div class="modal-header">
           <h2 id="thrModalTitle">Tambah / Edit THR</h2>
           <button id="closeThrModal" class="modal-close">&times;</button>
         </div>
         <form id="thrForm">
           <input type="hidden" id="thr_id" />
+          <input type="hidden" id="thr_karyawan_id" />
+          <input type="hidden" id="thr_no_induk" />
+          <input type="hidden" id="thr_nama" />
           <div class="formGrid">
-            <div class="formGroup">
+            <div class="formGroup" style="grid-column: span 2">
               <label>Pilih Karyawan *</label>
               <div class="employee-search-container">
                 <input type="text" id="thrEmployeeSearch" placeholder="Cari berdasarkan No Induk atau Nama..." class="employee-search-input" autocomplete="off" />
@@ -936,8 +942,7 @@
                   <div id="thrEmployeeList" class="employee-list"></div>
                 </div>
               </div>
-              <input type="hidden" id="thr_no_induk" />
-              <input type="hidden" id="thr_nama" />
+              <small><i class="fas fa-info-circle"></i> Pilih karyawan dari daftar</small>
             </div>
             <div class="formGroup">
               <label>Tahun *</label>
@@ -946,11 +951,12 @@
             <div class="formGroup">
               <label>Jumlah THR *</label>
               <input type="text" id="thr_jumlah_thr" required placeholder="Masukkan nominal THR" class="currency-input" autocomplete="off" style="text-align: right; font-family: monospace" />
-              <small><i class="fas fa-info-circle"></i> Masukkan nominal berapa saja (tanpa titik atau koma)</small>
+              <small><i class="fas fa-info-circle"></i> Masukkan nominal (contoh: 5000000)</small>
             </div>
-            <div class="formGroup">
-              <label>No HP *</label>
-              <input type="text" id="thr_nohp" required placeholder="Contoh: 628123456789" />
+            <div class="formGroup" style="grid-column: span 2">
+              <label>No HP</label>
+              <input type="text" id="thr_nohp" placeholder="Akan diisi otomatis dari data karyawan" style="background: #f3f4f6" readonly />
+              <small><i class="fas fa-info-circle"></i> No HP akan terisi otomatis saat memilih karyawan</small>
             </div>
           </div>
           <div class="modal-footer">
@@ -960,6 +966,7 @@
         </form>
       </div>
     </div>
+    >
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="js/dashboard.js"></script>
