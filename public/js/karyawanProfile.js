@@ -60,7 +60,10 @@ async function loadProfile() {
     }
 
     profileData = data.profile;
-    company = data.company;
+    company = data.company; // Simpan company dari response
+
+    console.log("Company loaded:", company);
+    console.log("Profile data:", profileData);
 
     await loadCurrentMonthSlip();
     await loadCurrentMonthBonus();
@@ -159,17 +162,31 @@ async function downloadSlip() {
       },
     });
 
+    // PERBAIKAN: Pastikan data yang dikirim lengkap dengan informasi karyawan
+    const slipDataToSend = {
+      ...currentSlipData,
+      nama: currentSlipData.nama || profileData?.nama_lengkap,
+      no_induk: currentSlipData.no_induk || profileData?.no_induk,
+      jabatan: currentSlipData.jabatan || profileData?.jabatan,
+      store_name: currentSlipData.store_name || profileData?.nama_gerai,
+      awal_masuk: currentSlipData.awal_masuk || profileData?.awal_masuk,
+      awal_masuk_formatted: currentSlipData.awal_masuk_formatted || profileData?.awal_masuk_formatted,
+    };
+
+    console.log("Sending slip data for download:", slipDataToSend);
+
     const res = await fetch("/api/karyawan/download-slip", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        slipData: currentSlipData,
+        slipData: slipDataToSend,
         company: company,
       }),
     });
 
     if (!res.ok) {
-      throw new Error("Gagal mengunduh slip");
+      const errorData = await res.json();
+      throw new Error(errorData.message || "Gagal mengunduh slip");
     }
 
     const blob = await res.blob();
@@ -225,17 +242,31 @@ async function downloadBonus() {
       },
     });
 
+    // PERBAIKAN: Pastikan data yang dikirim lengkap dengan informasi karyawan
+    const bonusDataToSend = {
+      ...currentBonusData,
+      nama: currentBonusData.nama || profileData?.nama_lengkap,
+      no_induk: currentBonusData.no_induk || profileData?.no_induk,
+      jabatan: currentBonusData.jabatan || profileData?.jabatan,
+      store_name: currentBonusData.store_name || profileData?.nama_gerai,
+      awal_masuk: currentBonusData.awal_masuk || profileData?.awal_masuk,
+      awal_masuk_formatted: currentBonusData.awal_masuk_formatted || profileData?.awal_masuk_formatted,
+    };
+
+    console.log("Sending bonus data for download:", bonusDataToSend);
+
     const res = await fetch("/api/karyawan/download-bonus", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        bonusData: currentBonusData,
+        bonusData: bonusDataToSend,
         company: company,
       }),
     });
 
     if (!res.ok) {
-      throw new Error("Gagal mengunduh bonus");
+      const errorData = await res.json();
+      throw new Error(errorData.message || "Gagal mengunduh bonus");
     }
 
     const blob = await res.blob();
@@ -290,17 +321,31 @@ async function downloadThr() {
       },
     });
 
+    // PERBAIKAN: Pastikan data yang dikirim lengkap dengan informasi karyawan
+    const thrDataToSend = {
+      ...currentThrData,
+      nama: currentThrData.nama || profileData?.nama_lengkap,
+      no_induk: currentThrData.no_induk || profileData?.no_induk,
+      jabatan: currentThrData.jabatan || profileData?.jabatan,
+      store_name: currentThrData.store_name || profileData?.nama_gerai,
+      awal_masuk: currentThrData.awal_masuk || profileData?.awal_masuk,
+      awal_masuk_formatted: currentThrData.awal_masuk_formatted || profileData?.awal_masuk_formatted,
+    };
+
+    console.log("Sending THR data for download:", thrDataToSend);
+
     const res = await fetch("/api/karyawan/download-thr", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        thrData: currentThrData,
+        thrData: thrDataToSend,
         company: company,
       }),
     });
 
     if (!res.ok) {
-      throw new Error("Gagal mengunduh THR");
+      const errorData = await res.json();
+      throw new Error(errorData.message || "Gagal mengunduh THR");
     }
 
     const blob = await res.blob();
@@ -341,24 +386,15 @@ function renderProfile(data) {
   const container = document.getElementById("profileContent");
   const company = data.company;
 
-  console.log("Rendering profile with data:", profile);
-  console.log("Company:", company);
-  console.log("Foto diri URL:", profile.foto_diri_url);
-  console.log("Foto KTP URL:", profile.foto_ktp_url);
-
   let fotoDiriUrl = "https://ui-avatars.com/api/?background=6366f1&color=fff&rounded=true&bold=true&size=200&name=" + encodeURIComponent(profile.nama_lengkap);
   let fotoKtpUrl = null;
 
   if (profile.foto_diri_url && profile.foto_diri_url !== "" && profile.foto_diri_url !== "null") {
     fotoDiriUrl = profile.foto_diri_url;
-    console.log("Using foto_diri_url:", fotoDiriUrl);
-  } else {
-    console.log("No foto_diri_url found, using avatar fallback");
   }
 
   if (profile.foto_ktp_url && profile.foto_ktp_url !== "" && profile.foto_ktp_url !== "null") {
     fotoKtpUrl = profile.foto_ktp_url;
-    console.log("Using foto_ktp_url:", fotoKtpUrl);
   }
 
   container.innerHTML = `
@@ -413,6 +449,13 @@ function renderProfile(data) {
               </div>
             </div>
             <div class="info-item">
+              <i class="fas fa-calendar-check"></i>
+              <div>
+                <div class="info-label">Awal Masuk</div>
+                <div class="info-value">${profile.awal_masuk_formatted || formatDate(profile.awal_masuk)}</div>
+              </div>
+            </div>
+            <div class="info-item">
               <i class="fas fa-map-marker-alt"></i>
               <div>
                 <div class="info-label">Alamat Domisili</div>
@@ -457,7 +500,7 @@ function renderProfile(data) {
               </div>
             </div>
             <div class="info-item">
-                <i class="fas fa-briefcase"></i>
+              <i class="fas fa-briefcase"></i>
               <div>
                 <div class="info-label">Jabatan</div>
                 <div class="info-value">${escapeHtml(profile.jabatan || "-")}</div>
@@ -515,11 +558,16 @@ function renderCurrentSlip() {
   const currentMonth = monthNames[now.getMonth()];
   const currentYear = now.getFullYear();
 
+  console.log("Rendering current slip, data:", currentSlipData);
+  console.log("Company:", company);
+
+  // Jika tidak ada data slip
   if (!currentSlipData) {
     return `
       <div class="empty-state">
         <i class="fas fa-folder-open"></i>
         <p>Belum ada data slip gaji untuk ${currentMonth} ${currentYear}</p>
+        <small style="color: #999; margin-top: 8px; display: block;">Slip gaji akan tersedia setelah HR mengirimkan data</small>
       </div>
     `;
   }
@@ -530,32 +578,112 @@ function renderCurrentSlip() {
   };
 
   let totalGaji = 0;
+  let slipDetails = [];
+
+  // Tampilkan informasi karyawan di card
+  const karyawanInfo = `
+    <div class="karyawan-info" style="background: #f8fafc; padding: 16px; border-radius: 16px; margin-bottom: 20px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+        <div>
+          <div style="font-size: 11px; color: #94a3b8;">Jabatan</div>
+          <div style="font-weight: 600; color: #1e293b;">${escapeHtml(currentSlipData.jabatan || "-")}</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: #94a3b8;">Store / Unit</div>
+          <div style="font-weight: 600; color: #1e293b;">${escapeHtml(currentSlipData.store_name || "-")}</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: #94a3b8;">Tanggal Bergabung</div>
+          <div style="font-weight: 600; color: #1e293b;">${currentSlipData.awal_masuk_formatted || formatDate(currentSlipData.awal_masuk) || "-"}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
   if (company === "hisana") {
     totalGaji = currentSlipData.gaji_total || 0;
+    slipDetails = [
+      { label: "Jumlah Hari Kerja", value: currentSlipData.kerja || 0, icon: "fa-calendar-day", isNumber: true },
+      { label: "Gaji Pokok", value: formatRupiahDisplay(currentSlipData.gaji || 0), icon: "fa-money-bill-wave", isMoney: true },
+      { label: "Iuran BPJS Ketenagakerjaan", value: `- ${formatRupiahDisplay(currentSlipData.iuran_bpjs_ketenagakerjaan || 0)}`, icon: "fa-shield-alt", isDeduction: true, isMoney: true },
+      { label: "Kerajinan", value: formatRupiahDisplay(currentSlipData.kerajinan || 0), icon: "fa-hand-sparkles", isMoney: true },
+      { label: "Cuti", value: formatRupiahDisplay(currentSlipData.cuti || 0), icon: "fa-umbrella-beach", isMoney: true },
+      { label: "Tunjangan BPJS & Pulsa", value: formatRupiahDisplay(currentSlipData.tunj_bpjs_pulsa || 0), icon: "fa-phone-alt", isMoney: true },
+      { label: "Total Perhitungan", value: formatRupiahDisplay(currentSlipData.jumlah || 0), icon: "fa-calculator", isMoney: true, isBold: true },
+      { label: "Uang Makan (UM)", value: formatRupiahDisplay(currentSlipData.um || 0), icon: "fa-utensils", isMoney: true },
+    ];
   } else {
     totalGaji = currentSlipData.total_gaji || 0;
+    slipDetails = [
+      { label: "Gaji Pokok", value: formatRupiahDisplay(currentSlipData.gaji_pokok || 0), icon: "fa-money-bill-wave", isMoney: true },
+      { label: "BPJS Kesehatan", value: formatRupiahDisplay(currentSlipData.bpjs_kesehatan || 0), icon: "fa-shield-alt", isMoney: true },
+      { label: "Insentif", value: formatRupiahDisplay(currentSlipData.insentif || 0), icon: "fa-star", isMoney: true },
+    ];
   }
 
+  const detailsHtml = slipDetails
+    .map(
+      (detail) => `
+    <div class="salary-detail-item ${detail.isBold ? "salary-detail-bold" : ""}">
+      <div class="salary-detail-icon">
+        <i class="fas ${detail.icon}"></i>
+      </div>
+      <div class="salary-detail-info">
+        <span class="salary-detail-label">${detail.label}</span>
+        <span class="salary-detail-value ${detail.isDeduction ? "deduction" : ""} ${detail.isBold ? "bold-value" : ""}">
+          ${detail.isNumber ? detail.value : detail.value}
+        </span>
+      </div>
+    </div>
+  `,
+    )
+    .join("");
+
   return `
-    <div class="salary-card current-slip-card" style="text-align: center;">
-      <div style="padding: 30px 20px;">
-        <i class="fas fa-file-invoice-dollar" style="font-size: 48px; color: #667eea; margin-bottom: 15px;"></i>
-        <h3 style="margin-bottom: 10px; color: #333;">Slip Gaji ${currentMonth} ${currentYear}</h3>
-        <div style="background: #EEF2FF; padding: 15px; border-radius: 12px; margin: 20px 0;">
-          <p style="color: #667eea; font-weight: 600; margin-bottom: 5px;">Total Gaji</p>
-          <p style="font-size: 24px; font-weight: bold; color: #10B981;">${formatRupiahDisplay(totalGaji)}</p>
+    <div class="salary-card current-slip-card">
+      <div class="salary-card-header">
+        <div class="header-icon">
+          <i class="fas fa-file-invoice-dollar"></i>
         </div>
-        <p style="margin-bottom: 20px; color: #6c757d; font-size: 14px;">
-          Klik tombol di bawah untuk mengunduh slip gaji lengkap
-        </p>
-        <button class="btn-download-slip" onclick="downloadSlip()">
+        <div class="header-info">
+          <h3>Slip Gaji</h3>
+          <p>${currentMonth} ${currentYear}</p>
+        </div>
+        <div class="header-badge ${currentSlipData.status_slip === "terkirim" ? "badge-sent" : "badge-pending"}">
+          <i class="fas ${currentSlipData.status_slip === "terkirim" ? "fa-check-circle" : "fa-clock"}"></i>
+          ${currentSlipData.status_slip === "terkirim" ? "Terkirim" : "Belum Dikirim"}
+        </div>
+      </div>
+      <div class="salary-card-body">
+        ${karyawanInfo}
+        <div class="salary-details">
+          ${detailsHtml}
+        </div>
+        <div class="salary-total">
+          <div class="total-label">Total Gaji</div>
+          <div class="total-amount">${formatRupiahDisplay(totalGaji)}</div>
+        </div>
+        ${
+          currentSlipData.keterangan
+            ? `
+        <div class="salary-note">
+          <i class="fas fa-info-circle"></i>
+          <span>${escapeHtml(currentSlipData.keterangan)}</span>
+        </div>
+        `
+            : ""
+        }
+        <div class="salary-date">
+          <i class="fas fa-calendar-alt"></i>
+          <span>Dibuat: ${currentSlipData.created_at ? new Date(currentSlipData.created_at).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-"}</span>
+        </div>
+        <button class="btn-download" onclick="downloadSlip()">
           <i class="fas fa-download"></i> Unduh Slip Gaji
         </button>
       </div>
     </div>
   `;
 }
-
 function renderCurrentBonus() {
   const now = new Date();
   const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -567,6 +695,7 @@ function renderCurrentBonus() {
       <div class="empty-state">
         <i class="fas fa-gift"></i>
         <p>Belum ada data bonus untuk ${currentMonth} ${currentYear}</p>
+        <small style="color: #999; margin-top: 8px; display: block;">Bonus akan tersedia setelah HR mengirimkan data</small>
       </div>
     `;
   }
@@ -581,28 +710,52 @@ function renderCurrentBonus() {
   const monthIndex = bonusMonth - 1;
   const monthName = monthNames[monthIndex] || currentMonth;
 
-  return `
-    <div class="salary-card current-bonus-card" style="text-align: center;">
-      <div style="padding: 30px 20px;">
-        <i class="fas fa-gift" style="font-size: 48px; color: #F59E0B; margin-bottom: 15px;"></i>
-        <h3 style="margin-bottom: 10px; color: #333;">Bonus ${monthName} ${bonusYear}</h3>
-        <div style="background: #FEF3C7; padding: 15px; border-radius: 12px; margin: 20px 0;">
-          <p style="color: #F59E0B; font-weight: 600; margin-bottom: 5px;">Jumlah Bonus</p>
-          <p style="font-size: 24px; font-weight: bold; color: #16A34A;">${formatRupiahDisplay(currentBonusData.jumlah_bonus)}</p>
+  // Tampilkan informasi karyawan
+  const karyawanInfo = `
+    <div class="karyawan-info" style="background: #f8fafc; padding: 16px; border-radius: 16px; margin-bottom: 20px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+        <div>
+          <div style="font-size: 11px; color: #94a3b8;">Jabatan</div>
+          <div style="font-weight: 600; color: #1e293b;">${escapeHtml(currentBonusData.jabatan || "-")}</div>
         </div>
-        ${
-          currentBonusData.keterangan
-            ? `
-          <p style="margin: 15px 0; color: #6c757d;">
-            <i class="fas fa-info-circle"></i> Keterangan: ${escapeHtml(currentBonusData.keterangan)}
-          </p>
-        `
-            : ""
-        }
-        <p style="margin-bottom: 20px; color: #6c757d; font-size: 14px;">
-          Klik tombol di bawah untuk mengunduh slip bonus lengkap
-        </p>
-        <button class="btn-download-bonus" onclick="downloadBonus()">
+        <div>
+          <div style="font-size: 11px; color: #94a3b8;">Store / Unit</div>
+          <div style="font-weight: 600; color: #1e293b;">${escapeHtml(currentBonusData.store_name || "-")}</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: #94a3b8;">Tanggal Bergabung</div>
+          <div style="font-weight: 600; color: #1e293b;">${currentBonusData.awal_masuk_formatted || formatDate(currentBonusData.awal_masuk) || "-"}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return `
+    <div class="salary-card current-bonus-card">
+      <div class="salary-card-header">
+        <div class="header-icon">
+          <i class="fas fa-gift"></i>
+        </div>
+        <div class="header-info">
+          <h3>Bonus</h3>
+          <p>${monthName} ${bonusYear}</p>
+        </div>
+        <div class="header-badge ${currentBonusData.status === "terkirim" ? "badge-sent" : "badge-pending"}">
+          <i class="fas ${currentBonusData.status === "terkirim" ? "fa-check-circle" : "fa-clock"}"></i>
+          ${currentBonusData.status === "terkirim" ? "Terkirim" : "Belum Dikirim"}
+        </div>
+      </div>
+      <div class="salary-card-body">
+        ${karyawanInfo}
+        <div class="bonus-amount">
+          <div class="bonus-label">Jumlah Bonus</div>
+          <div class="bonus-value">${formatRupiahDisplay(currentBonusData.jumlah_bonus)}</div>
+        </div>
+        <div class="salary-date">
+          <i class="fas fa-calendar-alt"></i>
+          <span>Dibuat: ${currentBonusData.created_at ? new Date(currentBonusData.created_at).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-"}</span>
+        </div>
+        <button class="btn-download" onclick="downloadBonus()">
           <i class="fas fa-download"></i> Unduh Slip Bonus
         </button>
       </div>
@@ -619,6 +772,7 @@ function renderCurrentThr() {
       <div class="empty-state">
         <i class="fas fa-star-of-life"></i>
         <p>Belum ada data THR untuk tahun ${currentYear}</p>
+        <small style="color: #999; margin-top: 8px; display: block;">THR akan tersedia setelah HR mengirimkan data</small>
       </div>
     `;
   }
@@ -630,19 +784,52 @@ function renderCurrentThr() {
 
   const thrYear = currentThrData.tahun || currentYear;
 
-  return `
-    <div class="salary-card current-thr-card" style="text-align: center;">
-      <div style="padding: 30px 20px;">
-        <i class="fas fa-star-of-life" style="font-size: 48px; color: #065F46; margin-bottom: 15px;"></i>
-        <h3 style="margin-bottom: 10px; color: #333;">THR ${thrYear}</h3>
-        <div style="background: #ECFDF5; padding: 15px; border-radius: 12px; margin: 20px 0;">
-          <p style="color: #065F46; font-weight: 600; margin-bottom: 5px;">Jumlah THR</p>
-          <p style="font-size: 24px; font-weight: bold; color: #10B981;">${formatRupiahDisplay(currentThrData.jumlah_thr)}</p>
+  // Tampilkan informasi karyawan
+  const karyawanInfo = `
+    <div class="karyawan-info" style="background: #f8fafc; padding: 16px; border-radius: 16px; margin-bottom: 20px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+        <div>
+          <div style="font-size: 11px; color: #94a3b8;">Jabatan</div>
+          <div style="font-weight: 600; color: #1e293b;">${escapeHtml(currentThrData.jabatan || "-")}</div>
         </div>
-        <p style="margin-bottom: 20px; color: #6c757d; font-size: 14px;">
-          Klik tombol di bawah untuk mengunduh slip THR lengkap
-        </p>
-        <button class="btn-download-thr" onclick="downloadThr()">
+        <div>
+          <div style="font-size: 11px; color: #94a3b8;">Store / Unit</div>
+          <div style="font-weight: 600; color: #1e293b;">${escapeHtml(currentThrData.store_name || "-")}</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: #94a3b8;">Tanggal Bergabung</div>
+          <div style="font-weight: 600; color: #1e293b;">${currentThrData.awal_masuk_formatted || formatDate(currentThrData.awal_masuk) || "-"}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return `
+    <div class="salary-card current-thr-card">
+      <div class="salary-card-header">
+        <div class="header-icon">
+          <i class="fas fa-star-of-life"></i>
+        </div>
+        <div class="header-info">
+          <h3>THR</h3>
+          <p>Tahun ${thrYear}</p>
+        </div>
+        <div class="header-badge ${currentThrData.status === "terkirim" ? "badge-sent" : "badge-pending"}">
+          <i class="fas ${currentThrData.status === "terkirim" ? "fa-check-circle" : "fa-clock"}"></i>
+          ${currentThrData.status === "terkirim" ? "Terkirim" : "Belum Dikirim"}
+        </div>
+      </div>
+      <div class="salary-card-body">
+        ${karyawanInfo}
+        <div class="thr-amount">
+          <div class="thr-label">Jumlah THR</div>
+          <div class="thr-value">${formatRupiahDisplay(currentThrData.jumlah_thr)}</div>
+        </div>
+        <div class="salary-date">
+          <i class="fas fa-calendar-alt"></i>
+          <span>Dibuat: ${currentThrData.created_at ? new Date(currentThrData.created_at).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-"}</span>
+        </div>
+        <button class="btn-download" onclick="downloadThr()">
           <i class="fas fa-download"></i> Unduh Slip THR
         </button>
       </div>
@@ -1035,42 +1222,92 @@ async function loadTodayAttendanceStatus() {
   }
 }
 
-// Check In - Absen Masuk (Flexible)
+// Check In - Absen Masuk (WAJIB di dalam jangkauan)
 async function handleCheckIn() {
   try {
-    Swal.fire({
-      title: "Mengambil lokasi...",
-      text: "Harap izinkan akses lokasi untuk absensi",
+    // Cek koneksi internet
+    if (!navigator.onLine) {
+      await Swal.fire({
+        icon: "error",
+        title: "Tidak Ada Koneksi Internet",
+        text: "Harap periksa koneksi internet Anda untuk melakukan absensi.",
+        confirmButtonColor: "#ef4444",
+      });
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: "📍 Absen Masuk",
+      html: `
+        <div style="text-align: left;">
+          <p>Sebelum absen, pastikan:</p>
+          <ul style="text-align: left;">
+            <li>GPS perangkat Anda aktif</li>
+            <li>Browser diizinkan mengakses lokasi</li>
+            <li>Anda berada di area store/toko</li>
+          </ul>
+        </div>
+      `,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Saya Siap Absen",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#667eea",
+    });
+
+    if (!result.isConfirmed) return;
+
+    // Loading untuk mengambil lokasi
+    const loadingSwal = Swal.fire({
+      title: "Mendeteksi Lokasi...",
+      html: `
+        <div class="loading-location">
+          <i class="fas fa-map-marker-alt fa-spin" style="font-size: 48px; color: #667eea;"></i>
+          <p>Mengambil data GPS Anda...</p>
+          <p class="small-text">Harap izinkan akses lokasi jika diminta</p>
+        </div>
+      `,
       allowOutsideClick: false,
+      showConfirmButton: false,
       didOpen: () => {
         Swal.showLoading();
       },
     });
 
     let location = null;
+    let locationError = null;
+
     try {
       location = await getCurrentLocation();
+      await loadingSwal.close();
     } catch (err) {
-      Swal.close();
-      const confirmLocation = await Swal.fire({
-        icon: "warning",
-        title: "Gagal Mendapatkan Lokasi",
-        text: err.message + "\n\nApakah Anda tetap ingin absen tanpa lokasi?",
-        showCancelButton: true,
-        confirmButtonText: "Ya, Tetap Absen",
-        cancelButtonText: "Batal",
-        confirmButtonColor: "#f59e0b",
-      });
+      await loadingSwal.close();
+      locationError = err.message;
 
-      if (!confirmLocation.isConfirmed) {
-        return;
-      }
+      await Swal.fire({
+        icon: "error",
+        title: "Gagal Mendapatkan Lokasi",
+        html: `
+          <p>${err.message}</p>
+          <p class="small-text" style="margin-top: 10px;">
+            <strong>Cara mengatasi:</strong><br>
+            1. Aktifkan GPS di perangkat Anda<br>
+            2. Izinkan browser mengakses lokasi<br>
+            3. Pastikan Anda di area dengan sinyal GPS yang baik
+          </p>
+        `,
+        confirmButtonText: "Coba Lagi",
+        confirmButtonColor: "#667eea",
+      });
+      return;
     }
 
-    Swal.fire({
-      title: "Memproses...",
-      text: "Sedang melakukan absen masuk",
+    // Proses absen
+    const prosesSwal = Swal.fire({
+      title: "Memproses Absen...",
+      text: "Sedang memverifikasi lokasi Anda",
       allowOutsideClick: false,
+      showConfirmButton: false,
       didOpen: () => {
         Swal.showLoading();
       },
@@ -1080,80 +1317,142 @@ async function handleCheckIn() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        latitude: location?.latitude || null,
-        longitude: location?.longitude || null,
+        latitude: location.latitude,
+        longitude: location.longitude,
       }),
     });
 
     const data = await res.json();
-    Swal.close();
+    await prosesSwal.close();
 
     if (data.success) {
-      Swal.fire({
+      await Swal.fire({
         icon: "success",
-        title: "Absen Masuk Berhasil!",
-        html: `Waktu: <strong>${data.data.time}</strong>`,
+        title: "✅ Absen Masuk Berhasil!",
+        html: `
+          <div style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 10px;">✅</div>
+            <p><strong>Waktu:</strong> ${data.data.time}</p>
+            <p><strong>Lokasi:</strong> ${data.data.store_name}</p>
+            <p><strong>Jarak:</strong> ${data.data.distance} meter</p>
+            <p style="color: #10b981; margin-top: 10px;">✓ Anda berada di dalam area yang valid</p>
+          </div>
+        `,
         confirmButtonColor: "#667eea",
       });
 
       loadTodayAttendanceStatus();
       closeAttendanceMenu();
     } else {
-      Swal.fire({
-        icon: "error",
-        title: "Gagal",
-        text: data.message,
-        confirmButtonColor: "#ef4444",
-      });
+      if (data.code === "OUT_OF_RANGE") {
+        await Swal.fire({
+          icon: "error",
+          title: "⛔ Di Luar Area Absensi!",
+          html: `
+            <div style="text-align: center;">
+              <i class="fas fa-map-marker-alt" style="font-size: 48px; color: #ef4444; margin-bottom: 10px;"></i>
+              <p><strong>Anda berada di luar area yang diizinkan!</strong></p>
+              <p>Jarak Anda: <strong>${data.data.distance} meter</strong></p>
+              <p>Maksimal jarak: <strong>${data.data.maxDistance} meter</strong></p>
+              <p><strong>Lokasi Store:</strong> ${data.data.storeName}</p>
+              <p><strong>Alamat:</strong> ${data.data.storeAddress}</p>
+              <hr style="margin: 15px 0;">
+              <p class="small-text">Silakan mendekat ke area store/toko untuk melakukan absensi.</p>
+            </div>
+          `,
+          confirmButtonText: "OK",
+          confirmButtonColor: "#ef4444",
+        });
+      } else {
+        await Swal.fire({
+          icon: "error",
+          title: "Gagal",
+          text: data.message,
+          confirmButtonColor: "#ef4444",
+        });
+      }
     }
   } catch (err) {
     console.error("Check In error:", err);
     Swal.close();
-    Swal.fire({
+    await Swal.fire({
       icon: "error",
-      title: "Error",
-      text: err.message || "Terjadi kesalahan saat absen masuk",
+      title: "Terjadi Kesalahan",
+      text: err.message || "Silakan coba lagi beberapa saat",
       confirmButtonColor: "#ef4444",
     });
   }
 }
 
-// Check Out - Absen Pulang (Flexible)
+// Check Out - Absen Pulang (WAJIB di dalam jangkauan)
 async function handleCheckOut() {
   try {
-    Swal.fire({
-      title: "Mengambil lokasi...",
-      text: "Harap izinkan akses lokasi untuk absensi",
+    if (!navigator.onLine) {
+      await Swal.fire({
+        icon: "error",
+        title: "Tidak Ada Koneksi Internet",
+        text: "Harap periksa koneksi internet Anda untuk melakukan absensi.",
+        confirmButtonColor: "#ef4444",
+      });
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: "📍 Absen Pulang",
+      html: `
+        <div style="text-align: left;">
+          <p>Pastikan Anda sudah:</p>
+          <ul style="text-align: left;">
+            <li>Menyelesaikan semua pekerjaan</li>
+            <li>Berada di area store/toko</li>
+            <li>GPS perangkat aktif</li>
+          </ul>
+        </div>
+      `,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Absen Pulang",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#667eea",
+    });
+
+    if (!result.isConfirmed) return;
+
+    const loadingSwal = Swal.fire({
+      title: "Mendeteksi Lokasi...",
+      text: "Mengambil data GPS Anda",
       allowOutsideClick: false,
+      showConfirmButton: false,
       didOpen: () => {
         Swal.showLoading();
       },
     });
 
     let location = null;
+
     try {
       location = await getCurrentLocation();
+      await loadingSwal.close();
     } catch (err) {
-      Swal.close();
-      const confirmLocation = await Swal.fire({
-        icon: "warning",
+      await loadingSwal.close();
+      await Swal.fire({
+        icon: "error",
         title: "Gagal Mendapatkan Lokasi",
-        text: err.message + "\n\nApakah Anda tetap ingin absen tanpa lokasi?",
-        showCancelButton: true,
-        confirmButtonText: "Ya, Tetap Absen",
-        cancelButtonText: "Batal",
-        confirmButtonColor: "#f59e0b",
+        html: `
+          <p>${err.message}</p>
+          <p class="small-text">Aktifkan GPS dan izinkan akses lokasi untuk absensi</p>
+        `,
+        confirmButtonText: "Coba Lagi",
+        confirmButtonColor: "#667eea",
       });
-
-      if (!confirmLocation.isConfirmed) {
-        return;
-      }
+      return;
     }
 
-    Swal.fire({
-      title: "Memproses...",
-      text: "Sedang melakukan absen pulang",
+    const prosesSwal = Swal.fire({
+      title: "Memproses Absen...",
+      text: "Sedang memverifikasi lokasi Anda",
       allowOutsideClick: false,
+      showConfirmButton: false,
       didOpen: () => {
         Swal.showLoading();
       },
@@ -1163,39 +1462,67 @@ async function handleCheckOut() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        latitude: location?.latitude || null,
-        longitude: location?.longitude || null,
+        latitude: location.latitude,
+        longitude: location.longitude,
       }),
     });
 
     const data = await res.json();
-    Swal.close();
+    await prosesSwal.close();
 
     if (data.success) {
-      Swal.fire({
+      await Swal.fire({
         icon: "success",
-        title: "Absen Pulang Berhasil!",
-        html: `Waktu: <strong>${data.data.time}</strong>`,
+        title: "✅ Absen Pulang Berhasil!",
+        html: `
+          <div style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 10px;">✅</div>
+            <p><strong>Waktu:</strong> ${data.data.time}</p>
+            <p><strong>Lokasi:</strong> ${data.data.store_name}</p>
+            <p><strong>Jarak:</strong> ${data.data.distance} meter</p>
+            <p style="color: #10b981; margin-top: 10px;">✓ Anda berada di dalam area yang valid</p>
+          </div>
+        `,
         confirmButtonColor: "#667eea",
       });
 
       loadTodayAttendanceStatus();
       closeAttendanceMenu();
     } else {
-      Swal.fire({
-        icon: "error",
-        title: "Gagal",
-        text: data.message,
-        confirmButtonColor: "#ef4444",
-      });
+      if (data.code === "OUT_OF_RANGE") {
+        await Swal.fire({
+          icon: "error",
+          title: "⛔ Di Luar Area Absensi!",
+          html: `
+            <div style="text-align: center;">
+              <i class="fas fa-map-marker-alt" style="font-size: 48px; color: #ef4444; margin-bottom: 10px;"></i>
+              <p><strong>Anda berada di luar area yang diizinkan!</strong></p>
+              <p>Jarak Anda: <strong>${data.data.distance} meter</strong></p>
+              <p>Maksimal jarak: <strong>${data.data.maxDistance} meter</strong></p>
+              <p><strong>Lokasi Store:</strong> ${data.data.storeName}</p>
+              <hr style="margin: 15px 0;">
+              <p class="small-text">Silakan mendekat ke area store/toko untuk melakukan absen pulang.</p>
+            </div>
+          `,
+          confirmButtonText: "OK",
+          confirmButtonColor: "#ef4444",
+        });
+      } else {
+        await Swal.fire({
+          icon: "error",
+          title: "Gagal",
+          text: data.message,
+          confirmButtonColor: "#ef4444",
+        });
+      }
     }
   } catch (err) {
     console.error("Check Out error:", err);
     Swal.close();
-    Swal.fire({
+    await Swal.fire({
       icon: "error",
-      title: "Error",
-      text: err.message || "Terjadi kesalahan saat absen pulang",
+      title: "Terjadi Kesalahan",
+      text: err.message || "Silakan coba lagi beberapa saat",
       confirmButtonColor: "#ef4444",
     });
   }

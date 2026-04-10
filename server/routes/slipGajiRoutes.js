@@ -104,16 +104,13 @@ router.get("/my-slip", async (req, res) => {
     console.log(`  Company: ${company}`);
     console.log(`  Month filter: ${month || "none"}`);
     console.log(`  Year filter: ${year || "none"}`);
-    console.log(`  User: ${number}`);
 
     const [users] = await db.query("SELECT id FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
-      console.log(`[SERVER] User tidak ditemukan untuk nomor: ${number}`);
       return res.json([]);
     }
 
     const userId = users[0].id;
-    console.log(`[SERVER] userId: ${userId}`);
 
     let query = `
       SELECT 
@@ -131,19 +128,36 @@ router.get("/my-slip", async (req, res) => {
     `;
     const queryParams = [userId];
 
-    if (month && month !== "all" && month !== "") {
+    if (month === "all") {
+      console.log(`[GET SLIP] Showing ALL months`);
+    } else if (month && month !== "") {
       query += ` AND MONTH(s.created_at) = ?`;
       queryParams.push(parseInt(month));
+      console.log(`[GET SLIP] Filtering month: ${month}`);
+    } else {
+      const currentMonth = new Date().getMonth() + 1;
+      query += ` AND MONTH(s.created_at) = ?`;
+      queryParams.push(currentMonth);
+      console.log(`[GET SLIP] Default month: ${currentMonth}`);
     }
 
-    if (year && year !== "all" && year !== "") {
+    if (year === "all") {
+      console.log(`[GET SLIP] Showing ALL years`);
+    } else if (year && year !== "") {
       query += ` AND YEAR(s.created_at) = ?`;
       queryParams.push(parseInt(year));
+      console.log(`[GET SLIP] Filtering year: ${year}`);
+    } else {
+      const currentYear = new Date().getFullYear();
+      query += ` AND YEAR(s.created_at) = ?`;
+      queryParams.push(currentYear);
+      console.log(`[GET SLIP] Default year: ${currentYear}`);
     }
 
     query += ` ORDER BY s.created_at DESC, s.id DESC`;
 
     const [rows] = await db.query(query, queryParams);
+    console.log(`[GET SLIP] Found ${rows.length} records`);
     res.json(rows);
   } catch (err) {
     console.error("[SERVER] GET SLIP ERROR:", err);

@@ -196,22 +196,28 @@
               <div class="stat-card" style="background: linear-gradient(135deg, #10b981, #059669); border-radius: 16px; padding: 20px; color: white">
                 <div class="stat-icon"><i class="fas fa-file-invoice-dollar" style="font-size: 32px; opacity: 0.8"></i></div>
                 <div class="stat-info">
-                  <div class="stat-value" id="totalSlipStat">0</div>
-                  <div class="stat-label">Total Slip Gaji</div>
+                  <div id="totalSlipStat">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Total Slip Gaji Bulan Ini</div>
+                  </div>
                 </div>
               </div>
               <div class="stat-card" style="background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 16px; padding: 20px; color: white">
                 <div class="stat-icon"><i class="fas fa-gift" style="font-size: 32px; opacity: 0.8"></i></div>
                 <div class="stat-info">
-                  <div class="stat-value" id="totalBonusStat">0</div>
-                  <div class="stat-label">Total Bonus</div>
+                  <div id="totalBonusStat">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Total Slip Bonus Bulan Ini</div>
+                  </div>
                 </div>
               </div>
               <div class="stat-card" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); border-radius: 16px; padding: 20px; color: white">
                 <div class="stat-icon"><i class="fas fa-hand-holding-usd" style="font-size: 32px; opacity: 0.8"></i></div>
                 <div class="stat-info">
-                  <div class="stat-value" id="totalThrStat">0</div>
-                  <div class="stat-label">Total THR</div>
+                  <div id="totalThrStat">
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">Total Slip THR Tahun Ini</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -397,7 +403,7 @@
                       <div style="padding: 10px">
                         <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 5px">Bulan</label>
                         <select id="exportMonthSelect" class="filter-select" style="width: 100%; margin-bottom: 10px">
-                          <option value="all">Semua Bulan</option>
+                          <option value="all">Pilih Bulan</option>
                           <option value="1">Januari</option>
                           <option value="2">Februari</option>
                           <option value="3">Maret</option>
@@ -414,7 +420,7 @@
 
                         <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 5px">Tahun</label>
                         <select id="exportYearSelect" class="filter-select" style="width: 100%; margin-bottom: 10px">
-                          <option value="all">Semua Tahun</option>
+                          <option value="all">Pilih Tahun</option>
                         </select>
 
                         <button id="doExportBtn" class="btn-primary" style="width: 100%; margin-top: 10px; padding: 8px"><i class="fas fa-download"></i> Export Sekarang</button>
@@ -429,7 +435,7 @@
                     <div class="filter-wrapper">
                       <label for="slipMonthSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Bulan: </label>
                       <select id="slipMonthSelect" class="filter-select">
-                        <option value="all">Pilih Bulan</option>
+                        <option value="all">Semua Bulan</option>
                         <option value="1">Januari</option>
                         <option value="2">Februari</option>
                         <option value="3">Maret</option>
@@ -447,7 +453,7 @@
                     <div class="filter-wrapper">
                       <label for="slipYearSelect" class="filter-label"> <i class="fas fa-calendar"></i> Tahun: </label>
                       <select id="slipYearSelect" class="filter-select">
-                        <option value="all">Pilih Tahun</option>
+                        <option value="all">Semua Tahun</option>
                       </select>
                     </div>
                   </div>
@@ -547,7 +553,7 @@
                     <div class="filter-wrapper">
                       <label for="bonusMonthSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Bulan: </label>
                       <select id="bonusMonthSelect" class="filter-select">
-                        <option value="all">Pilih Bulan</option>
+                        <option value="all">Semua Bulan</option>
                         <option value="1">Januari</option>
                         <option value="2">Februari</option>
                         <option value="3">Maret</option>
@@ -565,7 +571,7 @@
                     <div class="filter-wrapper">
                       <label for="bonusYearSelect" class="filter-label"> <i class="fas fa-calendar"></i> Tahun: </label>
                       <select id="bonusYearSelect" class="filter-select">
-                        <option value="all">Pilih Tahun</option>
+                        <option value="all">Semua Tahun</option>
                       </select>
                     </div>
                   </div>
@@ -642,7 +648,7 @@
                   <div class="year-filter-wrapper">
                     <label for="thrYearSelect" class="filter-label"> <i class="fas fa-calendar-alt"></i> Tahun: </label>
                     <select id="thrYearSelect" class="filter-select">
-                      <option value="all">Pilih Tahun</option>
+                      <option value="all">Semua Tahun</option>
                     </select>
                   </div>
                 </div>

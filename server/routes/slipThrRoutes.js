@@ -65,25 +65,30 @@ router.get("/thr", async (req, res) => {
     let queryParams = [userId, userId];
 
     const year = req.query.year;
-    const currentYear = new Date().getFullYear();
 
-    // PERBAIKAN: Filter tahun - default ke tahun sekarang jika tidak ada parameter
-    let targetYear;
-    if (year && year !== "all" && year !== "") {
-      targetYear = parseInt(year);
+    // PERBAIKAN: Filter tahun - jika "all" maka tampilkan semua, jika tidak ada parameter maka default ke tahun sekarang
+    if (year === "all") {
+      // Tampilkan semua tahun
+      console.log(`[GET THR] Showing ALL years data`);
+      // Tidak menambahkan filter tahun
+    } else if (year && year !== "") {
+      // Filter spesifik tahun
+      const targetYear = parseInt(year);
+      query += ` AND t.tahun = ?`;
+      queryParams.push(targetYear);
+      console.log(`[GET THR] Filtering by specific year: ${targetYear}`);
     } else {
-      targetYear = currentYear;
+      // Default: hanya tampilkan tahun sekarang
+      const currentYear = new Date().getFullYear();
+      query += ` AND t.tahun = ?`;
+      queryParams.push(currentYear);
+      console.log(`[GET THR] No year filter provided, defaulting to current year: ${currentYear}`);
     }
 
-    query += ` AND t.tahun = ?`;
-    queryParams.push(targetYear);
-
-    console.log(`[GET THR] Company: ${company}, Target year: ${targetYear} (current year: ${currentYear})`);
-
-    query += ` ORDER BY t.created_at DESC, t.tahun DESC`;
+    query += ` ORDER BY t.tahun DESC, t.created_at DESC`;
 
     const [rows] = await db.query(query, queryParams);
-    console.log(`[GET THR] Found ${rows.length} records for year ${targetYear}`);
+    console.log(`[GET THR] Found ${rows.length} records for company ${company}`);
     res.json(rows);
   } catch (err) {
     console.error("[GET THR ERROR]:", err);
@@ -354,6 +359,7 @@ router.post("/send-thr", async (req, res) => {
     const { selected, company } = req.body;
     const thrTable = getThrTableName(company);
     const karyawanTable = getKaryawanTableName(company);
+    const lokasiTable = company === "hisana" ? "lokasi_store_hisana" : "lokasi_store_enakko";
 
     const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
@@ -368,11 +374,21 @@ router.post("/send-thr", async (req, res) => {
 
     const placeholders = selected.map(() => "?").join(",");
 
+    // PERBAIKAN: Query dengan JOIN untuk mendapatkan data karyawan lengkap
     const [rows] = await db.query(
-      `SELECT t.*, k.no_induk, k.nama_lengkap as nama, k.no_hp as nohp
-       FROM ${thrTable} t
-       INNER JOIN ${karyawanTable} k ON t.karyawan_id = k.id
-       WHERE t.id IN (${placeholders}) AND t.user_id = ? AND t.status != 'terkirim'`,
+      `SELECT 
+        t.*, 
+        k.no_induk, 
+        k.nama_lengkap as nama, 
+        k.jabatan,
+        DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
+        l.nama_store as store_name,
+        l.alamat as store_alamat,
+        k.no_hp as nohp
+      FROM ${thrTable} t
+      INNER JOIN ${karyawanTable} k ON t.karyawan_id = k.id
+      LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+      WHERE t.id IN (${placeholders}) AND t.user_id = ? AND t.status != 'terkirim'`,
       [...selected, userId],
     );
 
@@ -390,10 +406,26 @@ router.post("/send-thr", async (req, res) => {
             throw new Error(`Nomor HP tidak tersedia untuk ${thr.nama}`);
           }
 
+          // Format awal masuk
+          let awalMasukFormatted = "-";
+          if (thr.awal_masuk) {
+            const date = new Date(thr.awal_masuk);
+            if (!isNaN(date.getTime())) {
+              awalMasukFormatted = date.toLocaleDateString("id-ID", {
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+              });
+            }
+          }
+
           const thrData = {
             id: thr.id,
             no_induk: thr.no_induk,
             nama: thr.nama,
+            jabatan: thr.jabatan || "-",
+            store_name: thr.store_name || "-",
+            awal_masuk: awalMasukFormatted,
             tahun: thr.tahun,
             jumlah_thr: thr.jumlah_thr,
             nohp: thr.nohp,
@@ -441,6 +473,7 @@ router.post("/cancel-thr", async (req, res) => {
     const { selected, company, cancellation_note } = req.body;
     const thrTable = getThrTableName(company);
     const karyawanTable = getKaryawanTableName(company);
+    const lokasiTable = company === "hisana" ? "lokasi_store_hisana" : "lokasi_store_enakko";
 
     const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
@@ -451,11 +484,21 @@ router.post("/cancel-thr", async (req, res) => {
 
     const placeholders = selected.map(() => "?").join(",");
 
+    // PERBAIKAN: Query dengan JOIN untuk mendapatkan data karyawan lengkap
     const [rows] = await db.query(
-      `SELECT t.*, k.no_induk, k.nama_lengkap as nama, k.no_hp as nohp
-       FROM ${thrTable} t
-       INNER JOIN ${karyawanTable} k ON t.karyawan_id = k.id
-       WHERE t.id IN (${placeholders}) AND t.user_id = ? AND t.status = 'terkirim'`,
+      `SELECT 
+        t.*, 
+        k.no_induk, 
+        k.nama_lengkap as nama, 
+        k.jabatan,
+        DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
+        l.nama_store as store_name,
+        l.alamat as store_alamat,
+        k.no_hp as nohp
+      FROM ${thrTable} t
+      INNER JOIN ${karyawanTable} k ON t.karyawan_id = k.id
+      LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+      WHERE t.id IN (${placeholders}) AND t.user_id = ? AND t.status = 'terkirim'`,
       [...selected, userId],
     );
 
@@ -468,10 +511,26 @@ router.post("/cancel-thr", async (req, res) => {
 
     for (const thr of rows) {
       try {
+        // Format awal masuk
+        let awalMasukFormatted = "-";
+        if (thr.awal_masuk) {
+          const date = new Date(thr.awal_masuk);
+          if (!isNaN(date.getTime())) {
+            awalMasukFormatted = date.toLocaleDateString("id-ID", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+            });
+          }
+        }
+
         const thrData = {
           id: thr.id,
           no_induk: thr.no_induk,
           nama: thr.nama,
+          jabatan: thr.jabatan || "-",
+          store_name: thr.store_name || "-",
+          awal_masuk: awalMasukFormatted,
           tahun: thr.tahun,
           jumlah_thr: thr.jumlah_thr,
           nohp: thr.nohp,

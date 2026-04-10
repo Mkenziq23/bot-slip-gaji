@@ -86,22 +86,22 @@ startSessionCheck();
 // END OF SESSION CHECKER
 // ============================================
 
-async function checkAdminRole() {
-  try {
-    const res = await fetch("/api/admin/me");
-    const data = await res.json();
+// async function checkAdminRole() {
+//   try {
+//     const res = await fetch("/api/admin/me");
+//     const data = await res.json();
 
-    if (!data.loggedIn) return;
+//     if (!data.loggedIn) return;
 
-    if (data.role === "admin" || data.role === "superadmin") {
-      document.getElementById("manageUsersBtn").style.display = "inline-block";
-    }
-  } catch (err) {
-    console.error("Role check error:", err);
-  }
-}
+//     if (data.role === "admin" || data.role === "superadmin") {
+//       document.getElementById("manageUsersBtn").style.display = "inline-block";
+//     }
+//   } catch (err) {
+//     console.error("Role check error:", err);
+//   }
+// }
 
-checkAdminRole();
+// checkAdminRole();
 
 document.getElementById("manageUsersBtn")?.addEventListener("click", () => {
   window.location.href = "/manage-users";
@@ -130,6 +130,7 @@ async function loadDashboardData() {
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
 
     const data = await res.json();
+    console.log("Dashboard data received:", data);
 
     if (data.success === false) {
       throw new Error(data.error || "Gagal memuat data");
@@ -144,9 +145,37 @@ async function loadDashboardData() {
     const totalThrEl = document.getElementById("totalThrStat");
 
     if (totalKaryawanEl) totalKaryawanEl.innerText = formatNumber(data.totalKaryawan || 0);
-    if (totalSlipEl) totalSlipEl.innerText = formatNumber(data.totalSlip || 0);
-    if (totalBonusEl) totalBonusEl.innerText = formatNumber(data.totalBonus || 0);
-    if (totalThrEl) totalThrEl.innerText = formatNumber(data.totalThr || 0);
+
+    // PERBAIKAN: Tampilkan label dengan periode
+    if (totalSlipEl) {
+      totalSlipEl.innerHTML = `
+        <div class="stat-value">${formatNumber(data.totalSlipBulanIni || 0)}</div>
+        <div class="stat-label">Total Slip Gaji Bulan Ini</div>
+        <div class="stat-period" style="font-size: 10px; opacity: 0.7; margin-top: 5px;">
+          ${getMonthName(data.periode?.bulan)} ${data.periode?.tahun}
+        </div>
+      `;
+    }
+
+    if (totalBonusEl) {
+      totalBonusEl.innerHTML = `
+        <div class="stat-value">${formatNumber(data.totalBonusBulanIni || 0)}</div>
+        <div class="stat-label">Total Slip Bonus Bulan Ini</div>
+        <div class="stat-period" style="font-size: 10px; opacity: 0.7; margin-top: 5px;">
+          ${getMonthName(data.periode?.bulan)} ${data.periode?.tahun}
+        </div>
+      `;
+    }
+
+    if (totalThrEl) {
+      totalThrEl.innerHTML = `
+        <div class="stat-value">${formatNumber(data.totalThrTahunIni || 0)}</div>
+        <div class="stat-label">Total Slip THR Tahun Ini</div>
+        <div class="stat-period" style="font-size: 10px; opacity: 0.7; margin-top: 5px;">
+          Tahun ${data.periode?.tahun}
+        </div>
+      `;
+    }
 
     renderDashboardTable();
   } catch (err) {
@@ -156,7 +185,7 @@ async function loadDashboardData() {
     if (tbody) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="7" style="text-align: center; padding: 40px;">
+          <td colspan="6" style="text-align: center; padding: 40px;">
             <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #ef4444; margin-bottom: 10px; display: block;"></i>
             <p style="color: #64748b;">Gagal memuat data dashboard: ${err.message}</p>
             <button class="btn-primary" onclick="loadDashboardData()" style="margin-top: 10px;">
@@ -174,9 +203,9 @@ async function loadDashboardData() {
     const totalThrEl = document.getElementById("totalThrStat");
 
     if (totalKaryawanEl) totalKaryawanEl.innerText = "0";
-    if (totalSlipEl) totalSlipEl.innerText = "0";
-    if (totalBonusEl) totalBonusEl.innerText = "0";
-    if (totalThrEl) totalThrEl.innerText = "0";
+    if (totalSlipEl) totalSlipEl.innerHTML = `<div class="stat-value">0</div><div class="stat-label">Slip Gaji Bulan Ini</div>`;
+    if (totalBonusEl) totalBonusEl.innerHTML = `<div class="stat-value">0</div><div class="stat-label">Bonus Bulan Ini</div>`;
+    if (totalThrEl) totalThrEl.innerHTML = `<div class="stat-value">0</div><div class="stat-label">THR Tahun Ini</div>`;
   }
 }
 
@@ -212,7 +241,7 @@ function renderDashboardTable() {
   if (pageData.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align: center; padding: 40px;">
+        <td colspan="6" style="text-align: center; padding: 40px;">
           <i class="fas fa-chart-line" style="font-size: 48px; color: #cbd5e1; margin-bottom: 10px; display: block;"></i>
           <p style="color: #64748b;">${filtered.length === 0 && query ? "Tidak ada data yang sesuai dengan pencarian" : "Belum ada data karyawan"}</p>
           ${filtered.length === 0 && !query ? '<p style="color: #64748b; margin-top: 5px;">Silakan tambahkan data karyawan terlebih dahulu</p>' : ""}
@@ -228,18 +257,18 @@ function renderDashboardTable() {
   pageData.forEach((item) => {
     const tr = document.createElement("tr");
 
-    // Format currency
-    const totalGaji = item.total_gaji || 0;
-    const totalBonus = item.total_bonus || 0;
-    const totalThr = item.total_thr || 0;
+    // PERBAIKAN: Menggunakan field baru
+    const totalGajiBulanIni = parseFloat(item.total_gaji_bulan_ini) || 0;
+    const totalBonusBulanIni = parseFloat(item.total_bonus_bulan_ini) || 0;
+    const totalThrTahunIni = parseFloat(item.total_thr_tahun_ini) || 0;
 
     tr.innerHTML = `
       <td style="font-weight: 500;">${escapeHtml(item.no_induk || "-")}</td>
       <td style="font-weight:600">${escapeHtml(item.nama || "-")}</td>
       <td>${escapeHtml(item.jabatan || "-")}</td>
-      <td class="money">${rupiah(totalGaji)}</td>
-      <td class="money">${rupiah(totalBonus)}</td>
-      <td class="money">${rupiah(totalThr)}</td>
+      <td class="money">${rupiah(totalGajiBulanIni)}<br><small style="font-size: 10px; color: #666;">Bulan ini</small></td>
+      <td class="money">${rupiah(totalBonusBulanIni)}<br><small style="font-size: 10px; color: #666;">Bulan ini</small></td>
+      <td class="money">${rupiah(totalThrTahunIni)}<br><small style="font-size: 10px; color: #666;">Tahun ini</small></td>
     `;
     tbody.appendChild(tr);
   });
@@ -248,6 +277,11 @@ function renderDashboardTable() {
   if (dashboardPageInfo) {
     dashboardPageInfo.innerText = `Halaman ${currentDashboardPage} dari ${totalPages || 1}`;
   }
+}
+
+function getMonthName(monthNumber) {
+  const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  return months[monthNumber - 1] || "";
 }
 
 function showDashboardSection(company) {
@@ -2676,8 +2710,8 @@ let cancelSlipProgress = {
 };
 let cancelSlipProgressInterval = null;
 
-let currentSlipMonth = "all";
-let currentSlipYear = "all";
+let currentSlipMonth = new Date().getMonth() + 1;
+let currentSlipYear = new Date().getFullYear();
 let availableSlipYears = [];
 
 // =============================
@@ -2689,8 +2723,8 @@ const pageSizeBonus = 10;
 let selectedBonusSet = new Set();
 let bonusDuplicateCheckInterval = null;
 let bonusProgressInterval = null;
-let currentBonusMonth = "all";
-let currentBonusYear = "all";
+let currentBonusMonth = new Date().getMonth() + 1;
+let currentBonusYear = new Date().getFullYear();
 let availableBonusYears = [];
 
 let bonusProgress = {
@@ -2780,7 +2814,7 @@ function handleThrJumlahInput(e) {
 
 async function loadAvailableSlipYears() {
   try {
-    console.log(`Loading available years for company: ${currentCompany}`);
+    console.log(`Loading available slip years for company: ${currentCompany}`);
     const res = await fetch(`/slip-years?company=${currentCompany}`);
     const data = await res.json();
 
@@ -2789,28 +2823,44 @@ async function loadAvailableSlipYears() {
       if (yearSelect) {
         const currentSelection = yearSelect.value;
 
-        // Simpan nilai yang dipilih saat ini
-        yearSelect.innerHTML = '<option value="all">Pilih Tahun</option>';
+        // PERBAIKAN: Tetap simpan opsi "Semua Tahun" di dropdown
+        yearSelect.innerHTML = '<option value="all">📅 Semua Tahun</option>';
 
         data.years.forEach((year) => {
           const option = document.createElement("option");
           option.value = year;
-          option.textContent = year;
+          option.textContent = `${year}`;
           yearSelect.appendChild(option);
         });
 
         // Kembalikan pilihan sebelumnya jika masih valid
-        if (currentSelection && (currentSelection === "all" || data.years.includes(parseInt(currentSelection)))) {
+        if (currentSelection === "all") {
+          yearSelect.value = "all";
+          if (currentSlipYear !== "all") {
+            currentSlipYear = "all";
+          }
+        } else if (currentSelection && data.years.includes(parseInt(currentSelection))) {
           yearSelect.value = currentSelection;
           currentSlipYear = currentSelection;
-        } else if (currentSlipYear !== "all") {
-          // Jika tahun yang dipilih sebelumnya tidak tersedia, set ke "all"
-          yearSelect.value = "all";
-          currentSlipYear = "all";
+        } else if (currentSlipYear && currentSlipYear !== "all" && data.years.includes(parseInt(currentSlipYear))) {
+          yearSelect.value = currentSlipYear;
+        } else {
+          // Default ke tahun sekarang
+          const currentYear = new Date().getFullYear();
+          if (data.years.includes(currentYear)) {
+            yearSelect.value = currentYear;
+            currentSlipYear = currentYear;
+          } else if (data.years.length > 0) {
+            yearSelect.value = data.years[0];
+            currentSlipYear = data.years[0];
+          } else {
+            yearSelect.value = "all";
+            currentSlipYear = "all";
+          }
         }
 
-        console.log(`Available years loaded: ${data.years.join(", ")}`);
-        console.log(`Current year selection: ${yearSelect.value}`);
+        console.log(`Available slip years loaded: ${data.years.join(", ")}`);
+        console.log(`Current slip year selection: ${yearSelect.value}`);
       }
     }
   } catch (err) {
@@ -2851,8 +2901,9 @@ function setupFilterListeners() {
 
     newMonthSelect.addEventListener("change", async (e) => {
       const selectedMonth = e.target.value;
-      console.log(`Month filter changed to: ${selectedMonth}`);
+      console.log(`Slip month filter changed to: ${selectedMonth}`);
 
+      // Simpan nilai yang dipilih user (bisa "all" atau angka bulan)
       currentSlipMonth = selectedMonth;
       currentPage = 1;
       checkedSet.clear();
@@ -2868,8 +2919,9 @@ function setupFilterListeners() {
 
     newYearSelect.addEventListener("change", async (e) => {
       const selectedYear = e.target.value;
-      console.log(`Year filter changed to: ${selectedYear}`);
+      console.log(`Slip year filter changed to: ${selectedYear}`);
 
+      // Simpan nilai yang dipilih user (bisa "all" atau angka tahun)
       currentSlipYear = selectedYear;
       currentPage = 1;
       checkedSet.clear();
@@ -3765,14 +3817,18 @@ function switchMainMenu(company) {
 
   currentSlipMonth = month;
   currentSlipYear = year;
+
   currentBonusMonth = month;
   currentBonusYear = year;
-  currentThrYear = "all";
+
+  currentThrYear = new Date().getFullYear().toString();
 
   const slipMonthSelect = document.getElementById("slipMonthSelect");
   const slipYearSelect = document.getElementById("slipYearSelect");
   const bonusMonthSelect = document.getElementById("bonusMonthSelect");
   const bonusYearSelect = document.getElementById("bonusYearSelect");
+  const thrYearSelect = document.getElementById("thrYearSelect");
+  if (thrYearSelect) thrYearSelect.value = currentThrYear;
 
   if (slipMonthSelect) slipMonthSelect.value = currentSlipMonth;
   if (slipYearSelect) slipYearSelect.value = currentSlipYear;
@@ -4018,15 +4074,23 @@ document.getElementById("menuKirimHisana").onclick = () => {
 
 document.getElementById("menuBonusHisana").onclick = () => {
   activateSubmenu("menuBonusHisana", "sectionBonus");
-  if (currentBonusMonth === "all" || currentBonusYear === "all") {
-    const now = new Date();
-    currentBonusMonth = (now.getMonth() + 1).toString();
-    currentBonusYear = now.getFullYear().toString();
-    const monthSelect = document.getElementById("bonusMonthSelect");
-    const yearSelect = document.getElementById("bonusYearSelect");
-    if (monthSelect) monthSelect.value = currentBonusMonth;
-    if (yearSelect) yearSelect.value = currentBonusYear;
+
+  const now = new Date();
+  const currentMonth = (now.getMonth() + 1).toString();
+  const currentYear = now.getFullYear().toString();
+
+  if (!currentBonusMonth || currentBonusMonth === "all") {
+    currentBonusMonth = currentMonth;
   }
+  if (!currentBonusYear || currentBonusYear === "all") {
+    currentBonusYear = currentYear;
+  }
+
+  const monthSelect = document.getElementById("bonusMonthSelect");
+  const yearSelect = document.getElementById("bonusYearSelect");
+  if (monthSelect) monthSelect.value = currentBonusMonth;
+  if (yearSelect) yearSelect.value = currentBonusYear;
+
   loadBonusData();
 };
 
@@ -4043,15 +4107,23 @@ document.getElementById("menuKirimEnakko").onclick = () => {
 
 document.getElementById("menuBonusEnakko").onclick = () => {
   activateSubmenu("menuBonusEnakko", "sectionBonus");
-  if (currentBonusMonth === "all" || currentBonusYear === "all") {
-    const now = new Date();
-    currentBonusMonth = (now.getMonth() + 1).toString();
-    currentBonusYear = now.getFullYear().toString();
-    const monthSelect = document.getElementById("bonusMonthSelect");
-    const yearSelect = document.getElementById("bonusYearSelect");
-    if (monthSelect) monthSelect.value = currentBonusMonth;
-    if (yearSelect) yearSelect.value = currentBonusYear;
+
+  const now = new Date();
+  const currentMonth = (now.getMonth() + 1).toString();
+  const currentYear = now.getFullYear().toString();
+
+  if (!currentBonusMonth || currentBonusMonth === "all") {
+    currentBonusMonth = currentMonth;
   }
+  if (!currentBonusYear || currentBonusYear === "all") {
+    currentBonusYear = currentYear;
+  }
+
+  const monthSelect = document.getElementById("bonusMonthSelect");
+  const yearSelect = document.getElementById("bonusYearSelect");
+  if (monthSelect) monthSelect.value = currentBonusMonth;
+  if (yearSelect) yearSelect.value = currentBonusYear;
+
   loadBonusData();
 };
 
@@ -4430,51 +4502,46 @@ if (cancelSlipBtn) {
 
 async function loadData() {
   try {
-    const { month: currentMonth, year: currentYear } = getCurrentMonthYear();
+    const now = new Date();
+    const currentMonth = (now.getMonth() + 1).toString();
+    const currentYear = now.getFullYear().toString();
 
-    if (currentSlipMonth === "all") {
+    if (!currentSlipMonth || currentSlipMonth === "") {
       currentSlipMonth = currentMonth;
       const monthSelect = document.getElementById("slipMonthSelect");
       if (monthSelect) monthSelect.value = currentMonth;
     }
 
-    if (currentSlipYear === "all") {
+    if (!currentSlipYear || currentSlipYear === "") {
       currentSlipYear = currentYear;
       const yearSelect = document.getElementById("slipYearSelect");
       if (yearSelect) yearSelect.value = currentYear;
     }
 
-    console.log(`Loading slip data - Company: ${currentCompany}, Month filter: ${currentSlipMonth}, Year filter: ${currentSlipYear}`);
+    console.log("Loading slip data - Company:", currentCompany, "Month filter:", currentSlipMonth, "Year filter:", currentSlipYear);
 
     let url = `/my-slip?company=${currentCompany}`;
 
-    if (currentSlipMonth && currentSlipMonth !== "all") {
-      url += `&month=${currentSlipMonth}`;
-      console.log(`Adding month filter: ${currentSlipMonth}`);
-    }
+    url += `&month=${currentSlipMonth}`;
 
-    if (currentSlipYear && currentSlipYear !== "all") {
-      url += `&year=${currentSlipYear}`;
-      console.log(`Adding year filter: ${currentSlipYear}`);
-    }
+    url += `&year=${currentSlipYear}`;
 
     console.log(`Fetching URL: ${url}`);
 
     const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     let data = await res.json();
     dataAll = data;
-
-    console.log(`Loaded ${dataAll.length} records for ${currentCompany}`);
+    console.log("Slip data loaded:", dataAll.length, "records");
 
     renderTable();
-
     await loadAvailableSlipYears();
 
     setTimeout(() => {
       updateSelectAllSlipStatus();
     }, 100);
   } catch (err) {
-    console.error("Load data error:", err);
+    console.error("Load slip data error:", err);
     Swal.fire("Error", "Gagal memuat data: " + err.message, "error");
   }
 }
@@ -5656,7 +5723,7 @@ function initializeBonusFilters() {
   }
 
   if (yearSelect) {
-    window.pendingBonusYear = currentBonusYear;
+    yearSelect.value = currentBonusYear;
   }
 
   console.log("Bonus filters initialized to current month:", currentMonth, "year:", currentYear);
@@ -5664,16 +5731,33 @@ function initializeBonusFilters() {
 
 async function loadBonusData() {
   try {
-    console.log("Loading bonus data with filters - Month:", currentBonusMonth, "Year:", currentBonusYear);
+    const now = new Date();
+    const currentMonth = (now.getMonth() + 1).toString();
+    const currentYear = now.getFullYear().toString();
+
+    // Jika currentBonusMonth belum di-set atau kosong, gunakan bulan sekarang
+    if (!currentBonusMonth || currentBonusMonth === "") {
+      currentBonusMonth = currentMonth;
+      const monthSelect = document.getElementById("bonusMonthSelect");
+      if (monthSelect) monthSelect.value = currentMonth;
+    }
+
+    // Jika currentBonusYear belum di-set atau kosong, gunakan tahun sekarang
+    if (!currentBonusYear || currentBonusYear === "") {
+      currentBonusYear = currentYear;
+      const yearSelect = document.getElementById("bonusYearSelect");
+      if (yearSelect) yearSelect.value = currentYear;
+    }
+
+    console.log("Loading bonus data - Company:", currentCompany, "Month filter:", currentBonusMonth, "Year filter:", currentBonusYear);
 
     let url = `/bonus?company=${currentCompany}`;
 
-    if (currentBonusMonth && currentBonusMonth !== "all") {
-      url += `&month=${currentBonusMonth}`;
-    }
-    if (currentBonusYear && currentBonusYear !== "all") {
-      url += `&year=${currentBonusYear}`;
-    }
+    // Kirim filter bulan (bisa "all" atau angka)
+    url += `&month=${currentBonusMonth}`;
+
+    // Kirim filter tahun (bisa "all" atau angka)
+    url += `&year=${currentBonusYear}`;
 
     console.log(`Fetching bonus URL: ${url}`);
 
@@ -5682,12 +5766,7 @@ async function loadBonusData() {
     bonusData = await res.json();
     console.log("Bonus data loaded:", bonusData.length, "records");
 
-    // Log sample data untuk debugging
-    if (bonusData.length > 0) {
-      console.log("Sample bonus data:", bonusData[0]);
-    }
-
-    // Reset selected set (hapus ID yang tidak ada di data baru)
+    // Reset selected set
     const validIds = new Set(bonusData.map((d) => d.id));
     for (const id of selectedBonusSet) {
       if (!validIds.has(id)) {
@@ -5731,24 +5810,40 @@ async function loadAvailableBonusYears() {
       if (yearSelect) {
         const currentSelection = yearSelect.value;
 
-        // Simpan nilai yang dipilih saat ini
-        yearSelect.innerHTML = '<option value="all">Pilih Tahun</option>';
+        // PERBAIKAN: Tetap simpan opsi "Semua Tahun" di dropdown
+        yearSelect.innerHTML = '<option value="all">📅 Semua Tahun</option>';
 
         data.years.forEach((year) => {
           const option = document.createElement("option");
           option.value = year;
-          option.textContent = year;
+          option.textContent = `${year}`;
           yearSelect.appendChild(option);
         });
 
         // Kembalikan pilihan sebelumnya jika masih valid
-        if (currentSelection && (currentSelection === "all" || data.years.includes(parseInt(currentSelection)))) {
+        if (currentSelection === "all") {
+          yearSelect.value = "all";
+          if (currentBonusYear !== "all") {
+            currentBonusYear = "all";
+          }
+        } else if (currentSelection && data.years.includes(parseInt(currentSelection))) {
           yearSelect.value = currentSelection;
           currentBonusYear = currentSelection;
-        } else if (currentBonusYear !== "all") {
-          // Jika tahun yang dipilih sebelumnya tidak tersedia, set ke "all"
-          yearSelect.value = "all";
-          currentBonusYear = "all";
+        } else if (currentBonusYear && currentBonusYear !== "all" && data.years.includes(parseInt(currentBonusYear))) {
+          yearSelect.value = currentBonusYear;
+        } else {
+          // Default ke tahun sekarang
+          const currentYear = new Date().getFullYear();
+          if (data.years.includes(currentYear)) {
+            yearSelect.value = currentYear;
+            currentBonusYear = currentYear;
+          } else if (data.years.length > 0) {
+            yearSelect.value = data.years[0];
+            currentBonusYear = data.years[0];
+          } else {
+            yearSelect.value = "all";
+            currentBonusYear = "all";
+          }
         }
 
         console.log(`Available bonus years loaded: ${data.years.join(", ")}`);
@@ -5772,6 +5867,7 @@ function setupBonusFilterListeners() {
       const selectedMonth = e.target.value;
       console.log(`Bonus month filter changed to: ${selectedMonth}`);
 
+      // Simpan nilai yang dipilih user (bisa "all" atau angka bulan)
       currentBonusMonth = selectedMonth;
       currentBonusPage = 1;
       selectedBonusSet.clear();
@@ -5788,6 +5884,7 @@ function setupBonusFilterListeners() {
       const selectedYear = e.target.value;
       console.log(`Bonus year filter changed to: ${selectedYear}`);
 
+      // Simpan nilai yang dipilih user (bisa "all" atau angka tahun)
       currentBonusYear = selectedYear;
       currentBonusPage = 1;
       selectedBonusSet.clear();
@@ -5866,9 +5963,8 @@ function renderBonusTable() {
 
     const isChecked = selectedBonusSet.has(d.id) ? "checked" : "";
 
-    // Tombol Edit dan Delete (hanya untuk status belum_dikirim)
     let actionButtons = "";
-    if (d.status !== "terkirim" && d.status !== "dibatalkan") {
+    if (d.status !== "terkirim") {
       actionButtons = `
         <button class="btn-primary" style="padding: 5px 10px; margin-right: 5px;" onclick='openBonusModalById(${d.id})' title="Edit">
           <i class="fas fa-edit"></i>
@@ -7215,24 +7311,28 @@ document.addEventListener("DOMContentLoaded", () => {
   setupKirimSectionMenus();
   initializeGajiModal();
 
-  // Inisialisasi filter slip gaji
-  const { month, year } = getCurrentMonthYear();
-  currentSlipMonth = month;
-  currentSlipYear = year;
+  // PERBAIKAN: Inisialisasi filter slip gaji
+  const now = new Date();
+  const currentMonth = (now.getMonth() + 1).toString();
+  const currentYear = now.getFullYear().toString();
 
-  // Inisialisasi filter bonus
-  currentBonusMonth = month;
-  currentBonusYear = year;
+  // Set ke bulan dan tahun sekarang
+  currentSlipMonth = currentMonth;
+  currentSlipYear = currentYear;
+
+  // Inisialisasi filter bonus ke bulan dan tahun sekarang
+  currentBonusMonth = currentMonth;
+  currentBonusYear = currentYear;
 
   const slipMonthSelect = document.getElementById("slipMonthSelect");
   const slipYearSelect = document.getElementById("slipYearSelect");
   const bonusMonthSelect = document.getElementById("bonusMonthSelect");
   const bonusYearSelect = document.getElementById("bonusYearSelect");
 
-  if (slipMonthSelect) slipMonthSelect.value = month;
-  if (slipYearSelect) slipYearSelect.value = year;
-  if (bonusMonthSelect) bonusMonthSelect.value = month;
-  if (bonusYearSelect) bonusYearSelect.value = year;
+  if (slipMonthSelect) slipMonthSelect.value = currentMonth;
+  if (slipYearSelect) slipYearSelect.value = currentYear;
+  if (bonusMonthSelect) bonusMonthSelect.value = currentMonth;
+  if (bonusYearSelect) bonusYearSelect.value = currentYear;
 
   // Setup event listeners
   setupFilterListeners();
@@ -7282,12 +7382,13 @@ async function loadThrData() {
 
     let url = `/thr?company=${currentCompany}`;
 
-    // PERBAIKAN: Selalu kirim filter tahun, default ke tahun sekarang jika "all"
+    // Kirim filter tahun sesuai pilihan user
     let yearToSend = currentThrYear;
-    if (!yearToSend || yearToSend === "all") {
-      // Jika tidak ada filter atau "all", gunakan tahun sekarang
+
+    // Jika currentThrYear tidak valid atau undefined, default ke tahun sekarang
+    if (!yearToSend || yearToSend === "") {
       yearToSend = new Date().getFullYear().toString();
-      currentThrYear = yearToSend; // Update currentThrYear
+      currentThrYear = yearToSend;
 
       // Update dropdown select
       const yearSelect = document.getElementById("thrYearSelect");
@@ -7297,6 +7398,7 @@ async function loadThrData() {
       console.log(`[loadThrData] No year filter, defaulting to current year: ${yearToSend}`);
     }
 
+    // Kirim filter ke server (bisa "all" atau angka tahun)
     url += `&year=${yearToSend}`;
     console.log(`Fetching THR URL: ${url}`);
 
@@ -7304,7 +7406,7 @@ async function loadThrData() {
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
 
     thrData = await res.json();
-    console.log("THR data loaded:", thrData.length, "records for year:", yearToSend);
+    console.log("THR data loaded:", thrData.length, "records for filter:", yearToSend);
 
     // Reset selected set
     const validIds = new Set(thrData.map((d) => d.id));
@@ -7402,7 +7504,7 @@ function renderThrTable() {
     const isChecked = selectedThrSet.has(d.id) ? "checked" : "";
 
     let actionButtons = "";
-    if (d.status !== "terkirim" && d.status !== "dibatalkan") {
+    if (d.status !== "terkirim") {
       actionButtons = `
         <button class="btn-primary" style="padding:5px 10px; margin-right: 5px;" onclick='openThrModalById(${d.id})' title="Edit">
           <i class="fas fa-edit"></i>
@@ -7670,7 +7772,6 @@ window.deleteThr = async (id) => {
       if (selectedThrSet.has(id)) {
         selectedThrSet.delete(id);
       }
-      // Reload data dengan filter yang SAMA
       await loadThrData();
     } else {
       Swal.fire("Gagal!", resultData.message || "Data tidak ditemukan.", "error");
@@ -7884,6 +7985,7 @@ if (sendThrBtn) {
         const data = await res.json();
 
         if (data.success) {
+          await loadThrData();
           resetThrProgress();
           thrProgress = {
             running: true,
@@ -8090,6 +8192,7 @@ function updateThrProgressDisplay() {
         confirmButtonText: "Selesai",
       }).then(async () => {
         resetThrProgress();
+        // PERBAIKAN: Reload data dengan filter yang SAMA
         await loadThrData();
         selectedThrSet.clear();
         const allCheckboxes = document.querySelectorAll(".chk-thr");
@@ -8159,21 +8262,23 @@ async function loadAvailableThrYears() {
       if (yearSelect) {
         const currentSelection = yearSelect.value;
 
-        // PERBAIKAN: Simpan "Semua Tahun" sebagai opsi, tapi tetap tampilkan
-        yearSelect.innerHTML = '<option value="all">Pilih Tahun</option>';
+        // Simpan opsi "Semua Tahun" di dropdown
+        yearSelect.innerHTML = '<option value="all">📅 Semua Tahun</option>';
 
         data.years.forEach((year) => {
           const option = document.createElement("option");
           option.value = year;
-          option.textContent = year;
+          option.textContent = `${year}`;
           yearSelect.appendChild(option);
         });
 
-        // PERBAIKAN: Jika currentSelection adalah "all", tetap set ke tahun sekarang
-        // karena API akan default ke tahun sekarang
-        if (currentSelection && currentSelection !== "all" && data.years.includes(parseInt(currentSelection))) {
+        // Kembalikan pilihan sebelumnya jika masih valid
+        if (currentSelection === "all") {
+          yearSelect.value = "all";
+        } else if (currentSelection && data.years.includes(parseInt(currentSelection))) {
           yearSelect.value = currentSelection;
-          currentThrYear = currentSelection;
+        } else if (currentThrYear && currentThrYear !== "all" && data.years.includes(parseInt(currentThrYear))) {
+          yearSelect.value = currentThrYear;
         } else {
           // Default ke tahun sekarang
           const currentYear = new Date().getFullYear();
@@ -8185,7 +8290,7 @@ async function loadAvailableThrYears() {
             currentThrYear = data.years[0];
           } else {
             yearSelect.value = "all";
-            currentThrYear = currentYear;
+            currentThrYear = "all";
           }
         }
 
@@ -8654,23 +8759,23 @@ document.getElementById("resetThrCheckbox")?.addEventListener("click", () => {
   });
 });
 
-// THR Year Filter - Perbaiki agar default ke tahun sekarang
-document.getElementById("thrYearSelect")?.addEventListener("change", (e) => {
-  const selectedYear = e.target.value;
-  console.log("THR year filter changed to:", selectedYear);
+const thrYearSelect = document.getElementById("thrYearSelect");
+if (thrYearSelect) {
+  // Hapus event listener lama dengan clone
+  const newThrYearSelect = thrYearSelect.cloneNode(true);
+  thrYearSelect.parentNode.replaceChild(newThrYearSelect, thrYearSelect);
 
-  if (selectedYear === "all") {
-    currentThrYear = new Date().getFullYear().toString();
-    e.target.value = currentThrYear; // Reset dropdown value
-    console.log(`"All" selected, defaulting to current year: ${currentThrYear}`);
-  } else {
+  newThrYearSelect.addEventListener("change", (e) => {
+    const selectedYear = e.target.value;
+    console.log("THR year filter changed to:", selectedYear);
+
+    // Simpan nilai yang dipilih user (bisa "all" atau angka tahun)
     currentThrYear = selectedYear;
-  }
-
-  currentThrPage = 1;
-  selectedThrSet.clear();
-  loadThrData();
-});
+    currentThrPage = 1;
+    selectedThrSet.clear();
+    loadThrData();
+  });
+}
 
 const selectAllThr = document.getElementById("selectAllThr");
 if (selectAllThr) {

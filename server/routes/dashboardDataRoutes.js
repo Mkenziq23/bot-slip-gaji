@@ -6,22 +6,26 @@ const router = express.Router();
 
 // Helper: Get user_id from session
 function getUserId(req) {
-  // Prioritas: user_id dari session (QR login) atau admin id
   if (req.session.user_id) return req.session.user_id;
   if (req.session.admin && req.session.admin.id) return req.session.admin.id;
   return null;
 }
 
-// Helper: Check if user is superadmin
-async function isSuperAdmin(userId) {
-  if (!userId) return false;
-  try {
-    const [rows] = await db.query(`SELECT role FROM users WHERE id = ? AND role = 'superadmin'`, [userId]);
-    return rows.length > 0;
-  } catch (error) {
-    console.error("Error checking superadmin:", error);
-    return false;
-  }
+// Helper function untuk mendapatkan nama tabel
+function getKaryawanTableName(company) {
+  return company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
+}
+
+function getSlipTableName(company) {
+  return company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
+}
+
+function getBonusTableName(company) {
+  return company === "hisana" ? "bonus_hisana" : "bonus_enakko";
+}
+
+function getThrTableName(company) {
+  return company === "hisana" ? "thr_hisana" : "thr_enakko";
 }
 
 // ============================
@@ -30,27 +34,31 @@ async function isSuperAdmin(userId) {
 router.get("/dashboard-data", async (req, res) => {
   const company = req.query.company || "hisana";
   const userId = getUserId(req);
-  const isSuper = await isSuperAdmin(userId);
 
-  console.log(`[DASHBOARD] Request for company: ${company}, userId: ${userId}, isSuper: ${isSuper}`);
+  // Get current month and year
+  const currentDate = new Date();
+  const currentMonth = currentDate.getMonth() + 1;
+  const currentYear = currentDate.getFullYear();
 
-  // Tentukan nama tabel berdasarkan company
-  const tableKaryawan = company === "hisana" ? "data_karyawan_hisana" : "data_karyawan_enakko";
-  const tableSlipGaji = company === "hisana" ? "slip_gaji_hisana" : "slip_gaji_enakko";
-  const tableBonus = company === "hisana" ? "bonus_hisana" : "bonus_enakko";
-  const tableThr = company === "hisana" ? "thr_hisana" : "thr_enakko";
+  console.log(`[DASHBOARD] Request for company: ${company}, userId: ${userId}`);
+  console.log(`[DASHBOARD] Current period: Month ${currentMonth}, Year ${currentYear}`);
+
+  const tableKaryawan = getKaryawanTableName(company);
+  const tableSlipGaji = getSlipTableName(company);
+  const tableBonus = getBonusTableName(company);
+  const tableThr = getThrTableName(company);
 
   console.log(`[DASHBOARD] Using tables: ${tableKaryawan}, ${tableSlipGaji}, ${tableBonus}, ${tableThr}`);
 
   try {
     // ========================================
-    // GET TOTAL KARYAWAN (FILTER BY USER_ID)
+    // GET TOTAL KARYAWAN (hanya untuk user yang login)
     // ========================================
     let karyawanQuery = `SELECT COUNT(*) as total FROM ${tableKaryawan}`;
     let karyawanParams = [];
 
-    if (!isSuper && userId) {
-      karyawanQuery += ` WHERE user_id = ? OR user_id IS NULL`;
+    if (userId) {
+      karyawanQuery += ` WHERE user_id = ?`;
       karyawanParams.push(userId);
     }
 
@@ -58,129 +66,153 @@ router.get("/dashboard-data", async (req, res) => {
     console.log(`[DASHBOARD] Total karyawan: ${karyawanCount[0]?.total || 0}`);
 
     // ========================================
-    // GET TOTAL SLIP GAJI (FILTER BY USER_ID)
+    // GET TOTAL SLIP GAJI BULAN INI (hanya untuk user yang login)
     // ========================================
-    let slipQuery = `SELECT COUNT(*) as total FROM ${tableSlipGaji}`;
-    let slipParams = [];
+    let slipQuery = `
+      SELECT COUNT(*) as total 
+      FROM ${tableSlipGaji} 
+      WHERE MONTH(created_at) = ? AND YEAR(created_at) = ?
+    `;
+    let slipParams = [currentMonth, currentYear];
 
-    if (!isSuper && userId) {
-      // Join dengan tabel karyawan untuk filter user_id
-      slipQuery = `
-        SELECT COUNT(*) as total 
-        FROM ${tableSlipGaji} s
-        INNER JOIN ${tableKaryawan} k ON s.no_induk = k.no_induk
-        WHERE k.user_id = ? OR k.user_id IS NULL
-      `;
+    if (userId) {
+      slipQuery += ` AND user_id = ?`;
       slipParams.push(userId);
     }
 
     const [slipCount] = await db.query(slipQuery, slipParams);
-    console.log(`[DASHBOARD] Total slip: ${slipCount[0]?.total || 0}`);
+    console.log(`[DASHBOARD] Total slip bulan ini: ${slipCount[0]?.total || 0}`);
 
     // ========================================
-    // GET TOTAL BONUS (FILTER BY USER_ID)
+    // GET TOTAL BONUS BULAN INI (hanya untuk user yang login)
     // ========================================
-    let bonusQuery = `SELECT COUNT(*) as total FROM ${tableBonus}`;
-    let bonusParams = [];
+    let bonusQuery = `
+      SELECT COUNT(*) as total 
+      FROM ${tableBonus} 
+      WHERE bulan = ? AND tahun = ?
+    `;
+    let bonusParams = [currentMonth, currentYear];
 
-    if (!isSuper && userId) {
-      bonusQuery = `
-        SELECT COUNT(*) as total 
-        FROM ${tableBonus} b
-        INNER JOIN ${tableKaryawan} k ON b.no_induk = k.no_induk
-        WHERE k.user_id = ? OR k.user_id IS NULL
-      `;
+    if (userId) {
+      bonusQuery += ` AND user_id = ?`;
       bonusParams.push(userId);
     }
 
     const [bonusCount] = await db.query(bonusQuery, bonusParams);
-    console.log(`[DASHBOARD] Total bonus: ${bonusCount[0]?.total || 0}`);
+    console.log(`[DASHBOARD] Total bonus bulan ini: ${bonusCount[0]?.total || 0}`);
 
     // ========================================
-    // GET TOTAL THR (FILTER BY USER_ID)
+    // GET TOTAL THR TAHUN INI (hanya untuk user yang login)
     // ========================================
-    let thrQuery = `SELECT COUNT(*) as total FROM ${tableThr}`;
-    let thrParams = [];
+    let thrQuery = `
+      SELECT COUNT(*) as total 
+      FROM ${tableThr} 
+      WHERE tahun = ?
+    `;
+    let thrParams = [currentYear];
 
-    if (!isSuper && userId) {
-      thrQuery = `
-        SELECT COUNT(*) as total 
-        FROM ${tableThr} t
-        INNER JOIN ${tableKaryawan} k ON t.no_induk = k.no_induk
-        WHERE k.user_id = ? OR k.user_id IS NULL
-      `;
+    if (userId) {
+      thrQuery += ` AND user_id = ?`;
       thrParams.push(userId);
     }
 
     const [thrCount] = await db.query(thrQuery, thrParams);
-    console.log(`[DASHBOARD] Total THR: ${thrCount[0]?.total || 0}`);
+    console.log(`[DASHBOARD] Total THR tahun ini: ${thrCount[0]?.total || 0}`);
 
     // ========================================
-    // GET RINGKASAN PER KARYAWAN (FILTER BY USER_ID)
+    // GET RINGKASAN PER KARYAWAN (hanya untuk user yang login)
     // ========================================
     let karyawanRingkasan = [];
 
     if (company === "hisana") {
-      let query = `
+      // Query untuk Hisana
+      let ringkasanQuery = `
         SELECT 
+          k.id,
           k.no_induk,
           k.nama_lengkap as nama,
           k.jabatan,
-          COALESCE(SUM(s.gaji_total), 0) as total_gaji,
-          COALESCE(SUM(b.jumlah_bonus), 0) as total_bonus,
-          COALESCE(SUM(t.jumlah_thr), 0) as total_thr
+          COALESCE(
+            (SELECT SUM(s.gaji_total) FROM ${tableSlipGaji} s 
+             WHERE s.karyawan_id = k.id 
+             AND MONTH(s.created_at) = ? AND YEAR(s.created_at) = ?), 0
+          ) as total_gaji_bulan_ini,
+          COALESCE(
+            (SELECT SUM(b.jumlah_bonus) FROM ${tableBonus} b 
+             WHERE b.karyawan_id = k.id 
+             AND b.bulan = ? AND b.tahun = ?), 0
+          ) as total_bonus_bulan_ini,
+          COALESCE(
+            (SELECT SUM(t.jumlah_thr) FROM ${tableThr} t 
+             WHERE t.karyawan_id = k.id 
+             AND t.tahun = ?), 0
+          ) as total_thr_tahun_ini
         FROM ${tableKaryawan} k
-        LEFT JOIN ${tableSlipGaji} s ON k.no_induk = s.no_induk
-        LEFT JOIN ${tableBonus} b ON k.no_induk = b.no_induk
-        LEFT JOIN ${tableThr} t ON k.no_induk = t.no_induk
       `;
-      let params = [];
 
-      if (!isSuper && userId) {
-        query += ` WHERE k.user_id = ? OR k.user_id IS NULL`;
-        params.push(userId);
+      let ringkasanParams = [currentMonth, currentYear, currentMonth, currentYear, currentYear];
+
+      if (userId) {
+        ringkasanQuery += ` WHERE k.user_id = ?`;
+        ringkasanParams.push(userId);
       }
 
-      query += ` GROUP BY k.id, k.no_induk, k.nama_lengkap, k.jabatan ORDER BY k.no_induk ASC`;
+      ringkasanQuery += ` ORDER BY k.no_induk ASC`;
 
-      const [rows] = await db.query(query, params);
-      karyawanRingkasan = rows;
+      const [ringkasanRows] = await db.query(ringkasanQuery, ringkasanParams);
+      karyawanRingkasan = ringkasanRows;
     } else {
-      let query = `
+      // Query untuk Enakko - menggunakan total_gaji
+      let ringkasanQuery = `
         SELECT 
+          k.id,
           k.no_induk,
           k.nama_lengkap as nama,
           k.jabatan,
-          COALESCE(SUM(s.total_gaji), 0) as total_gaji,
-          COALESCE(SUM(b.jumlah_bonus), 0) as total_bonus,
-          COALESCE(SUM(t.jumlah_thr), 0) as total_thr
+          COALESCE(
+            (SELECT SUM(s.total_gaji) FROM ${tableSlipGaji} s 
+             WHERE s.karyawan_id = k.id 
+             AND MONTH(s.created_at) = ? AND YEAR(s.created_at) = ?), 0
+          ) as total_gaji_bulan_ini,
+          COALESCE(
+            (SELECT SUM(b.jumlah_bonus) FROM ${tableBonus} b 
+             WHERE b.karyawan_id = k.id 
+             AND b.bulan = ? AND b.tahun = ?), 0
+          ) as total_bonus_bulan_ini,
+          COALESCE(
+            (SELECT SUM(t.jumlah_thr) FROM ${tableThr} t 
+             WHERE t.karyawan_id = k.id 
+             AND t.tahun = ?), 0
+          ) as total_thr_tahun_ini
         FROM ${tableKaryawan} k
-        LEFT JOIN ${tableSlipGaji} s ON k.no_induk = s.no_induk
-        LEFT JOIN ${tableBonus} b ON k.no_induk = b.no_induk
-        LEFT JOIN ${tableThr} t ON k.no_induk = t.no_induk
       `;
-      let params = [];
 
-      if (!isSuper && userId) {
-        query += ` WHERE k.user_id = ? OR k.user_id IS NULL`;
-        params.push(userId);
+      let ringkasanParams = [currentMonth, currentYear, currentMonth, currentYear, currentYear];
+
+      if (userId) {
+        ringkasanQuery += ` WHERE k.user_id = ?`;
+        ringkasanParams.push(userId);
       }
 
-      query += ` GROUP BY k.id, k.no_induk, k.nama_lengkap, k.jabatan ORDER BY k.no_induk ASC`;
+      ringkasanQuery += ` ORDER BY k.no_induk ASC`;
 
-      const [rows] = await db.query(query, params);
-      karyawanRingkasan = rows;
+      const [ringkasanRows] = await db.query(ringkasanQuery, ringkasanParams);
+      karyawanRingkasan = ringkasanRows;
     }
 
-    console.log(`[DASHBOARD] Returning ${karyawanRingkasan.length} karyawan records`);
+    console.log(`[DASHBOARD] Returning ${karyawanRingkasan.length} karyawan records for ${company}`);
 
     res.json({
       success: true,
       totalKaryawan: karyawanCount[0]?.total || 0,
-      totalSlip: slipCount[0]?.total || 0,
-      totalBonus: bonusCount[0]?.total || 0,
-      totalThr: thrCount[0]?.total || 0,
+      totalSlipBulanIni: slipCount[0]?.total || 0,
+      totalBonusBulanIni: bonusCount[0]?.total || 0,
+      totalThrTahunIni: thrCount[0]?.total || 0,
       karyawanRingkasan: karyawanRingkasan,
+      periode: {
+        bulan: currentMonth,
+        tahun: currentYear,
+      },
     });
   } catch (err) {
     console.error("[DASHBOARD] Dashboard data error:", err);
@@ -188,9 +220,9 @@ router.get("/dashboard-data", async (req, res) => {
       success: false,
       error: err.message,
       totalKaryawan: 0,
-      totalSlip: 0,
-      totalBonus: 0,
-      totalThr: 0,
+      totalSlipBulanIni: 0,
+      totalBonusBulanIni: 0,
+      totalThrTahunIni: 0,
       karyawanRingkasan: [],
     });
   }

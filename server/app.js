@@ -99,10 +99,10 @@ app.use("/", absensiKaryawanRoutes);
 app.use("/api/lokasi-store", lokasiStoreRoutes);
 
 // ============================
-// QR SCAN PAGE
+// QR SCAN PAGE (HALAMAN SCAN UNTUK LOGIN VIA QR)
 // ============================
 
-app.get("/", async (req, res) => {
+app.get("/scan", async (req, res) => {
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
     if (!user) {
@@ -118,7 +118,39 @@ app.get("/", async (req, res) => {
 });
 
 // ============================
-// DASHBOARD
+// ROOT PAGE - REDIRECT KE LOGIN (BUKAN SCAN)
+// ============================
+app.get("/", async (req, res) => {
+  // Cek apakah sudah login sebagai admin
+  if (req.session.admin) {
+    return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
+  }
+
+  // Cek apakah sudah login sebagai karyawan
+  if (req.session.karyawan) {
+    return res.redirect("/karyawan-profile");
+  }
+
+  // Cek apakah sudah login via QR (WhatsApp)
+  if (req.session.number) {
+    const user = await getUserIfExists(req.session.number);
+    if (user) {
+      return res.redirect("/dashboard");
+    }
+    // Jika user tidak valid, destroy session
+    req.session.destroy(() => {
+      res.clearCookie("connect.sid");
+      return res.redirect("/404.html");
+    });
+    return;
+  }
+
+  // Jika belum login, redirect ke halaman login
+  res.redirect("/");
+});
+
+// ============================
+// DASHBOARD (UNTUK USER YANG LOGIN VIA QR)
 // ============================
 app.get("/dashboard", async (req, res) => {
   if (req.session.admin?.role === "admin") {
@@ -160,7 +192,7 @@ app.get("/manage-users", (req, res) => {
   }
 
   if (!req.session.admin) {
-    return res.redirect("/admin-login");
+    return res.redirect("/login");
   }
 
   if (req.session.admin.role !== "admin" && req.session.admin.role !== "superadmin") {
@@ -241,7 +273,7 @@ app.get("/logout", async (req, res) => {
   req.session.destroy((err) => {
     if (err) console.error("[LOGOUT] Session destroy error:", err);
     res.clearCookie("connect.sid");
-    res.redirect("/");
+    res.redirect("/login");
   });
 });
 

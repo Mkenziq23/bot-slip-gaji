@@ -45,7 +45,7 @@ function getLokasiStoreTableName(company) {
  * Halaman Login (terpadu)
  * ==========================
  */
-router.get("/login", (req, res) => {
+router.get("/", (req, res) => {
   // Redirect jika sudah login
   if (req.session.admin) {
     return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
@@ -237,7 +237,7 @@ router.get("/logout", (req, res) => {
       console.error("Logout error:", err);
     }
     res.clearCookie("connect.sid");
-    res.redirect("/login");
+    res.redirect("/");
   });
 });
 

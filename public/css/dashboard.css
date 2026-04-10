@@ -704,7 +704,7 @@ td {
 /* Kolom yang perlu wrap */
 td:not(.money):not(.deduction):not(.total-bold) {
   white-space: normal;
-  word-break: break-word;
+  /* word-break: break-word; */
 }
 
 /* Kolom angka tetap di kanan */

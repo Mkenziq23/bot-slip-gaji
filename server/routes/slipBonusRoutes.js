@@ -86,19 +86,42 @@ router.get("/bonus", async (req, res) => {
     const month = req.query.month;
     const year = req.query.year;
 
-    if (month && month !== "all" && month !== "") {
+    // PERBAIKAN: Filter bulan - jika "all" maka tampilkan semua bulan
+    if (month === "all") {
+      console.log(`[GET BONUS] Showing ALL months`);
+      // Tidak menambahkan filter bulan
+    } else if (month && month !== "") {
       query += ` AND b.bulan = ?`;
       queryParams.push(parseInt(month));
+      console.log(`[GET BONUS] Filtering by specific month: ${month}`);
+    } else {
+      // Default ke bulan sekarang
+      const currentMonth = new Date().getMonth() + 1;
+      query += ` AND b.bulan = ?`;
+      queryParams.push(currentMonth);
+      console.log(`[GET BONUS] No month filter, defaulting to current month: ${currentMonth}`);
     }
 
-    if (year && year !== "all" && year !== "") {
+    // PERBAIKAN: Filter tahun - jika "all" maka tampilkan semua tahun
+    if (year === "all") {
+      console.log(`[GET BONUS] Showing ALL years`);
+      // Tidak menambahkan filter tahun
+    } else if (year && year !== "") {
       query += ` AND b.tahun = ?`;
       queryParams.push(parseInt(year));
+      console.log(`[GET BONUS] Filtering by specific year: ${year}`);
+    } else {
+      // Default ke tahun sekarang
+      const currentYear = new Date().getFullYear();
+      query += ` AND b.tahun = ?`;
+      queryParams.push(currentYear);
+      console.log(`[GET BONUS] No year filter, defaulting to current year: ${currentYear}`);
     }
 
-    query += ` ORDER BY b.created_at DESC`;
+    query += ` ORDER BY b.tahun DESC, b.bulan DESC, b.created_at DESC`;
 
     const [rows] = await db.query(query, queryParams);
+    console.log(`[GET BONUS] Found ${rows.length} records`);
     res.json(rows);
   } catch (err) {
     console.error("[GET BONUS ERROR]:", err);
@@ -398,6 +421,7 @@ router.post("/send-bonus", async (req, res) => {
     const { selected, company } = req.body;
     const bonusTable = getBonusTableName(company);
     const karyawanTable = getKaryawanTableName(company);
+    const lokasiTable = company === "hisana" ? "lokasi_store_hisana" : "lokasi_store_enakko";
 
     const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
@@ -419,11 +443,21 @@ router.post("/send-bonus", async (req, res) => {
 
     const placeholders = selected.map(() => "?").join(",");
 
+    // PERBAIKAN: Query dengan JOIN untuk mendapatkan data karyawan lengkap
     const [rows] = await db.query(
-      `SELECT b.*, k.no_induk, k.nama_lengkap as nama, k.no_hp as nohp
-       FROM ${bonusTable} b
-       INNER JOIN ${karyawanTable} k ON b.karyawan_id = k.id
-       WHERE b.id IN (${placeholders}) AND b.user_id = ? AND b.status != 'terkirim'`,
+      `SELECT 
+        b.*, 
+        k.no_induk, 
+        k.nama_lengkap as nama, 
+        k.jabatan,
+        DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
+        l.nama_store as store_name,
+        l.alamat as store_alamat,
+        k.no_hp as nohp
+      FROM ${bonusTable} b
+      INNER JOIN ${karyawanTable} k ON b.karyawan_id = k.id
+      LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+      WHERE b.id IN (${placeholders}) AND b.user_id = ? AND b.status != 'terkirim'`,
       [...selected, userId],
     );
 
@@ -441,10 +475,26 @@ router.post("/send-bonus", async (req, res) => {
             throw new Error(`Nomor HP tidak tersedia untuk ${bonus.nama}`);
           }
 
+          // Format awal masuk
+          let awalMasukFormatted = "-";
+          if (bonus.awal_masuk) {
+            const date = new Date(bonus.awal_masuk);
+            if (!isNaN(date.getTime())) {
+              awalMasukFormatted = date.toLocaleDateString("id-ID", {
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+              });
+            }
+          }
+
           const bonusData = {
             id: bonus.id,
             no_induk: bonus.no_induk,
             nama: bonus.nama,
+            jabatan: bonus.jabatan || "-",
+            store_name: bonus.store_name || "-",
+            awal_masuk: awalMasukFormatted,
             bulan: bonus.bulan,
             tahun: bonus.tahun,
             jumlah_bonus: bonus.jumlah_bonus,
@@ -493,6 +543,7 @@ router.post("/cancel-bonus", async (req, res) => {
     const { selected, company, cancellation_note } = req.body;
     const bonusTable = getBonusTableName(company);
     const karyawanTable = getKaryawanTableName(company);
+    const lokasiTable = company === "hisana" ? "lokasi_store_hisana" : "lokasi_store_enakko";
 
     const [users] = await db.query("SELECT id, nomor_wa FROM users WHERE nomor_wa=?", [number]);
     if (!users.length) {
@@ -509,11 +560,21 @@ router.post("/cancel-bonus", async (req, res) => {
 
     const placeholders = selected.map(() => "?").join(",");
 
+    // PERBAIKAN: Query dengan JOIN untuk mendapatkan data karyawan lengkap
     const [rows] = await db.query(
-      `SELECT b.*, k.no_induk, k.nama_lengkap as nama, k.no_hp as nohp
-       FROM ${bonusTable} b
-       INNER JOIN ${karyawanTable} k ON b.karyawan_id = k.id
-       WHERE b.id IN (${placeholders}) AND b.user_id = ? AND b.status = 'terkirim'`,
+      `SELECT 
+        b.*, 
+        k.no_induk, 
+        k.nama_lengkap as nama, 
+        k.jabatan,
+        DATE_FORMAT(k.awal_masuk, '%Y-%m-%d') as awal_masuk,
+        l.nama_store as store_name,
+        l.alamat as store_alamat,
+        k.no_hp as nohp
+      FROM ${bonusTable} b
+      INNER JOIN ${karyawanTable} k ON b.karyawan_id = k.id
+      LEFT JOIN ${lokasiTable} l ON k.lokasi_store_id = l.id
+      WHERE b.id IN (${placeholders}) AND b.user_id = ? AND b.status = 'terkirim'`,
       [...selected, userId],
     );
 
@@ -526,10 +587,26 @@ router.post("/cancel-bonus", async (req, res) => {
 
     for (const bonus of rows) {
       try {
+        // Format awal masuk
+        let awalMasukFormatted = "-";
+        if (bonus.awal_masuk) {
+          const date = new Date(bonus.awal_masuk);
+          if (!isNaN(date.getTime())) {
+            awalMasukFormatted = date.toLocaleDateString("id-ID", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+            });
+          }
+        }
+
         const bonusData = {
           id: bonus.id,
           no_induk: bonus.no_induk,
           nama: bonus.nama,
+          jabatan: bonus.jabatan || "-",
+          store_name: bonus.store_name || "-",
+          awal_masuk: awalMasukFormatted,
           bulan: bonus.bulan,
           tahun: bonus.tahun,
           jumlah_bonus: bonus.jumlah_bonus,

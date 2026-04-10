@@ -101,7 +101,7 @@ async function generateSlip(data, company = "hisana") {
         .text(company === "hisana" ? "HISANA" : "ENAKKO", 135, 45)
         .font("Helvetica")
         .fontSize(10)
-        .text("Sistem Penggajian Digital Otomatis", 135, 75)
+        .text("Sistem Payroll Digital Otomatis", 135, 75)
         .font("Helvetica-Bold")
         .fontSize(14)
         .text("SLIP GAJI KARYAWAN", 380, 55, { align: "right", width: 150 });
@@ -136,10 +136,10 @@ async function generateSlip(data, company = "hisana") {
 
       if (company === "hisana") {
         drawRow("STORE/UNIT", normalized.store_name || normalized.store || "-", 250, y);
-        drawRow("TANGGAL BERGABUNG", formatDate(normalized.awal_masuk), 430, y);
+        drawRow("AWAL MASUK", formatDate(normalized.awal_masuk), 430, y);
       } else {
         drawRow("PENEMPATAN", normalized.store_name || normalized.penempatan || "-", 250, y);
-        drawRow("TANGGAL MASUK", formatDate(normalized.awal_masuk), 430, y);
+        drawRow("AWAL MASUK", formatDate(normalized.awal_masuk), 430, y);
       }
 
       // Divider Line
