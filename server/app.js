@@ -13,8 +13,8 @@ import bonusRoutes from "./routes/slipBonusRoutes.js";
 import thrRoutes from "./routes/slipThrRoutes.js";
 import dataKaryawanRoutes from "./routes/dataKaryawanRoutes.js";
 import karyawanProfileRoutes from "./routes/karyawanProfileRoutes.js";
-import absensiKaryawanRoutes from "./routes/absensiKaryawanRoutes.js";
 import lokasiStoreRoutes from "./routes/LokasiStoreRoutes.js";
+import absensiRoutes from "./routes/absensiRoutes.js";
 
 import { startBot, getSocketByNumber, logoutBot, logoutAllSessions } from "../bot/index.js";
 
@@ -56,7 +56,6 @@ app.use(sessionMiddleware);
 // ============================
 
 async function getUserIfExists(number) {
-  console.log(`[DB] Looking for number: "${number}"`);
   try {
     const [rows] = await db.query("SELECT id, nomor_wa, nama FROM users WHERE nomor_wa = ?", [number]);
     return rows.length ? rows[0] : null;
@@ -95,8 +94,8 @@ app.use("/", bonusRoutes);
 app.use("/", thrRoutes);
 app.use("/", dataKaryawanRoutes);
 app.use("/", karyawanProfileRoutes);
-app.use("/", absensiKaryawanRoutes);
 app.use("/api/lokasi-store", lokasiStoreRoutes);
+app.use("/", absensiRoutes);
 
 // ============================
 // QR SCAN PAGE (HALAMAN SCAN UNTUK LOGIN VIA QR)

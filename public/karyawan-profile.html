@@ -2,12 +2,12 @@
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
     <title>Profile Karyawan | Payroll System</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <link rel="stylesheet" href="css/karyawan-profile.css" />
+    <link rel="stylesheet" href="/css/karyawan-profile.css" />
   </head>
   <body>
     <div class="container">
@@ -106,12 +106,12 @@
             </div>
           </div>
 
-          <div class="attendance-status" id="attendanceStatus">
+          <div class="attendance-status">
             <div class="status-header">
               <i class="fas fa-calendar-day"></i>
               <span>Status Hari Ini</span>
             </div>
-            <div class="status-content" id="todayStatus">
+            <div class="status-content">
               <div class="status-item">
                 <span class="status-label">Check In:</span>
                 <span class="status-value" id="checkInStatus">Belum absen</span>
@@ -149,28 +149,18 @@
 
             <div class="form-group">
               <label><i class="fas fa-calendar-alt"></i> Tanggal Mulai</label>
-              <input type="date" id="startDate" class="form-control" required />
+              <input type="date" id="permitStartDate" class="form-control" required />
             </div>
 
             <div class="form-group">
               <label><i class="fas fa-calendar-check"></i> Tanggal Selesai (Opsional)</label>
-              <input type="date" id="endDate" class="form-control" />
-              <small class="form-text text-muted">Kosongkan jika hanya 1 hari</small>
+              <input type="date" id="permitEndDate" class="form-control" />
+              <small class="form-text">Kosongkan jika hanya 1 hari</small>
             </div>
 
             <div class="form-group">
               <label><i class="fas fa-file-alt"></i> Alasan</label>
-              <textarea id="reason" class="form-control" rows="4" placeholder="Tuliskan alasan izin/sakit..." required></textarea>
-            </div>
-
-            <div class="form-group" id="fileUploadGroup" style="display: none">
-              <label><i class="fas fa-paperclip"></i> Upload Bukti (Surat Dokter)</label>
-              <div class="file-upload-area" onclick="document.getElementById('fileInput').click()">
-                <i class="fas fa-cloud-upload-alt"></i>
-                <p>Klik untuk upload file</p>
-                <div id="fileName" class="file-name"></div>
-                <input type="file" id="fileInput" style="display: none" accept=".jpg,.jpeg,.png,.pdf" />
-              </div>
+              <textarea id="permitReason" class="form-control" rows="4" placeholder="Tuliskan alasan izin/sakit..." required></textarea>
             </div>
           </form>
         </div>
@@ -255,7 +245,6 @@
             </div>
             <button class="btn-filter" onclick="loadMonthlyReport()"><i class="fas fa-chart-simple"></i> Tampilkan Rekap</button>
           </div>
-
           <div id="reportContent" class="report-content">
             <div class="empty-state">
               <i class="fas fa-chart-line"></i>

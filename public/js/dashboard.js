@@ -7301,6 +7301,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setupLokasiEventHandlers();
   setupLokasiStoreHandlers();
 
+  setupAbsensiHandlers();
+
   if (document.getElementById("sectionLokasiStore")?.classList.contains("active")) {
     setTimeout(initMainMap, 500);
   }
@@ -8912,6 +8914,778 @@ document.addEventListener("DOMContentLoaded", () => {
   loadData();
 });
 
+// =============================
+// ABSENSI FUNCTIONS
+// =============================
+
+let absensiData = [];
+let currentAbsensiPage = 1;
+const pageSizeAbsensi = 15;
+let currentAbsensiCompany = "hisana";
+let absensiStores = [];
+let absensiMap = null;
+let absensiMarkers = [];
+let storeMarkers = [];
+
+function getTodayDate() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentMonth() {
+  return new Date().getMonth() + 1;
+}
+
+function getCurrentYear() {
+  return new Date().getFullYear();
+}
+
+function setupDateFilterUI() {
+  const dateFilterSelect = document.getElementById("absensiDateFilter");
+  const datePickerWrapper = document.getElementById("datePickerWrapper");
+  const monthPickerWrapper = document.getElementById("monthPickerWrapper");
+  const yearPickerWrapper = document.getElementById("yearPickerWrapper");
+  const absensiDatePicker = document.getElementById("absensiDatePicker");
+  const absensiMonthSelect = document.getElementById("absensiMonthSelect");
+  const absensiYearSelect = document.getElementById("absensiYearSelect");
+
+  if (absensiDatePicker) {
+    absensiDatePicker.value = getTodayDate();
+  }
+
+  if (absensiMonthSelect) {
+    absensiMonthSelect.value = getCurrentMonth();
+  }
+
+  if (absensiYearSelect) {
+    // Load years terlebih dahulu
+    loadAbsensiYears().then(() => {
+      if (absensiYearSelect.value === "all" || !absensiYearSelect.value) {
+        absensiYearSelect.value = getCurrentYear();
+      }
+    });
+  }
+
+  if (dateFilterSelect) {
+    dateFilterSelect.addEventListener("change", function () {
+      datePickerWrapper.style.display = "none";
+      monthPickerWrapper.style.display = "none";
+      yearPickerWrapper.style.display = "none";
+
+      switch (this.value) {
+        case "date":
+          datePickerWrapper.style.display = "block";
+          yearPickerWrapper.style.display = "block";
+          break;
+        case "month":
+          monthPickerWrapper.style.display = "block";
+          yearPickerWrapper.style.display = "block";
+          break;
+        case "year":
+          yearPickerWrapper.style.display = "block";
+          break;
+        default:
+          break;
+      }
+
+      currentAbsensiPage = 1;
+      loadAbsensiData();
+    });
+  }
+
+  if (absensiDatePicker) {
+    absensiDatePicker.addEventListener("change", () => {
+      currentAbsensiPage = 1;
+      loadAbsensiData();
+    });
+  }
+
+  if (absensiMonthSelect) {
+    absensiMonthSelect.addEventListener("change", () => {
+      if (dateFilterSelect) dateFilterSelect.value = "month";
+      currentAbsensiPage = 1;
+      loadAbsensiData();
+    });
+  }
+
+  if (absensiYearSelect) {
+    absensiYearSelect.addEventListener("change", () => {
+      if (dateFilterSelect && dateFilterSelect.value !== "year") {
+        dateFilterSelect.value = "year";
+      }
+      currentAbsensiPage = 1;
+      loadAbsensiData();
+    });
+  }
+}
+
+// Initialize Absensi Map
+function initAbsensiMap() {
+  const mapContainer = document.getElementById("absensiMapContainer");
+  if (!mapContainer) {
+    console.warn("Absensi map container not found");
+    return;
+  }
+
+  if (absensiMap) {
+    absensiMap.remove();
+    absensiMap = null;
+  }
+
+  absensiMarkers = [];
+  storeMarkers = [];
+  mapContainer.innerHTML = "";
+
+  const defaultCenter = [-2.548926, 118.0148634];
+
+  try {
+    absensiMap = L.map(mapContainer).setView(defaultCenter, 5);
+
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Esri",
+      maxZoom: 19,
+      minZoom: 3,
+    }).addTo(absensiMap);
+
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
+      attribution: "OSM",
+      subdomains: "abcd",
+      maxZoom: 19,
+      minZoom: 3,
+    }).addTo(absensiMap);
+
+    console.log("✅ Absensi map initialized");
+
+    setTimeout(() => {
+      if (absensiMap) {
+        absensiMap.invalidateSize();
+      }
+    }, 100);
+  } catch (err) {
+    console.error("Error initializing absensi map:", err);
+    mapContainer.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; background: #fef2e8; border-radius: 12px; padding: 20px;">
+        <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #ef4444; margin-bottom: 10px;"></i>
+        <p style="color: #64748b;">Gagal memuat peta: ${err.message}</p>
+        <button class="btn-primary" onclick="retryInitAbsensiMap()" style="margin-top: 10px;">
+          <i class="fas fa-sync-alt"></i> Coba Lagi
+        </button>
+      </div>
+    `;
+  }
+}
+
+function retryInitAbsensiMap() {
+  console.log("Retrying absensi map initialization...");
+  initAbsensiMap();
+  loadAbsensiData();
+}
+
+function updateAbsensiMapMarkers(absensiData, storeData = []) {
+  if (!absensiMap) return;
+
+  absensiMarkers.forEach((m) => m.remove());
+  storeMarkers.forEach((m) => m.remove());
+  absensiMarkers = [];
+  storeMarkers = [];
+
+  const bounds = L.latLngBounds();
+  let hasMarkers = false;
+
+  const storeIcon = L.divIcon({
+    html: '<i class="fas fa-store" style="font-size: 24px; color: #3b82f6; text-shadow: 0 0 2px white;"></i>',
+    iconSize: [30, 30],
+    className: "custom-store-icon",
+    popupAnchor: [0, -15],
+  });
+
+  const selectedStoreId = document.getElementById("absensiStoreSelect")?.value;
+  let filteredStores = storeData;
+  if (selectedStoreId && selectedStoreId !== "all") {
+    filteredStores = storeData.filter((store) => store.id == selectedStoreId);
+  }
+
+  filteredStores.forEach((store) => {
+    const lat = parseFloat(store.latitude);
+    const lng = parseFloat(store.longitude);
+    if (!isNaN(lat) && !isNaN(lng)) {
+      const marker = L.marker([lat, lng], { icon: storeIcon }).bindPopup(`
+        <div style="padding: 8px; min-width: 200px;">
+          <h4 style="margin: 0 0 8px 0; color: #1e293b;">
+            <i class="fas fa-store"></i> ${escapeHtml(store.nama_store)}
+          </h4>
+          <p style="margin: 0; font-size: 11px; color: #64748b;">
+            <i class="fas fa-location-dot"></i> ${escapeHtml(store.alamat)}
+          </p>
+          <hr style="margin: 8px 0;">
+          <p style="margin: 0; font-size: 10px; color: #94a3b8;">
+            📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}
+          </p>
+        </div>
+      `);
+      marker.addTo(absensiMap);
+      storeMarkers.push(marker);
+      bounds.extend([lat, lng]);
+      hasMarkers = true;
+    }
+  });
+
+  const checkInIcon = L.divIcon({
+    html: '<i class="fas fa-map-marker-alt" style="font-size: 20px; color: #10b981; text-shadow: 0 0 2px white;"></i>',
+    iconSize: [25, 25],
+    className: "custom-absensi-icon",
+    popupAnchor: [0, -12],
+  });
+
+  absensiData.forEach((item) => {
+    const lat = parseFloat(item.latitude);
+    const lng = parseFloat(item.longitude);
+    if (!isNaN(lat) && !isNaN(lng)) {
+      let statusIcon = "";
+      switch (item.status) {
+        case "hadir":
+          statusIcon = "✅";
+          break;
+        case "izin":
+          statusIcon = "📋";
+          break;
+        case "sakit":
+          statusIcon = "🤒";
+          break;
+        default:
+          statusIcon = "❌";
+      }
+
+      const marker = L.marker([lat, lng], { icon: checkInIcon }).bindPopup(`
+        <div style="padding: 8px; min-width: 220px;">
+          <h4 style="margin: 0 0 8px 0; color: #1e293b;">
+            ${statusIcon} ${escapeHtml(item.nama_karyawan)}
+          </h4>
+          <p style="margin: 0 0 4px 0; font-size: 11px;">No Induk: ${escapeHtml(item.no_induk)}</p>
+          <p style="margin: 0 0 4px 0; font-size: 11px;">Store: ${escapeHtml(item.store_name)}</p>
+          <p style="margin: 0 0 4px 0; font-size: 11px;">📅 ${item.tanggal}</p>
+          <p style="margin: 0 0 4px 0; font-size: 11px;">⏰ Check In: ${item.check_in_time}</p>
+          <p style="margin: 0 0 4px 0; font-size: 11px;">⏰ Check Out: ${item.check_out_time}</p>
+          <hr style="margin: 8px 0;">
+          <p style="margin: 0; font-size: 10px; color: #94a3b8;">
+            📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}
+          </p>
+        </div>
+      `);
+      marker.addTo(absensiMap);
+      absensiMarkers.push(marker);
+      bounds.extend([lat, lng]);
+      hasMarkers = true;
+    }
+  });
+
+  if (hasMarkers) absensiMap.fitBounds(bounds);
+  else absensiMap.setView([-2.548926, 118.0148634], 5);
+}
+
+async function loadAbsensiStoresForMap() {
+  try {
+    const res = await fetch(`/api/absensi/stores?company=${currentAbsensiCompany}`);
+    const data = await res.json();
+    if (data.success) return data.data;
+    return [];
+  } catch (err) {
+    console.error("Load stores for map error:", err);
+    return [];
+  }
+}
+
+async function loadAbsensiStores() {
+  try {
+    const res = await fetch(`/api/absensi/stores?company=${currentAbsensiCompany}`);
+    const data = await res.json();
+
+    if (data.success) {
+      absensiStores = data.data;
+      const storeSelect = document.getElementById("absensiStoreSelect");
+      if (storeSelect) {
+        storeSelect.innerHTML = '<option value="all">Semua Store</option>';
+        absensiStores.forEach((store) => {
+          const option = document.createElement("option");
+          option.value = store.id;
+          option.textContent = `${store.nama_store}`;
+          storeSelect.appendChild(option);
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Load absensi stores error:", err);
+  }
+}
+
+async function loadAbsensiYears() {
+  try {
+    const res = await fetch(`/api/absensi/available-years?company=${currentAbsensiCompany}`);
+    const data = await res.json();
+
+    if (data.success) {
+      const yearSelect = document.getElementById("absensiYearSelect");
+      if (yearSelect) {
+        const currentYear = new Date().getFullYear();
+        yearSelect.innerHTML = '<option value="all">Semua Tahun</option>';
+        data.years.forEach((year) => {
+          const option = document.createElement("option");
+          option.value = year;
+          option.textContent = year;
+          yearSelect.appendChild(option);
+        });
+        if (yearSelect.value === "all" || !yearSelect.value) {
+          yearSelect.value = currentYear;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Load absensi years error:", err);
+  }
+}
+
+function getDateParams() {
+  const dateFilterSelect = document.getElementById("absensiDateFilter");
+  const filterValue = dateFilterSelect ? dateFilterSelect.value : "today";
+
+  switch (filterValue) {
+    case "today":
+      return { tanggal: getTodayDate(), month: null, year: null };
+    case "date":
+      const tanggal = document.getElementById("absensiDatePicker")?.value || getTodayDate();
+      return { tanggal: tanggal, month: null, year: null };
+    case "month":
+      const month = document.getElementById("absensiMonthSelect")?.value || getCurrentMonth();
+      const year = document.getElementById("absensiYearSelect")?.value || getCurrentYear();
+      return { tanggal: null, month: month, year: year };
+    case "year":
+      const tahun = document.getElementById("absensiYearSelect")?.value || getCurrentYear();
+      return { tanggal: null, month: null, year: tahun };
+    default:
+      return { tanggal: getTodayDate(), month: null, year: null };
+  }
+}
+
+async function loadAbsensiData() {
+  try {
+    const storeId = document.getElementById("absensiStoreSelect")?.value || "all";
+    const status = document.getElementById("absensiStatusSelect")?.value || "all";
+    const search = document.getElementById("searchAbsensiInput")?.value || "";
+    const dateParams = getDateParams();
+
+    const tbody = document.querySelector("#tableAbsensi tbody");
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="12" style="text-align: center; padding: 40px;">
+            <i class="fas fa-spinner fa-spin" style="font-size: 32px; color: #2563eb;"></i>
+            <p style="margin-top: 10px;">Memuat data absensi...</p>
+          </td>
+        </tr>
+      `;
+    }
+
+    let url = `/api/absensi?company=${currentAbsensiCompany}&store_id=${storeId}&status=${status}&search=${encodeURIComponent(search)}&page=${currentAbsensiPage}&limit=${pageSizeAbsensi}`;
+
+    if (dateParams.tanggal) {
+      url += `&tanggal=${dateParams.tanggal}`;
+    }
+    if (dateParams.month) {
+      url += `&month=${dateParams.month}`;
+    }
+    if (dateParams.year) {
+      url += `&year=${dateParams.year}`;
+    }
+
+    console.log("Fetching URL:", url);
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!data.success) {
+      throw new Error(data.message);
+    }
+
+    absensiData = data.data;
+
+    document.getElementById("totalHadirStat").innerText = data.stats?.hadir || 0;
+    document.getElementById("totalIzinStat").innerText = data.stats?.izin || 0;
+    document.getElementById("totalSakitStat").innerText = data.stats?.sakit || 0;
+    document.getElementById("totalAlphaStat").innerText = data.stats?.alpha || 0;
+
+    renderAbsensiTable();
+
+    const pageInfo = document.getElementById("absensiPageInfo");
+    if (pageInfo && data.pagination) {
+      pageInfo.innerText = `Halaman ${data.pagination.current_page} dari ${data.pagination.total_pages || 1}`;
+    }
+
+    const stores = await loadAbsensiStoresForMap();
+    updateAbsensiMapMarkers(absensiData, stores);
+  } catch (err) {
+    console.error("Load absensi data error:", err);
+    const tbody = document.querySelector("#tableAbsensi tbody");
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="12" style="text-align: center; padding: 40px;">
+            <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #ef4444; margin-bottom: 10px; display: block;"></i>
+            <p style="color: #64748b;">Gagal memuat data: ${err.message}</p>
+            <button class="btn-primary" onclick="loadAbsensiData()" style="margin-top: 10px;">
+              <i class="fas fa-sync-alt"></i> Coba Lagi
+            </button>
+          </td>
+        </tr>
+      `;
+    }
+  }
+}
+
+// Render tabel absensi
+function renderAbsensiTable() {
+  const tbody = document.querySelector("#tableAbsensi tbody");
+  if (!tbody) return;
+
+  if (!absensiData || absensiData.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="13" style="text-align: center; padding: 40px;">
+          <i class="fas fa-calendar-alt" style="font-size: 48px; color: #cbd5e1; margin-bottom: 10px; display: block;"></i>
+          <p style="color: #64748b;">Belum ada data absensi</p>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = "";
+
+  absensiData.forEach((item, index) => {
+    const tr = document.createElement("tr");
+
+    // Tentukan class untuk status
+    let statusClass = "";
+    let statusText = "";
+    switch (item.status) {
+      case "hadir":
+        statusClass = "status-hadir";
+        statusText = "✅ Hadir";
+        break;
+      case "izin":
+        statusClass = "status-izin";
+        statusText = "📋 Izin";
+        break;
+      case "sakit":
+        statusClass = "status-sakit";
+        statusText = "🤒 Sakit";
+        break;
+      case "alpha":
+        statusClass = "status-alpha";
+        statusText = "❌ Alpha";
+        break;
+      default:
+        statusClass = "status-alpha";
+        statusText = "❌ Alpha";
+    }
+
+    // Format lokasi
+    let locationHtml = "-";
+    if (item.latitude && item.longitude) {
+      const lat = parseFloat(item.latitude);
+      const lng = parseFloat(item.longitude);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        locationHtml = `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="foto-link" style="color: #2563eb; text-decoration: none;" title="Buka di Google Maps">
+          <i class="fas fa-map-marker-alt"></i> Lihat Lokasi
+        </a>`;
+      }
+    }
+
+    // Format foto check in
+    let fotoCheckInHtml = "-";
+    if (item.foto_check_in) {
+      fotoCheckInHtml = `<a href="${item.foto_check_in}" target="_blank" class="foto-link" style="color: #2563eb; text-decoration: none;" title="Lihat Foto Check In">
+        <i class="fas fa-camera"></i> Lihat Foto
+      </a>`;
+    }
+
+    // Format foto check out
+    let fotoCheckOutHtml = "-";
+    if (item.foto_check_out) {
+      fotoCheckOutHtml = `<a href="${item.foto_check_out}" target="_blank" class="foto-link" style="color: #2563eb; text-decoration: none;" title="Lihat Foto Check Out">
+        <i class="fas fa-camera"></i> Lihat Foto
+      </a>`;
+    }
+
+    // Tombol Delete (hanya untuk status yang bukan terkirim)
+    let actionHtml = `
+      <button class="btn-delete" onclick="deleteAbsensi(${item.id})" title="Hapus Data Absensi" style="background: none; border: none; cursor: pointer; color: #ef4444; font-size: 16px; transition: all 0.2s;">
+        <i class="fas fa-trash-alt"></i>
+      </button>
+    `;
+
+    tr.innerHTML = `
+      <td class="text-center">${(currentAbsensiPage - 1) * pageSizeAbsensi + index + 1}</td>
+      <td style="white-space: nowrap;">${escapeHtml(item.tanggal)}</td>
+      <td style="font-weight: 500;">${escapeHtml(item.no_induk)}</td>
+      <td style="font-weight: 600;">${escapeHtml(item.nama_karyawan)}</td>
+      <td>${escapeHtml(item.store_name)}</td>
+      <td class="text-center">${escapeHtml(item.check_in_time)}</td>
+      <td class="text-center">${escapeHtml(item.check_out_time)}</td>
+      <td class="text-center"><span class="status-badge ${statusClass}">${statusText}</span></td>
+      <td style="max-width: 200px; word-break: break-word;">${escapeHtml(item.keterangan)}</td>
+      <td class="text-center">${locationHtml}</td>
+      <td class="text-center">${fotoCheckInHtml}</td>
+      <td class="text-center">${fotoCheckOutHtml}</td>
+      <td class="text-center">${actionHtml}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// Delete absensi data
+async function deleteAbsensi(id) {
+  // Konfirmasi sebelum menghapus
+  const result = await Swal.fire({
+    title: "Apakah Anda yakin?",
+    text: "Data absensi ini akan dihapus secara permanen!",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#ef4444",
+    cancelButtonColor: "#64748b",
+    confirmButtonText: "Ya, Hapus!",
+    cancelButtonText: "Batal",
+  });
+
+  if (!result.isConfirmed) return;
+
+  try {
+    // Tampilkan loading
+    Swal.fire({
+      title: "Menghapus...",
+      text: "Mohon tunggu sebentar",
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      },
+    });
+
+    const res = await fetch(`/api/absensi/${id}?company=${currentAbsensiCompany}`, {
+      method: "DELETE",
+    });
+
+    const data = await res.json();
+    Swal.close();
+
+    if (data.success) {
+      Swal.fire({
+        title: "Berhasil!",
+        text: "Data absensi berhasil dihapus",
+        icon: "success",
+        timer: 1500,
+        showConfirmButton: false,
+      });
+
+      // Reload data
+      loadAbsensiData();
+    } else {
+      Swal.fire({
+        title: "Gagal!",
+        text: data.message || "Terjadi kesalahan saat menghapus data",
+        icon: "error",
+        confirmButtonText: "OK",
+      });
+    }
+  } catch (err) {
+    console.error("Delete absensi error:", err);
+    Swal.close();
+    Swal.fire({
+      title: "Error!",
+      text: err.message || "Terjadi kesalahan pada server",
+      icon: "error",
+      confirmButtonText: "OK",
+    });
+  }
+}
+
+function setupAbsensiHandlers() {
+  const menuAbsensiHisana = document.getElementById("menuAbsensiHisana");
+  if (menuAbsensiHisana) {
+    const newBtn = menuAbsensiHisana.cloneNode(true);
+    menuAbsensiHisana.parentNode.replaceChild(newBtn, menuAbsensiHisana);
+    newBtn.onclick = () => showAbsensiSection("hisana");
+  }
+
+  const menuAbsensiEnakko = document.getElementById("menuAbsensiEnakko");
+  if (menuAbsensiEnakko) {
+    const newBtn = menuAbsensiEnakko.cloneNode(true);
+    menuAbsensiEnakko.parentNode.replaceChild(newBtn, menuAbsensiEnakko);
+    newBtn.onclick = () => showAbsensiSection("enakko");
+  }
+
+  const storeSelect = document.getElementById("absensiStoreSelect");
+  if (storeSelect) {
+    storeSelect.addEventListener("change", () => {
+      currentAbsensiPage = 1;
+      loadAbsensiData();
+    });
+  }
+
+  const statusSelect = document.getElementById("absensiStatusSelect");
+  if (statusSelect) {
+    statusSelect.addEventListener("change", () => {
+      currentAbsensiPage = 1;
+      loadAbsensiData();
+    });
+  }
+
+  const searchInput = document.getElementById("searchAbsensiInput");
+  if (searchInput) {
+    let debounceTimer;
+    searchInput.addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        currentAbsensiPage = 1;
+        loadAbsensiData();
+      }, 500);
+    });
+  }
+
+  const prevPage = document.getElementById("prevAbsensiPage");
+  if (prevPage) {
+    prevPage.addEventListener("click", () => {
+      if (currentAbsensiPage > 1) {
+        currentAbsensiPage--;
+        loadAbsensiData();
+      }
+    });
+  }
+
+  const nextPage = document.getElementById("nextAbsensiPage");
+  if (nextPage) {
+    nextPage.addEventListener("click", () => {
+      currentAbsensiPage++;
+      loadAbsensiData();
+    });
+  }
+
+  const exportBtn = document.getElementById("exportAbsensiBtn");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", async () => {
+      const storeId = document.getElementById("absensiStoreSelect")?.value || "all";
+      const status = document.getElementById("absensiStatusSelect")?.value || "all";
+      const search = document.getElementById("searchAbsensiInput")?.value || "";
+      const dateParams = getDateParams();
+
+      let url = `/api/absensi/export?company=${currentAbsensiCompany}&store_id=${storeId}&status=${status}&search=${encodeURIComponent(search)}`;
+
+      if (dateParams.tanggal) url += `&tanggal=${dateParams.tanggal}`;
+      if (dateParams.month) url += `&month=${dateParams.month}`;
+      if (dateParams.year) url += `&year=${dateParams.year}`;
+
+      Swal.fire({
+        title: "Mengexport data...",
+        text: "Mohon tunggu sebentar",
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+      });
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Gagal export data");
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+
+        const contentDisposition = response.headers.get("Content-Disposition");
+        let filename = `Absensi_${currentAbsensiCompany}_${new Date().toISOString().slice(0, 19)}.xlsx`;
+        if (contentDisposition) {
+          const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+          if (match && match[1]) filename = match[1].replace(/['"]/g, "");
+        }
+
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(downloadUrl);
+
+        Swal.close();
+        Swal.fire("Berhasil!", "Data absensi berhasil diexport", "success");
+      } catch (err) {
+        Swal.close();
+        Swal.fire("Gagal!", err.message, "error");
+      }
+    });
+  }
+
+  const refreshBtn = document.getElementById("refreshAbsensiBtn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => loadAbsensiData());
+  }
+
+  const refreshMapBtn = document.getElementById("refreshAbsensiMapBtn");
+  if (refreshMapBtn) {
+    refreshMapBtn.addEventListener("click", () => {
+      if (absensiMap) {
+        absensiMap.remove();
+        absensiMap = null;
+      }
+      initAbsensiMap();
+      loadAbsensiData();
+    });
+  }
+}
+
+function showAbsensiSection(company) {
+  console.log(`📍 Showing Absensi section for company: ${company}`);
+
+  currentAbsensiCompany = company;
+  currentAbsensiPage = 1;
+
+  const companyNameSpan = document.getElementById("absensiCompanyName");
+  if (companyNameSpan) {
+    companyNameSpan.textContent = company === "hisana" ? "Hisana" : "Enakko";
+  }
+
+  document.querySelectorAll(".section").forEach((s) => s.classList.remove("active"));
+
+  const targetSection = document.getElementById("sectionAbsensi");
+  if (targetSection) {
+    targetSection.classList.add("active");
+  }
+
+  loadAbsensiStores();
+  loadAbsensiYears();
+  setupDateFilterUI();
+
+  setTimeout(() => {
+    initAbsensiMap();
+    loadAbsensiData();
+  }, 300);
+
+  document.querySelectorAll(".nav-item").forEach((btn) => btn.classList.remove("active"));
+  const absensiBtn = company === "hisana" ? document.getElementById("menuAbsensiHisana") : document.getElementById("menuAbsensiEnakko");
+  if (absensiBtn) {
+    absensiBtn.classList.add("active");
+  }
+}
+
+function refreshAbsensiMap() {
+  if (absensiMap) {
+    absensiMap.remove();
+    absensiMap = null;
+  }
+  initAbsensiMap();
+  loadAbsensiData();
+}
 // =============================
 // MOBILE MENU (HAMBURGER) FUNCTIONS
 // =============================
