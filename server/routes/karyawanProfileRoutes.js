@@ -33,6 +33,10 @@ function getThrTableName(company) {
   return company === "hisana" ? "thr_hisana" : "thr_enakko";
 }
 
+function getAbsensiTableName(company) {
+  return company === "hisana" ? "absensi_karyawan_hisana" : "absensi_karyawan_enakko";
+}
+
 function getPublicDir() {
   return path.join(process.cwd(), "public");
 }
@@ -40,7 +44,6 @@ function getPublicDir() {
 async function savePhotoBase64(base64Data, karyawanNoInduk, karyawanNama, type, company) {
   return new Promise((resolve, reject) => {
     try {
-      // Cek format base64
       const matches = base64Data.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
       if (!matches || matches.length !== 3) {
         reject(new Error("Format foto tidak valid"));
@@ -49,37 +52,28 @@ async function savePhotoBase64(base64Data, karyawanNoInduk, karyawanNama, type, 
 
       const imageBuffer = Buffer.from(matches[2], "base64");
       const imageExt = matches[1] === "jpeg" ? "jpg" : matches[1];
-
-      // Tentukan folder tujuan
       const companyFolder = company === "hisana" ? "hisana" : "enakko";
       const uploadDir = path.join(getPublicDir(), "img", "absensi", companyFolder);
 
-      // Buat folder jika belum ada
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
 
-      // Buat nama file dengan format: NO_INDUK_NAMA_TYPE_TIMESTAMP.jpg
-      // Bersihkan nama dari karakter khusus untuk menghindari error file system
       const cleanNama = karyawanNama
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "_")
         .replace(/_+/g, "_")
-        .substring(0, 50); // batasi panjang nama
+        .substring(0, 50);
 
       const now = new Date();
       const dateStr = now.toISOString().slice(0, 19).replace(/:/g, "-");
       const filename = `${karyawanNoInduk}_${cleanNama}_${type}_${dateStr}_${Date.now()}.${imageExt}`;
       const filepath = path.join(uploadDir, filename);
 
-      // Simpan file
       fs.writeFileSync(filepath, imageBuffer);
-
-      // URL untuk akses via web (relative path dari public folder)
       const fotoUrl = `/img/absensi/${companyFolder}/${filename}`;
 
       console.log(`[SavePhoto] Foto disimpan: ${filename}`);
-
       resolve(fotoUrl);
     } catch (err) {
       reject(err);
@@ -111,6 +105,25 @@ function formatDate(dateString) {
   }
 }
 
+function formatTime(timeValue) {
+  if (!timeValue) return "-";
+  try {
+    const timePattern = /^([0-1][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$/;
+    if (timePattern.test(timeValue)) {
+      return timeValue;
+    }
+    const date = new Date(timeValue);
+    if (isNaN(date.getTime())) return "-";
+    return date.toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch (e) {
+    return "-";
+  }
+}
+
 // =============================
 // MIDDLEWARE
 // =============================
@@ -136,9 +149,14 @@ router.get("/api/karyawan/profile", requireKaryawan, async (req, res) => {
     const tableName = getKaryawanTableName(company);
     const lokasiTable = getLokasiStoreTableName(company);
 
+    console.log("[Profile] Company:", company);
+    console.log("[Profile] Karyawan ID:", karyawan.id);
+    console.log("[Profile] User ID:", karyawan.user_id);
+
     const [rows] = await db.query(
       `SELECT 
         k.id,
+        k.user_id,
         k.no_induk,
         k.nama_lengkap,
         k.nik,
@@ -207,6 +225,7 @@ router.get("/api/karyawan/profile", requireKaryawan, async (req, res) => {
       success: true,
       profile: {
         id: profileData.id,
+        user_id: profileData.user_id,
         no_induk: profileData.no_induk,
         nama_lengkap: profileData.nama_lengkap,
         nik: profileData.nik || "-",
@@ -697,10 +716,9 @@ router.get("/api/karyawan/today-attendance", requireKaryawan, async (req, res) =
   try {
     const karyawan = req.session.karyawan;
     const company = karyawan.company;
-    const absensiTable = company === "hisana" ? "absensi_karyawan_hisana" : "absensi_karyawan_enakko";
+    const absensiTable = getAbsensiTableName(company);
 
     const today = new Date().toISOString().split("T")[0];
-
     const [rows] = await db.query(`SELECT * FROM ${absensiTable} WHERE karyawan_id = ? AND tanggal = ?`, [karyawan.id, today]);
 
     if (rows.length === 0) {
@@ -718,8 +736,8 @@ router.get("/api/karyawan/today-attendance", requireKaryawan, async (req, res) =
     res.json({
       success: true,
       data: {
-        check_in: attendance.check_in_time ? new Date(attendance.check_in_time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : null,
-        check_out: attendance.check_out_time ? new Date(attendance.check_out_time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : null,
+        check_in: attendance.check_in_time ? formatTime(attendance.check_in_time) : null,
+        check_out: attendance.check_out_time ? formatTime(attendance.check_out_time) : null,
         status: attendance.status || "belum",
       },
     });
@@ -755,14 +773,13 @@ router.post("/api/karyawan/check-in", requireKaryawan, async (req, res) => {
       });
     }
 
-    const absensiTable = company === "hisana" ? "absensi_karyawan_hisana" : "absensi_karyawan_enakko";
+    const absensiTable = getAbsensiTableName(company);
     const karyawanTable = getKaryawanTableName(company);
     const lokasiTable = getLokasiStoreTableName(company);
 
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // Dapatkan data karyawan lengkap dengan lokasi store dan user_id
     const [karyawanData] = await connection.query(
       `SELECT k.*, l.latitude as store_lat, l.longitude as store_lon, l.nama_store, l.alamat as store_alamat
        FROM ${karyawanTable} k
@@ -802,7 +819,6 @@ router.post("/api/karyawan/check-in", requireKaryawan, async (req, res) => {
       });
     }
 
-    // Simpan foto dengan nama yang menyertakan nama karyawan
     let fotoUrl = null;
     try {
       fotoUrl = await savePhotoBase64(foto, karyawan.no_induk, karyawan.nama_lengkap, "checkin", company);
@@ -818,7 +834,7 @@ router.post("/api/karyawan/check-in", requireKaryawan, async (req, res) => {
     const [existingAttendance] = await connection.query(`SELECT * FROM ${absensiTable} WHERE karyawan_id = ? AND tanggal = ?`, [karyawan.id, today]);
 
     const now = new Date();
-    const timeString = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const timeString = formatTime(now);
     const locationMessage = `Check in dari store (jarak: ${Math.round(distance)} meter)`;
 
     if (existingAttendance.length > 0) {
@@ -832,7 +848,6 @@ router.post("/api/karyawan/check-in", requireKaryawan, async (req, res) => {
         });
       }
 
-      // Update check in dengan user_id
       await connection.query(
         `UPDATE ${absensiTable} 
          SET check_in_time = ?, status = 'hadir', keterangan = ?, latitude = ?, longitude = ?, foto_check_in = ?, user_id = ?, updated_at = NOW()
@@ -853,7 +868,6 @@ router.post("/api/karyawan/check-in", requireKaryawan, async (req, res) => {
         },
       });
     } else {
-      // Insert new attendance dengan user_id
       await connection.query(
         `INSERT INTO ${absensiTable} 
          (karyawan_id, user_id, no_induk, nama_karyawan, tanggal, check_in_time, status, keterangan, latitude, longitude, foto_check_in, created_at, updated_at)
@@ -909,7 +923,7 @@ router.post("/api/karyawan/check-out", requireKaryawan, async (req, res) => {
       });
     }
 
-    const absensiTable = company === "hisana" ? "absensi_karyawan_hisana" : "absensi_karyawan_enakko";
+    const absensiTable = getAbsensiTableName(company);
     const karyawanTable = getKaryawanTableName(company);
     const lokasiTable = getLokasiStoreTableName(company);
 
@@ -986,13 +1000,12 @@ router.post("/api/karyawan/check-out", requireKaryawan, async (req, res) => {
     }
 
     const now = new Date();
-    const timeString = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const timeString = formatTime(now);
     const locationMessage = `Check out dari store (jarak: ${Math.round(distance)} meter)`;
 
     let currentKeterangan = attendance[0].keterangan || "";
     const updatedKeterangan = currentKeterangan ? `${currentKeterangan} | ${locationMessage}` : locationMessage;
 
-    // Update check out (user_id sudah ada dari check in, tidak perlu diupdate lagi)
     await connection.query(
       `UPDATE ${absensiTable} 
        SET check_out_time = ?, keterangan = ?, foto_check_out = ?, updated_at = NOW()
@@ -1031,7 +1044,7 @@ router.post("/api/karyawan/permit", requireKaryawan, async (req, res) => {
     const company = karyawan.company;
     const { type, reason, startDate, endDate } = req.body;
 
-    const absensiTable = company === "hisana" ? "absensi_karyawan_hisana" : "absensi_karyawan_enakko";
+    const absensiTable = getAbsensiTableName(company);
 
     connection = await db.getConnection();
     await connection.beginTransaction();
@@ -1053,7 +1066,6 @@ router.post("/api/karyawan/permit", requireKaryawan, async (req, res) => {
       if (existing.length > 0) {
         const existingRecord = existing[0];
         if (!existingRecord.check_in_time) {
-          // Update dengan user_id
           await connection.query(
             `UPDATE ${absensiTable} 
              SET status = ?, keterangan = ?, user_id = ?, updated_at = NOW()
@@ -1070,7 +1082,6 @@ router.post("/api/karyawan/permit", requireKaryawan, async (req, res) => {
           );
         }
       } else {
-        // Insert dengan user_id
         await connection.query(
           `INSERT INTO ${absensiTable} 
            (karyawan_id, user_id, no_induk, nama_karyawan, tanggal, status, keterangan, created_at, updated_at)
@@ -1108,7 +1119,7 @@ router.get("/api/karyawan/attendance-history", requireKaryawan, async (req, res)
   try {
     const karyawan = req.session.karyawan;
     const company = karyawan.company;
-    const absensiTable = company === "hisana" ? "absensi_karyawan_hisana" : "absensi_karyawan_enakko";
+    const absensiTable = getAbsensiTableName(company);
 
     const limit = parseInt(req.query.limit) || 30;
 
@@ -1121,9 +1132,9 @@ router.get("/api/karyawan/attendance-history", requireKaryawan, async (req, res)
     );
 
     const formattedData = rows.map((row) => ({
-      date: row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-",
-      check_in: row.check_in_time ? new Date(row.check_in_time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-",
-      check_out: row.check_out_time ? new Date(row.check_out_time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-",
+      date: row.tanggal ? formatDate(row.tanggal) : "-",
+      check_in: row.check_in_time ? formatTime(row.check_in_time) : "-",
+      check_out: row.check_out_time ? formatTime(row.check_out_time) : "-",
       status: row.status || "alpha",
       reason: row.keterangan || "",
     }));
@@ -1145,7 +1156,7 @@ router.get("/api/karyawan/monthly-report", requireKaryawan, async (req, res) => 
   try {
     const karyawan = req.session.karyawan;
     const company = karyawan.company;
-    const absensiTable = company === "hisana" ? "absensi_karyawan_hisana" : "absensi_karyawan_enakko";
+    const absensiTable = getAbsensiTableName(company);
 
     let { month, year } = req.query;
     month = parseInt(month);

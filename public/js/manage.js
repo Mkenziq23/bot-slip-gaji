@@ -89,7 +89,7 @@ async function confirmLogout() {
       zIndex: 2000,
       didOpen: () => Swal.showLoading(),
     });
-    window.location.href = "/admin-logout";
+    window.location.href = "/logout";
   }
 }
 
@@ -894,7 +894,7 @@ async function updateAdminCredentials() {
 
     if (isOwnAccount && newPassword) {
       await showAlert("info", "Info", `Halo ${targetUsername}, silakan login kembali dengan password baru Anda`);
-      window.location.href = "/admin-logout";
+      window.location.href = "/logout";
     } else {
       loadAdmins();
     }
@@ -947,7 +947,7 @@ async function checkRoleAccess() {
     const data = await res.json();
 
     if (!data.loggedIn) {
-      window.location.href = "/admin-login";
+      window.location.href = "/login";
       return;
     }
 
