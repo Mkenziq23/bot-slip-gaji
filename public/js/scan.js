@@ -45,7 +45,7 @@ function connectWS() {
 
   /*
   =====================================
-  ON MESSAGE
+  ON MESSAGE (DIPERBAIKI - MENERIMA USER_ID)
   =====================================
   */
 
@@ -78,18 +78,19 @@ function connectWS() {
 
       /*
       ===============================
-      LOGIN SUCCESS
+      LOGIN SUCCESS (DIPERBAIKI - KIRIM USER_ID)
       ===============================
       */
 
       if (data.status === "connected") {
-        console.log("[WS] Login success:", data.number);
+        console.log("[WS] Login success:", data.number, "User ID:", data.user_id);
 
         statusDiv.classList.add("connected");
 
         statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Login berhasil! Mengalihkan...';
 
         try {
+          // KIRIM number DAN user_id KE SERVER
           const res = await fetch("/set-number", {
             method: "POST",
 
@@ -101,13 +102,14 @@ function connectWS() {
 
             body: JSON.stringify({
               number: data.number,
+              user_id: data.user_id, // <-- TAMBAHKAN INI
             }),
           });
 
           const result = await res.json();
 
           if (res.ok && result.success) {
-            console.log("[SESSION] Saved");
+            console.log("[SESSION] Saved with user_id:", data.user_id);
 
             setTimeout(() => {
               window.location.href = "/dashboard";

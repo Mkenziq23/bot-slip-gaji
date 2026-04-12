@@ -722,7 +722,7 @@ function renderKaryawanTable() {
     // Foto Diri
     let fotoDiriHtml = "-";
     if (d.foto_diri && d.foto_diri !== "") {
-      fotoDiriHtml = `<a href="${d.foto_diri}" target="_blank" class="foto-link" style="color: #2563eb; text-decoration: none;" title="Lihat Foto Diri">
+      fotoDiriHtml = `<a href="${d.foto_diri}" target="_blank" class="foto-link" title="Lihat Foto Diri">
         <i class="fas fa-image"></i> Lihat
       </a>`;
     }
@@ -730,7 +730,7 @@ function renderKaryawanTable() {
     // Foto KTP
     let fotoKtpHtml = "-";
     if (d.foto_ktp && d.foto_ktp !== "") {
-      fotoKtpHtml = `<a href="${d.foto_ktp}" target="_blank" class="foto-link" style="color: #2563eb; text-decoration: none;" title="Lihat Foto KTP">
+      fotoKtpHtml = `<a href="${d.foto_ktp}" target="_blank" class="foto-link" title="Lihat Foto KTP">
         <i class="fas fa-id-card"></i> Lihat
       </a>`;
     }
@@ -745,21 +745,31 @@ function renderKaryawanTable() {
     const namaGerai = d.nama_store || "-";
     const cabangAlamat = d.alamat_store || "-";
 
+    // Batasi panjang alamat (tambahkan ini)
+    const alamatDomisili = d.alamat_domisili || "-";
+    const truncatedAlamat = alamatDomisili.length > 100 ? alamatDomisili.substring(0, 97) + "..." : alamatDomisili;
+
+    const truncatedCabangAlamat = cabangAlamat.length > 80 ? cabangAlamat.substring(0, 77) + "..." : cabangAlamat;
+
     tr.innerHTML = `
       <td class="text-center" style="width: 50px;">${start + i + 1}</td>
-      <td style="font-weight: 500;">${escapeHtml(d.no_induk || "-")}</td>
-      <td style="font-weight: 600;">${escapeHtml(d.nama_lengkap || "-")}</td>
-      <td>${escapeHtml(d.nik || "-")}</td>
-      <td>${tglLahir}</td>
-      <td style="max-width: 200px; word-break: break-word;">${escapeHtml(d.alamat_domisili || "-")}</td>
-      <td>${escapeHtml(noHpDisplay)}</td>
-      <td>${escapeHtml(d.email || "-")}</td>
-      <td>${awalMasuk}
-      <td>${escapeHtml(d.jabatan || "-")}</td>
-      <td><strong>${escapeHtml(namaGerai)}</strong></td>
-      <td><small style="color: #64748b; font-size: 11px;">${escapeHtml(cabangAlamat)}</small></td>
-      <td class="text-center">${fotoDiriHtml}</td>
-      <td class="text-center">${fotoKtpHtml}</td>
+      <td style="font-weight: 500; white-space: nowrap;">${escapeHtml(d.no_induk || "-")}</td>
+      <td style="font-weight: 600; white-space: nowrap;">${escapeHtml(d.nama_lengkap || "-")}</td>
+      <td style="white-space: nowrap;">${escapeHtml(d.nik || "-")}</td>
+      <td style="white-space: nowrap;">${tglLahir}</td>
+      <td style="max-width: 250px; word-break: break-word; white-space: normal; line-height: 1.4;">
+        ${escapeHtml(truncatedAlamat)}
+      </td>
+      <td style="white-space: nowrap;">${escapeHtml(noHpDisplay)}</td>
+      <td style="white-space: nowrap;">${escapeHtml(d.email || "-")}</td>
+      <td style="white-space: nowrap;">${awalMasuk}</td>
+      <td style="white-space: nowrap;">${escapeHtml(d.jabatan || "-")}</td>
+      <td style="white-space: nowrap;"><strong>${escapeHtml(namaGerai)}</strong></td>
+      <td style="max-width: 200px; word-break: break-word; white-space: normal; font-size: 0.75rem; line-height: 1.3;">
+        ${escapeHtml(truncatedCabangAlamat)}
+      </td>
+      <td class="text-center" style="white-space: nowrap;">${fotoDiriHtml}</td>
+      <td class="text-center" style="white-space: nowrap;">${fotoKtpHtml}</td>
       <td class="text-center" style="white-space: nowrap;">
         <button class="btn-primary" style="padding: 5px 10px; margin-right: 5px;" onclick='openKaryawanModalById(${d.id})' title="Edit">
           <i class="fas fa-edit"></i>

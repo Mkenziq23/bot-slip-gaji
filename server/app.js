@@ -17,6 +17,7 @@ import lokasiStoreRoutes from "./routes/LokasiStoreRoutes.js";
 import absensiRoutes from "./routes/absensiRoutes.js";
 
 import { startBot, getSocketByNumber, logoutBot } from "../bot/index.js";
+
 import db from "./db.js";
 
 const app = express();
@@ -27,36 +28,49 @@ const FileStore = sessionFileStore(session);
 
 /*
 =====================================
-RAILWAY SESSION FIX
+SESSION CONFIG (LOCALHOST + RAILWAY)
 =====================================
 */
 
 app.set("trust proxy", 1);
 
-const sessionMiddleware = session({
-  secret: "slipgajiwa",
-  resave: false,
-  saveUninitialized: false,
-  proxy: true,
+const isRailway = process.env.RAILWAY_ENVIRONMENT !== undefined;
 
-  store: new FileStore({
-    path: "./sessions",
-    ttl: 30 * 24 * 60 * 60,
-    reapInterval: 60 * 60,
+app.use(
+  session({
+    store: new FileStore({
+      path: "./sessions",
+      retries: 1,
+    }),
+
+    secret: "hisana-enakko-slipgaji-secure-session-key-2026",
+
+    resave: false,
+
+    saveUninitialized: false,
+
+    proxy: true,
+
+    cookie: {
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+
+      httpOnly: true,
+
+      secure: isRailway,
+
+      sameSite: isRailway ? "none" : "lax",
+    },
   }),
+);
 
-  cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-    httpOnly: true,
-
-    secure: true,
-    sameSite: "none",
-  },
-});
+/*
+=====================================
+BODY PARSER
+=====================================
+*/
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(sessionMiddleware);
 
 /*
 =====================================
@@ -115,13 +129,21 @@ ROUTES
 app.use(loginRoutes);
 
 app.use(dashboardDataRoutes);
+
 app.use(slipRoutes);
+
 app.use(userManagementRoutes);
+
 app.use(bonusRoutes);
+
 app.use(thrRoutes);
+
 app.use(dataKaryawanRoutes);
+
 app.use(karyawanProfileRoutes);
+
 app.use("/api/lokasi-store", lokasiStoreRoutes);
+
 app.use(absensiRoutes);
 
 /*
@@ -194,22 +216,53 @@ app.use(express.static(path.join(process.cwd(), "public")));
 
 /*
 =====================================
-SAVE NUMBER AFTER QR LOGIN
+SAVE NUMBER AFTER QR LOGIN (DIPERBAIKI)
 =====================================
 */
 
 app.post("/set-number", async (req, res) => {
-  const { number } = req.body;
+  const { number, user_id } = req.body;
 
-  if (!number) return res.json({ success: false });
+  console.log("[SET-NUMBER] Received:", { number, user_id }); // <-- TAMBAHKAN LOG
+
+  if (!number) {
+    return res.json({ success: false, message: "No number provided" });
+  }
 
   const user = await getUserIfExists(number);
 
-  if (!user) return res.json({ success: false });
+  if (!user) {
+    return res.json({ success: false, message: "User not found" });
+  }
 
+  // SIMPAN KE SESSION
   req.session.number = number;
+  req.session.user_id = user.id; // PASTIKAN INI TERSIMPAN
 
-  req.session.save(() => res.json({ success: true }));
+  console.log("[SET-NUMBER] Session saved:", {
+    number: req.session.number,
+    user_id: req.session.user_id,
+  });
+
+  req.session.save((err) => {
+    if (err) {
+      console.error("[SET-NUMBER] Session save error:", err);
+      return res.json({ success: false, message: "Session save failed" });
+    }
+
+    res.json({ success: true });
+  });
+});
+
+app.get("/debug-session", (req, res) => {
+  res.json({
+    hasSession: !!req.session,
+    number: req.session.number,
+    user_id: req.session.user_id,
+    admin: req.session.admin ? { id: req.session.admin.id, role: req.session.admin.role } : null,
+    karyawan: req.session.karyawan ? { id: req.session.karyawan.id, company: req.session.karyawan.company } : null,
+    sessionID: req.sessionID,
+  });
 });
 
 /*
@@ -223,13 +276,14 @@ app.get("/logout", async (req, res) => {
 
   req.session.destroy(() => {
     res.clearCookie("connect.sid");
+
     res.redirect("/login");
   });
 });
 
 /*
 =====================================
-WEBSOCKET QR LOGIN
+WEBSOCKET QR LOGIN (DIPERBAIKI - KIRIM USER_ID)
 =====================================
 */
 
@@ -240,10 +294,14 @@ wss.on("connection", async (ws) => {
     number: tempId,
 
     onQR: (number, qr) => {
-      ws.send(JSON.stringify({ qr }));
+      ws.send(
+        JSON.stringify({
+          qr,
+        }),
+      );
     },
 
-    onConnected: async (waNumber) => {
+    onConnected: async (waNumber, userId) => {
       const user = await getUserIfExists(waNumber);
 
       if (!user) {
@@ -254,14 +312,15 @@ wss.on("connection", async (ws) => {
         );
 
         await logoutBot(waNumber);
-
         return;
       }
 
+      // KIRIM user_id KE CLIENT
       ws.send(
         JSON.stringify({
           status: "connected",
           number: waNumber,
+          user_id: user.id, // <-- TAMBAHKAN INI
         }),
       );
     },

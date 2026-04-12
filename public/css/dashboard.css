@@ -4294,3 +4294,640 @@ input[readonly] {
 .btn-delete:active {
   transform: scale(0.95);
 }
+
+/* ============================================ */
+/* DATA KARYAWAN TABLE - FIX OVERFLOW */
+/* ============================================ */
+
+/* Container table dengan overflow auto */
+#sectionDataKaryawan .scrollable {
+  overflow-x: auto;
+  max-width: 100%;
+  border-radius: 12px;
+}
+
+/* Tabel Data Karyawan */
+#tableKaryawan {
+  width: 100%;
+  min-width: 1200px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+#tableKaryawan th,
+#tableKaryawan td {
+  padding: 12px 10px;
+  vertical-align: middle;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+/* Kolom Alamat Domisili - batasi lebar dan wrap */
+#tableKaryawan td:nth-child(6),
+#tableKaryawan th:nth-child(6) {
+  max-width: 250px;
+  min-width: 180px;
+  white-space: normal;
+  word-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+/* Kolom Alamat Store (Cabang) */
+#tableKaryawan td:nth-child(12),
+#tableKaryawan th:nth-child(12) {
+  max-width: 200px;
+  min-width: 150px;
+  white-space: normal;
+  word-wrap: break-word;
+  word-break: break-word;
+  font-size: 0.75rem;
+}
+
+/* Kolom lainnya tetap nowrap */
+#tableKaryawan td:not(:nth-child(6)):not(:nth-child(12)),
+#tableKaryawan th:not(:nth-child(6)):not(:nth-child(12)) {
+  white-space: nowrap;
+}
+
+/* Kolom NIK, No HP, Email */
+#tableKaryawan td:nth-child(4),
+#tableKaryawan td:nth-child(7),
+#tableKaryawan td:nth-child(8) {
+  white-space: nowrap;
+}
+
+/* Kolom Aksi */
+#tableKaryawan td:last-child,
+#tableKaryawan th:last-child {
+  white-space: nowrap;
+  min-width: 100px;
+  text-align: center;
+}
+
+/* Kolom Foto */
+#tableKaryawan td:nth-child(13),
+#tableKaryawan td:nth-child(14) {
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  #tableKaryawan td:nth-child(6),
+  #tableKaryawan th:nth-child(6) {
+    max-width: 180px;
+    min-width: 120px;
+  }
+
+  #tableKaryawan td:nth-child(12),
+  #tableKaryawan th:nth-child(12) {
+    max-width: 150px;
+    min-width: 100px;
+  }
+}
+
+@media (max-width: 768px) {
+  #sectionDataKaryawan .scrollable {
+    margin: 0 16px 16px;
+  }
+
+  #tableKaryawan {
+    font-size: 0.75rem;
+  }
+
+  #tableKaryawan th,
+  #tableKaryawan td {
+    padding: 8px 6px;
+  }
+
+  #tableKaryawan td:nth-child(6),
+  #tableKaryawan th:nth-child(6) {
+    max-width: 150px;
+    min-width: 100px;
+  }
+}
+
+/* ============================================ */
+/* BONUS & THR SECTION - BUTTON GROUP FIX */
+/* ============================================ */
+
+/* Container untuk tombol di section Bonus dan THR */
+#sectionBonus .data-header-left,
+#sectionTHR .data-header-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
+#sectionBonus .data-header-left h3,
+#sectionTHR .data-header-left h3 {
+  margin-bottom: 0;
+}
+
+/* Data actions wrapper */
+#sectionBonus .data-actions,
+#sectionTHR .data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+/* Button group untuk tambah dan duplikasi */
+#sectionBonus .button-group,
+#sectionTHR .button-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Style untuk tombol Tambah Bonus */
+#sectionBonus .button-group .add-data-btn,
+#sectionTHR .button-group .add-data-btn {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+
+#sectionBonus .button-group .add-data-btn:hover,
+#sectionTHR .button-group .add-data-btn:hover {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+}
+
+/* Style untuk tombol Duplikasi Bonus Bulan Lalu */
+#sectionBonus .button-group .duplicate-data-btn,
+#sectionTHR .button-group .duplicate-data-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+#sectionBonus .button-group .duplicate-data-btn:hover,
+#sectionTHR .button-group .duplicate-data-btn:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+/* Style untuk tombol Batal Duplikasi */
+#sectionBonus .button-group .cancel-data-btn,
+#sectionTHR .button-group .cancel-data-btn {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+#sectionBonus .button-group .cancel-data-btn:hover,
+#sectionTHR .button-group .cancel-data-btn:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+/* Filter group styling */
+#sectionBonus .filter-group,
+#sectionTHR .filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  background: #f8fafc;
+  padding: 6px 16px;
+  border-radius: 40px;
+  border: 1px solid #e2e8f0;
+  margin-left: auto;
+}
+
+#sectionBonus .filter-wrapper,
+#sectionTHR .filter-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  padding: 6px 14px;
+  border-radius: 30px;
+  border: 1px solid #e2e8f0;
+}
+
+#sectionBonus .filter-label,
+#sectionTHR .filter-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#sectionBonus .filter-select,
+#sectionTHR .filter-select {
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #1e293b;
+  cursor: pointer;
+  outline: none;
+}
+
+/* Right side - search and reset */
+#sectionBonus .data-header-right,
+#sectionTHR .data-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  #sectionBonus .data-actions,
+  #sectionTHR .data-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #sectionBonus .button-group,
+  #sectionTHR .button-group {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  #sectionBonus .button-group button,
+  #sectionTHR .button-group button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  #sectionBonus .filter-group,
+  #sectionTHR .filter-group {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 768px) {
+  #sectionBonus .button-group,
+  #sectionTHR .button-group {
+    flex-direction: column;
+  }
+
+  #sectionBonus .button-group button,
+  #sectionTHR .button-group button {
+    width: 100%;
+  }
+
+  #sectionBonus .filter-group,
+  #sectionTHR .filter-group {
+    flex-direction: column;
+    align-items: stretch;
+    border-radius: 16px;
+  }
+
+  #sectionBonus .filter-wrapper,
+  #sectionTHR .filter-wrapper {
+    justify-content: space-between;
+  }
+
+  #sectionBonus .data-header-right,
+  #sectionTHR .data-header-right {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  #sectionBonus .data-header-right .search-wrapper,
+  #sectionTHR .data-header-right .search-wrapper {
+    width: 100%;
+  }
+
+  #sectionBonus .data-header-right .reset-btn,
+  #sectionTHR .data-header-right .reset-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ============================================ */
+/* THR SECTION - BUTTON GROUP FIX */
+/* ============================================ */
+
+/* Container untuk tombol di section THR */
+#sectionTHR .data-header-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
+#sectionTHR .data-header-left h3 {
+  margin-bottom: 0;
+}
+
+/* Data actions wrapper */
+#sectionTHR .data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+/* Button group untuk tambah, duplikasi, dan batal */
+#sectionTHR .button-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Style untuk tombol Tambah THR */
+#sectionTHR .button-group .add-data-btn {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  border: none;
+  color: white;
+  padding: 10px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+
+#sectionTHR .button-group .add-data-btn:hover {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+}
+
+/* Style untuk tombol Duplikasi THR Tahun Lalu */
+#sectionTHR .button-group .duplicate-data-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  color: white;
+  padding: 10px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+#sectionTHR .button-group .duplicate-data-btn:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+/* Style untuk tombol Batal Duplikasi THR */
+#sectionTHR .button-group .cancel-data-btn {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border: none;
+  color: white;
+  padding: 10px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+#sectionTHR .button-group .cancel-data-btn:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+/* Year filter wrapper */
+#sectionTHR .year-filter-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  padding: 6px 20px;
+  border-radius: 40px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+#sectionTHR .year-filter-wrapper .filter-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#sectionTHR .year-filter-wrapper .filter-select {
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #1e293b;
+  cursor: pointer;
+  outline: none;
+  border-radius: 8px;
+}
+
+#sectionTHR .year-filter-wrapper .filter-select:hover {
+  background: #f1f5f9;
+}
+
+/* Right side - search and reset */
+#sectionTHR .data-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* Tabel THR */
+#tableTHR {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+#tableTHR th,
+#tableTHR td {
+  padding: 12px 10px;
+  vertical-align: middle;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+#tableTHR th {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #475569;
+  white-space: nowrap;
+}
+
+/* Kolom Aksi - perbaiki tombol */
+#tableTHR td:last-child {
+  white-space: nowrap;
+  text-align: center;
+}
+
+#tableTHR .btn-primary,
+#tableTHR .btn-danger {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  margin: 0 3px;
+}
+
+#tableTHR .btn-primary {
+  background: #2563eb;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+#tableTHR .btn-primary:hover {
+  background: #1d4ed8;
+}
+
+#tableTHR .btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+#tableTHR .btn-danger:hover {
+  background: #dc2626;
+}
+
+/* Status badge untuk THR */
+#tableTHR .status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 30px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+#tableTHR .status-badge.success {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+#tableTHR .status-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+#tableTHR .status-badge.cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  #sectionTHR .data-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #sectionTHR .button-group {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  #sectionTHR .button-group button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  #sectionTHR .year-filter-wrapper {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 768px) {
+  #sectionTHR .button-group {
+    flex-direction: column;
+  }
+
+  #sectionTHR .button-group button {
+    width: 100%;
+  }
+
+  #sectionTHR .data-header-right {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  #sectionTHR .data-header-right .search-wrapper {
+    width: 100%;
+  }
+
+  #sectionTHR .data-header-right .reset-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  #tableTHR {
+    min-width: 700px;
+  }
+
+  #tableTHR th,
+  #tableTHR td {
+    padding: 8px 6px;
+    font-size: 0.7rem;
+  }
+}

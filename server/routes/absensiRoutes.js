@@ -10,10 +10,27 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
-// Helper: Get user_id from session (sama seperti dashboard)
-function getUserId(req) {
-  if (req.session.user_id) return req.session.user_id;
-  if (req.session.admin && req.session.admin.id) return req.session.admin.id;
+// Helper: Get user_id from session (DIPERBAIKI - Async)
+async function getUserId(req) {
+  // Cek session user_id terlebih dahulu
+  if (req.session.user_id) {
+    return req.session.user_id;
+  }
+
+  // Jika ada session number tapi belum ada user_id, query ke database
+  if (req.session.number) {
+    try {
+      const [rows] = await db.query("SELECT id FROM users WHERE nomor_wa = ?", [req.session.number]);
+      if (rows.length) {
+        // Simpan ke session untuk penggunaan berikutnya
+        req.session.user_id = rows[0].id;
+        return rows[0].id;
+      }
+    } catch (err) {
+      console.error("Error getting user_id from number:", err.message);
+    }
+  }
+
   return null;
 }
 
@@ -68,9 +85,9 @@ function formatTime(timeValue) {
   }
 }
 
-// Middleware untuk cek login
-function requireLogin(req, res, next) {
-  const userId = getUserId(req);
+// Middleware untuk cek login (DIPERBAIKI - Async)
+async function requireLogin(req, res, next) {
+  const userId = await getUserId(req);
   if (!userId) {
     return res.status(401).json({
       success: false,
@@ -87,7 +104,7 @@ function requireLogin(req, res, next) {
 router.get("/api/absensi/stores", requireLogin, async (req, res) => {
   try {
     const { company } = req.query;
-    const userId = getUserId(req);
+    const userId = await getUserId(req);
 
     if (!company || (company !== "hisana" && company !== "enakko")) {
       return res.status(400).json({
@@ -129,19 +146,9 @@ router.get("/api/absensi/stores", requireLogin, async (req, res) => {
  */
 router.get("/api/absensi", requireLogin, async (req, res) => {
   try {
-    const {
-      company,
-      store_id,
-      month,
-      year,
-      status,
-      search,
-      tanggal, // TAMBAHKAN PARAMETER TANGGAL
-      page = 1,
-      limit = 20,
-    } = req.query;
+    const { company, store_id, month, year, status, search, tanggal, page = 1, limit = 20 } = req.query;
 
-    const userId = getUserId(req);
+    const userId = await getUserId(req);
 
     if (!company || (company !== "hisana" && company !== "enakko")) {
       return res.status(400).json({
@@ -169,26 +176,17 @@ router.get("/api/absensi", requireLogin, async (req, res) => {
       params.push(store_id);
     }
 
-    // ========================================
-    // FILTER TANGGAL - PRIORITAS TANGGAL DULU
-    // ========================================
+    // Filter tanggal
     if (tanggal && tanggal !== "all" && tanggal !== "") {
-      // Filter berdasarkan tanggal spesifik (YYYY-MM-DD)
       whereConditions.push(`a.tanggal = ?`);
       params.push(tanggal);
-    }
-    // Filter berdasarkan bulan dan tahun
-    else if (month && month !== "all" && year && year !== "all") {
+    } else if (month && month !== "all" && year && year !== "all") {
       whereConditions.push(`MONTH(a.tanggal) = ? AND YEAR(a.tanggal) = ?`);
       params.push(month, year);
-    }
-    // Filter berdasarkan tahun saja
-    else if (year && year !== "all") {
+    } else if (year && year !== "all") {
       whereConditions.push(`YEAR(a.tanggal) = ?`);
       params.push(year);
-    }
-    // Filter berdasarkan bulan saja (gunakan tahun sekarang)
-    else if (month && month !== "all") {
+    } else if (month && month !== "all") {
       const currentYear = new Date().getFullYear();
       whereConditions.push(`MONTH(a.tanggal) = ? AND YEAR(a.tanggal) = ?`);
       params.push(month, currentYear);
@@ -307,7 +305,7 @@ router.get("/api/absensi/export", requireLogin, async (req, res) => {
   try {
     const { company, store_id, month, year, status, search, tanggal } = req.query;
 
-    const userId = getUserId(req);
+    const userId = await getUserId(req);
 
     if (!company || (company !== "hisana" && company !== "enakko")) {
       return res.status(400).json({
@@ -444,7 +442,7 @@ router.get("/api/absensi/export", requireLogin, async (req, res) => {
 router.get("/api/absensi/available-years", requireLogin, async (req, res) => {
   try {
     const { company } = req.query;
-    const userId = getUserId(req);
+    const userId = await getUserId(req);
 
     if (!company || (company !== "hisana" && company !== "enakko")) {
       return res.status(400).json({
@@ -499,7 +497,7 @@ router.delete("/api/absensi/:id", requireLogin, async (req, res) => {
   try {
     const { id } = req.params;
     const { company } = req.query;
-    const userId = getUserId(req);
+    const userId = await getUserId(req);
 
     if (!company || (company !== "hisana" && company !== "enakko")) {
       return res.status(400).json({
