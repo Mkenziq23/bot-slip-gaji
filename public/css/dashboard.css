@@ -387,9 +387,17 @@ body {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .data-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.button-group {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -628,6 +636,53 @@ button:hover {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+  margin-left: auto;
+}
+
+#sectionBonus .data-header-left,
+#sectionTHR .data-header-left {
+  flex-wrap: wrap;
+}
+
+#sectionBonus .data-actions,
+#sectionTHR .data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Responsive untuk mobile */
+@media (max-width: 768px) {
+  .data-header-left {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+  
+  .data-header-left h3 {
+    white-space: normal;
+  }
+  
+  .data-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+  
+  .data-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .filter-group {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+  
+  .filter-wrapper {
+    flex: 1;
+  }
 }
 
 .filter-wrapper {
