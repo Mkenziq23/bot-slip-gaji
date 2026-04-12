@@ -82,19 +82,16 @@ app.use(async (req, res, next) => {
 });
 
 // ============================
-// STATIC PUBLIC FILES (HARUS DULUAN SEBELUM ROUTES)
+// STATIC PUBLIC FILES (HARUS DULUAN)
 // ============================
 
 app.use(express.static(path.join(process.cwd(), "public")));
 
 // ============================
-// ROUTES
+// ROUTES - LOGIN ROUTES HARUS PALING ATAS
 // ============================
 
-// ROUTE LOGIN HARUS PALING ATAS
-app.use("/", loginRoutes);
-
-// ROUTE LAINNYA
+app.use("/", loginRoutes); // <-- INI YANG PALING PENTING
 app.use("/", dashboardDataRoutes);
 app.use("/", slipRoutes);
 app.use("/", userManagementRoutes);
@@ -125,7 +122,7 @@ app.get("/scan", async (req, res) => {
 });
 
 // ============================
-// DASHBOARD (UNTUK USER YANG LOGIN VIA QR)
+// DASHBOARD (UNTUK USER QR)
 // ============================
 
 app.get("/dashboard", async (req, res) => {
@@ -221,12 +218,6 @@ app.post("/set-number", async (req, res) => {
 });
 
 // ============================
-// LOGOUT (TIDAK ADA DUPLIKAT)
-// ============================
-
-// Route logout sudah ditangani di loginRoutes.js, jangan tambahkan di sini
-
-// ============================
 // CHECK SESSION STATUS
 // ============================
 
@@ -250,30 +241,20 @@ app.get("/check-session", async (req, res) => {
 });
 
 // ============================
-// DEBUG - CLEAR SESSION (UNTUK TESTING)
+// DEBUG - FORCE CLEAR SESSION
 // ============================
 
 app.get("/clear-session", (req, res) => {
-  console.log("[DEBUG] Force clearing session");
   req.session.destroy((err) => {
     if (err) console.error("Destroy error:", err);
     res.clearCookie("connect.sid", { path: "/" });
     res.send(`
       <html>
-        <head>
-          <style>
-            body { font-family: Arial; display: flex; justify-content: center; align-items: center; height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-            .container { text-align: center; background: white; padding: 40px; border-radius: 12px; }
-            h2 { color: #10b981; }
-            a { display: inline-block; background: #6366f1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
+        <body style="display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif;">
+          <div style="text-align:center; background:white; padding:40px; border-radius:12px;">
             <h2>✅ Session telah dihapus!</h2>
-            <a href="/login">Ke Halaman Login</a>
+            <a href="/login" style="background:#6366f1; color:white; padding:10px 20px; text-decoration:none; border-radius:8px;">Ke Halaman Login</a>
           </div>
-          <script>setTimeout(function(){ window.location.href = "/login"; }, 2000);</script>
         </body>
       </html>
     `);
@@ -290,12 +271,7 @@ function notifyForceLogout(number) {
   if (userSessions[number]) {
     userSessions[number].wsClients.forEach((client) => {
       if (client && client.readyState === 1) {
-        client.send(
-          JSON.stringify({
-            status: "force_logout",
-            message: "Perangkat WhatsApp telah dihapus dari perangkat tertaut. Silakan login ulang.",
-          }),
-        );
+        client.send(JSON.stringify({ status: "force_logout", message: "Perangkat WhatsApp telah dihapus dari perangkat tertaut. Silakan login ulang." }));
       }
     });
     delete userSessions[number];
@@ -305,11 +281,7 @@ function notifyForceLogout(number) {
 wss.on("connection", async (ws, req) => {
   const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-  userSessions[tempId] = {
-    wsClients: [ws],
-    sessionId: req.sessionID,
-  };
-
+  userSessions[tempId] = { wsClients: [ws], sessionId: req.sessionID };
   let botStarted = false;
 
   const startBotForQR = async () => {
@@ -320,29 +292,18 @@ wss.on("connection", async (ws, req) => {
       await startBot({
         number: tempId,
         onQR: (number, qr) => {
-          if (userSessions[tempId] && userSessions[tempId].wsClients) {
+          if (userSessions[tempId]?.wsClients) {
             userSessions[tempId].wsClients.forEach((client) => {
-              if (client && client.readyState === 1) {
-                client.send(JSON.stringify({ qr }));
-              }
+              if (client?.readyState === 1) client.send(JSON.stringify({ qr }));
             });
           }
         },
         onConnected: async (waNumber) => {
           const user = await getUserIfExists(waNumber);
-
           if (!user) {
-            if (userSessions[tempId]) {
+            if (userSessions[tempId]?.wsClients) {
               userSessions[tempId].wsClients.forEach((client) => {
-                if (client && client.readyState === 1) {
-                  client.send(
-                    JSON.stringify({
-                      status: "not_registered",
-                      number: waNumber,
-                      message: "Nomor WhatsApp belum terdaftar. Hubungi admin untuk pendaftaran.",
-                    }),
-                  );
-                }
+                if (client?.readyState === 1) client.send(JSON.stringify({ status: "not_registered", number: waNumber, message: "Nomor WhatsApp belum terdaftar. Hubungi admin." }));
               });
             }
             await logoutBot(waNumber);
@@ -350,13 +311,7 @@ wss.on("connection", async (ws, req) => {
           }
 
           if (userSessions[tempId]) {
-            if (!userSessions[waNumber]) {
-              userSessions[waNumber] = {
-                wsClients: [],
-                sessionIds: [],
-              };
-            }
-
+            if (!userSessions[waNumber]) userSessions[waNumber] = { wsClients: [], sessionIds: [] };
             userSessions[waNumber].wsClients.push(...userSessions[tempId].wsClients);
             userSessions[waNumber].sessionIds.push(userSessions[tempId].sessionId);
             delete userSessions[tempId];
@@ -364,22 +319,11 @@ wss.on("connection", async (ws, req) => {
 
           if (userSessions[waNumber]) {
             userSessions[waNumber].wsClients.forEach((client) => {
-              if (client && client.readyState === 1) {
-                client.send(
-                  JSON.stringify({
-                    status: "connected",
-                    number: waNumber,
-                    user_id: user.id,
-                    user_name: user.nama,
-                  }),
-                );
-              }
+              if (client?.readyState === 1) client.send(JSON.stringify({ status: "connected", number: waNumber, user_id: user.id, user_name: user.nama }));
             });
           }
         },
-        onLogout: (number) => {
-          notifyForceLogout(number);
-        },
+        onLogout: (number) => notifyForceLogout(number),
       });
     } catch (err) {
       console.error("[WS] Failed to start bot:", err);
@@ -387,14 +331,11 @@ wss.on("connection", async (ws, req) => {
   };
 
   setTimeout(startBotForQR, 100);
-
-  ws.on("close", () => {
+  ws.on("close", () =>
     setTimeout(() => {
-      if (userSessions[tempId]) {
-        delete userSessions[tempId];
-      }
-    }, 5000);
-  });
+      if (userSessions[tempId]) delete userSessions[tempId];
+    }, 5000),
+  );
 });
 
 // ============================
@@ -410,7 +351,6 @@ app.use((req, res) => {
 // ============================
 
 const PORT = process.env.PORT || 3000;
-
 server.listen(PORT, () => {
   console.log(`========================================`);
   console.log(`🚀 Server berjalan di port ${PORT}`);
