@@ -46,8 +46,7 @@ function getLokasiStoreTableName(company) {
  * ==========================
  */
 router.get("/", (req, res) => {
-  // Selalu redirect ke halaman login
-  // User harus akses /scan untuk login via QR
+  console.log("[ROUTE /] Redirecting to /login");
   res.redirect("/login");
 });
 
@@ -57,19 +56,25 @@ router.get("/", (req, res) => {
  * ==========================
  */
 router.get("/login", (req, res) => {
+  console.log("[ROUTE /login] Session check - admin:", !!req.session.admin, "karyawan:", !!req.session.karyawan, "number:", !!req.session.number);
+
   // Jika sudah login sebagai admin
   if (req.session.admin) {
+    console.log("[ROUTE /login] Redirecting admin to /manage-users");
     return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
   }
   // Jika sudah login sebagai karyawan
   if (req.session.karyawan) {
+    console.log("[ROUTE /login] Redirecting karyawan to /karyawan-profile");
     return res.redirect("/karyawan-profile");
   }
   // Jika sudah login via QR
   if (req.session.number) {
+    console.log("[ROUTE /login] Redirecting QR user to /dashboard");
     return res.redirect("/dashboard");
   }
   // Tampilkan halaman login
+  console.log("[ROUTE /login] Showing login page");
   res.sendFile(path.join(process.cwd(), "public/login.html"));
 });
 
@@ -223,15 +228,24 @@ router.get("/karyawan-profile", requireKaryawan, async (req, res) => {
 
 /**
  * ==========================
- * Logout (Unified)
+ * Logout (Unified) - DIPERBAIKI
  * ==========================
  */
 router.get("/logout", (req, res) => {
+  console.log("[ROUTE /logout] Starting logout process");
+
+  // Hapus semua session data
   req.session.destroy((err) => {
     if (err) {
-      console.error("Logout error:", err);
+      console.error("[LOGOUT] Session destroy error:", err);
     }
-    res.clearCookie("connect.sid");
+
+    // Hapus cookie dengan path yang benar
+    res.clearCookie("connect.sid", { path: "/" });
+
+    console.log("[ROUTE /logout] Session destroyed, redirecting to /login");
+
+    // Redirect ke halaman login
     res.redirect("/login");
   });
 });

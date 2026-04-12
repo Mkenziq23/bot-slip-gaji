@@ -218,24 +218,6 @@ app.post("/set-number", async (req, res) => {
 });
 
 // ============================
-// LOGOUT HR
-// ============================
-
-app.get("/logout", async (req, res) => {
-  const number = req.session.number;
-
-  if (number) {
-    await logoutBot(number);
-  }
-
-  req.session.destroy((err) => {
-    if (err) console.error("[LOGOUT] Session destroy error:", err);
-    res.clearCookie("connect.sid");
-    res.redirect("/login");
-  });
-});
-
-// ============================
 // CHECK SESSION STATUS
 // ============================
 
@@ -256,6 +238,66 @@ app.get("/check-session", async (req, res) => {
   }
 
   res.json({ loggedIn: true });
+});
+
+// ============================
+// DEBUG - CLEAR ALL SESSIONS (UNTUK TESTING)
+// ============================
+
+app.get("/clear-session", (req, res) => {
+  console.log("[DEBUG] Force clearing session");
+  req.session.destroy((err) => {
+    if (err) console.error("Destroy error:", err);
+    res.clearCookie("connect.sid", { path: "/" });
+    res.send(`
+      <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              margin: 0;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .container {
+              text-align: center;
+              background: white;
+              padding: 40px;
+              border-radius: 12px;
+              box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            }
+            h2 { color: #10b981; margin-bottom: 20px; }
+            p { color: #64748b; margin-bottom: 20px; }
+            a {
+              display: inline-block;
+              background: #6366f1;
+              color: white;
+              padding: 10px 20px;
+              text-decoration: none;
+              border-radius: 8px;
+              transition: background 0.3s;
+            }
+            a:hover { background: #4f46e5; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>✅ Session telah dihapus!</h2>
+            <p>Silakan menuju halaman login</p>
+            <a href="/login">Ke Halaman Login</a>
+          </div>
+          <script>
+            setTimeout(function() {
+              window.location.href = "/login";
+            }, 3000);
+          </script>
+        </body>
+      </html>
+    `);
+  });
 });
 
 // ============================
