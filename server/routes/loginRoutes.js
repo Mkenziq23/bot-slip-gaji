@@ -5,133 +5,306 @@ import db from "../db.js";
 
 const router = express.Router();
 
+/*
+=========================================
+MIDDLEWARE AUTH CHECK
+=========================================
+*/
+
+function requireAdmin(req, res, next) {
+  if (!req.session.admin) {
+    return res.redirect("/login");
+  }
+  next();
+}
+
+function requireSuperAdmin(req, res, next) {
+  if (!req.session.admin || req.session.admin.role !== "superadmin") {
+    return res.status(403).json({
+      error: "Superadmin only",
+    });
+  }
+  next();
+}
+
+function requireKaryawan(req, res, next) {
+  if (!req.session.karyawan) {
+    return res.redirect("/login");
+  }
+  next();
+}
+
+/*
+=========================================
+HELPER TABLE LOKASI STORE
+=========================================
+*/
+
 function getLokasiStoreTableName(company) {
   return company === "hisana" ? "lokasi_store_hisana" : "lokasi_store_enakko";
 }
 
-// ============================================================
-// ROUTE ROOT (/) - SELALU REDIRECT KE LOGIN
-// ============================================================
-router.get("/", (req, res) => {
-  console.log("[ROUTE /] Redirecting to /login");
-  res.redirect("/login");
-});
+/*
+=========================================
+LOGIN PAGE ROUTE
+=========================================
+*/
 
-// ============================================================
-// ROUTE LOGIN (GET /login)
-// ============================================================
 router.get("/login", (req, res) => {
-  console.log("[ROUTE /login] Session check - admin:", !!req.session.admin, "karyawan:", !!req.session.karyawan, "qr:", !!req.session.number);
-
   if (req.session.admin) {
-    return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
+    return res.redirect("/manage-users");
   }
+
   if (req.session.karyawan) {
     return res.redirect("/karyawan-profile");
   }
+
   if (req.session.number) {
     return res.redirect("/dashboard");
   }
+
   res.sendFile(path.join(process.cwd(), "public/login.html"));
 });
 
-// ============================================================
-// PROSES LOGIN (POST /login)
-// ============================================================
+/*
+=========================================
+POST LOGIN HANDLER
+=========================================
+*/
+
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
+
   if (!username || !password) {
-    return res.json({ success: false, message: "Username/Email dan password harus diisi" });
+    return res.json({
+      success: false,
+      message: "Username/Email dan password harus diisi",
+    });
   }
 
-  // Cek Admin
+  /*
+  =========================================
+  LOGIN ADMIN
+  =========================================
+  */
+
   const [adminRows] = await db.query("SELECT * FROM admins WHERE username = ? OR email = ?", [username, username]);
+
   if (adminRows.length > 0) {
     const admin = adminRows[0];
+
     const match = await bcrypt.compare(password, admin.password);
+
     if (match) {
-      req.session.admin = { id: admin.id, username: admin.username, email: admin.email, role: admin.role };
-      req.session.save(() => res.json({ success: true, type: "admin", role: admin.role, redirect: "/manage-users" }));
-      return;
+      req.session.admin = {
+        id: admin.id,
+        username: admin.username,
+        email: admin.email,
+        role: admin.role,
+      };
+
+      return req.session.save(() =>
+        res.json({
+          success: true,
+          type: "admin",
+          role: admin.role,
+          redirect: "/manage-users",
+        }),
+      );
     }
   }
 
-  // Cek Karyawan Hisana
+  /*
+  =========================================
+  LOGIN KARYAWAN HISANA
+  =========================================
+  */
+
   let [karyawanRows] = await db.query(
-    `SELECT id, user_id, no_induk, nama_lengkap, email, password, jabatan, lokasi_store_id, 'hisana' as company 
-     FROM data_karyawan_hisana WHERE no_induk = ? OR email = ?`,
+    `
+SELECT
+id,
+user_id,
+no_induk,
+nama_lengkap,
+email,
+password,
+jabatan,
+lokasi_store_id,
+'hisana' as company
+FROM data_karyawan_hisana
+WHERE no_induk = ? OR email = ?
+`,
     [username, username],
   );
 
-  // Cek Karyawan Enakko jika tidak ditemukan
+  /*
+  =========================================
+  LOGIN KARYAWAN ENAKKO
+  =========================================
+  */
+
   if (karyawanRows.length === 0) {
     [karyawanRows] = await db.query(
-      `SELECT id, user_id, no_induk, nama_lengkap, email, password, jabatan, lokasi_store_id, 'enakko' as company 
-       FROM data_karyawan_enakko WHERE no_induk = ? OR email = ?`,
+      `
+SELECT
+id,
+user_id,
+no_induk,
+nama_lengkap,
+email,
+password,
+jabatan,
+lokasi_store_id,
+'enakko' as company
+FROM data_karyawan_enakko
+WHERE no_induk = ? OR email = ?
+`,
       [username, username],
     );
   }
 
+  /*
+  =========================================
+  VALIDASI PASSWORD KARYAWAN
+  =========================================
+  */
+
   if (karyawanRows.length > 0) {
     const karyawan = karyawanRows[0];
+
     if (!karyawan.password) {
-      return res.json({ success: false, message: "Akun belum memiliki password. Silakan hubungi admin." });
+      return res.json({
+        success: false,
+        message: "Akun belum memiliki password. Hubungi admin.",
+      });
     }
+
     const match = await bcrypt.compare(password, karyawan.password);
-    if (match) {
-      let namaStore = null,
-        alamatStore = null;
-      if (karyawan.lokasi_store_id) {
+
+    if (!match) {
+      return res.json({
+        success: false,
+        message: "No Induk/Email atau password salah",
+      });
+    }
+
+    /*
+    =========================================
+    AMBIL DATA LOKASI STORE
+    =========================================
+    */
+
+    let namaStore = null;
+    let alamatStore = null;
+
+    if (karyawan.lokasi_store_id) {
+      try {
         const lokasiTable = getLokasiStoreTableName(karyawan.company);
-        const [lokasiRows] = await db.query(`SELECT nama_store, alamat FROM ${lokasiTable} WHERE id = ?`, [karyawan.lokasi_store_id]);
+
+        const [lokasiRows] = await db.query(
+          `
+SELECT nama_store, alamat
+FROM ${lokasiTable}
+WHERE id = ?
+`,
+          [karyawan.lokasi_store_id],
+        );
+
         if (lokasiRows.length > 0) {
           namaStore = lokasiRows[0].nama_store;
           alamatStore = lokasiRows[0].alamat;
         }
+      } catch (err) {
+        console.error("Error fetching lokasi store:", err);
       }
-      req.session.karyawan = {
-        id: karyawan.id,
-        user_id: karyawan.user_id,
-        no_induk: karyawan.no_induk,
-        nama_lengkap: karyawan.nama_lengkap,
-        email: karyawan.email,
-        jabatan: karyawan.jabatan,
-        lokasi_store_id: karyawan.lokasi_store_id,
-        nama_store: namaStore,
-        alamat_store: alamatStore,
-        company: karyawan.company,
-      };
-      req.session.save((err) => {
-        if (err) return res.json({ success: false, message: "Gagal menyimpan session" });
-        res.json({ success: true, type: "karyawan", nama: karyawan.nama_lengkap, redirect: "/karyawan-profile" });
-      });
-      return;
     }
+
+    /*
+    =========================================
+    SAVE SESSION
+    =========================================
+    */
+
+    req.session.karyawan = {
+      id: karyawan.id,
+      user_id: karyawan.user_id,
+      no_induk: karyawan.no_induk,
+      nama_lengkap: karyawan.nama_lengkap,
+      email: karyawan.email,
+      jabatan: karyawan.jabatan,
+      lokasi_store_id: karyawan.lokasi_store_id,
+      nama_store: namaStore,
+      alamat_store: alamatStore,
+      company: karyawan.company,
+    };
+
+    return req.session.save((err) => {
+      if (err) {
+        console.error("Session save error:", err);
+
+        return res.json({
+          success: false,
+          message: "Gagal menyimpan session",
+        });
+      }
+
+      res.json({
+        success: true,
+        type: "karyawan",
+        nama: karyawan.nama_lengkap,
+        redirect: "/karyawan-profile",
+      });
+    });
   }
 
-  res.json({ success: false, message: "No Induk/Email atau password salah" });
+  /*
+  =========================================
+  LOGIN GAGAL
+  =========================================
+  */
+
+  res.json({
+    success: false,
+    message: "No Induk/Email atau password salah",
+  });
 });
 
-// ============================================================
-// HALAMAN KARYAWAN PROFILE
-// ============================================================
-router.get("/karyawan-profile", (req, res) => {
-  if (!req.session.karyawan) return res.redirect("/login");
+/*
+=========================================
+HALAMAN PROFILE KARYAWAN
+=========================================
+*/
+
+router.get("/karyawan-profile", requireKaryawan, (req, res) => {
   res.sendFile(path.join(process.cwd(), "public/karyawan-profile.html"));
 });
 
-// ============================================================
-// LOGOUT
-// ============================================================
+/*
+=========================================
+UNIFIED LOGOUT
+=========================================
+*/
+
 router.get("/logout", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) console.error("Logout error:", err);
-    res.clearCookie("connect.sid", { path: "/" });
+  req.session.destroy(() => {
+    res.clearCookie("connect.sid");
     res.redirect("/login");
   });
 });
 
-router.get("/admin-logout", (req, res) => res.redirect("/logout"));
-router.get("/karyawan-logout", (req, res) => res.redirect("/logout"));
+/*
+=========================================
+LEGACY SUPPORT ROUTES
+=========================================
+*/
+
+router.get("/admin-logout", (req, res) => {
+  res.redirect("/logout");
+});
+
+router.get("/karyawan-logout", (req, res) => {
+  res.redirect("/logout");
+});
 
 export default router;

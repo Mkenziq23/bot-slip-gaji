@@ -4,114 +4,217 @@ const statusDiv = document.getElementById("status");
 
 let ws;
 let reconnectAttempts = 0;
-let maxReconnectAttempts = 5;
+const maxReconnectAttempts = 5;
+
+/*
+=====================================
+WEBSOCKET CONNECT FUNCTION
+=====================================
+*/
 
 function connectWS() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  const wsUrl = `${protocol}//${location.host}`;
+
+  const wsUrl = protocol + "//" + location.host;
+
+  console.log("[WS] Connecting:", wsUrl);
 
   statusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Menghubungkan ke Server...';
+
   statusDiv.classList.remove("connected", "error");
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    return;
-  }
-
-  if (ws && ws.readyState === WebSocket.CONNECTING) {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
     return;
   }
 
   ws = new WebSocket(wsUrl);
 
+  /*
+  =====================================
+  ON OPEN
+  =====================================
+  */
+
   ws.onopen = () => {
+    console.log("[WS] Connected");
+
     reconnectAttempts = 0;
+
     statusDiv.innerHTML = '<i class="fas fa-qrcode"></i> Menunggu QR Code...';
   };
+
+  /*
+  =====================================
+  ON MESSAGE
+  =====================================
+  */
 
   ws.onmessage = async (e) => {
     try {
       const data = JSON.parse(e.data);
 
+      console.log("[WS] Message:", data);
+
+      /*
+      ===============================
+      QR RECEIVED
+      ===============================
+      */
+
       if (data.qr) {
         loading.style.display = "none";
+
         qrCanvas.style.display = "block";
-        QRCode.toCanvas(qrCanvas, data.qr, { width: 250, margin: 2 });
+
+        QRCode.toCanvas(qrCanvas, data.qr, {
+          width: 250,
+          margin: 2,
+        });
+
         statusDiv.innerHTML = '<i class="fas fa-qrcode"></i> Scan QR Code dengan WhatsApp';
+
         statusDiv.classList.remove("connected", "error");
       }
 
+      /*
+      ===============================
+      LOGIN SUCCESS
+      ===============================
+      */
+
       if (data.status === "connected") {
+        console.log("[WS] Login success:", data.number);
+
         statusDiv.classList.add("connected");
-        statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Login Berhasil! Mengalihkan...';
+
+        statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Login berhasil! Mengalihkan...';
 
         try {
           const res = await fetch("/set-number", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ number: data.number }),
+
+            headers: {
+              "Content-Type": "application/json",
+            },
+
+            credentials: "include",
+
+            body: JSON.stringify({
+              number: data.number,
+            }),
           });
 
-          if (res.ok) {
-            const result = await res.json();
-            if (result.success) {
-              setTimeout(() => {
-                window.location.href = "/dashboard";
-              }, 1500);
-            } else {
-              statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Gagal menyimpan session';
-              setTimeout(() => {
-                window.location.href = "/scan";
-              }, 2000);
-            }
-          } else {
-            statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Gagal login, coba lagi';
+          const result = await res.json();
+
+          if (res.ok && result.success) {
+            console.log("[SESSION] Saved");
+
             setTimeout(() => {
-              window.location.href = "/scan";
-            }, 2000);
+              window.location.href = "/dashboard";
+            }, 1200);
+          } else {
+            console.error("[SESSION ERROR]", result);
+
+            showErrorAndReload("Gagal menyimpan session");
           }
         } catch (err) {
-          console.error("Set number error:", err);
-          statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error koneksi, coba lagi';
-          setTimeout(() => {
-            window.location.href = "/scan";
-          }, 2000);
+          console.error("[FETCH ERROR]", err);
+
+          showErrorAndReload("Koneksi gagal");
         }
       }
 
+      /*
+      ===============================
+      NOT REGISTERED
+      ===============================
+      */
+
       if (data.status === "not_registered") {
+        console.log("[WS] Number not registered");
+
         statusDiv.classList.add("error");
+
         statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Nomor belum terdaftar. Hubungi admin.';
-        setTimeout(() => {
-          window.location.href = "/scan";
-        }, 3000);
+
+        setTimeout(reloadPage, 3000);
       }
 
+      /*
+      ===============================
+      FORCE LOGOUT
+      ===============================
+      */
+
       if (data.status === "force_logout") {
+        console.log("[WS] Force logout detected");
+
         statusDiv.classList.add("error");
-        statusDiv.innerHTML = '<i class="fas fa-sign-out-alt"></i> Sesi berakhir, scan ulang QR';
-        setTimeout(() => {
-          window.location.href = "/scan";
-        }, 2000);
+
+        statusDiv.innerHTML = '<i class="fas fa-sign-out-alt"></i> Sesi WhatsApp berakhir. Scan ulang QR.';
+
+        setTimeout(reloadPage, 2000);
       }
     } catch (err) {
-      console.error("WebSocket message error:", err);
+      console.error("[WS MESSAGE ERROR]", err);
     }
   };
 
-  ws.onerror = (error) => {
-    console.error("WebSocket error:", error);
-    statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Koneksi error, menghubungkan ulang...';
+  /*
+  =====================================
+  ON ERROR
+  =====================================
+  */
+
+  ws.onerror = (err) => {
+    console.error("[WS ERROR]", err);
+
+    statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Koneksi error, mencoba ulang...';
   };
 
+  /*
+  =====================================
+  ON CLOSE
+  =====================================
+  */
+
   ws.onclose = () => {
+    console.warn("[WS CLOSED]");
+
     if (reconnectAttempts < maxReconnectAttempts) {
       reconnectAttempts++;
+
       statusDiv.innerHTML = `<i class="fas fa-spinner fa-pulse"></i> Menghubungkan ulang (${reconnectAttempts}/${maxReconnectAttempts})...`;
+
       setTimeout(connectWS, 3000);
     } else {
       statusDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Gagal koneksi. Refresh halaman.';
     }
   };
 }
+
+/*
+=====================================
+HELPER FUNCTIONS
+=====================================
+*/
+
+function reloadPage() {
+  location.reload();
+}
+
+function showErrorAndReload(msg) {
+  statusDiv.classList.add("error");
+
+  statusDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${msg}`;
+
+  setTimeout(reloadPage, 2000);
+}
+
+/*
+=====================================
+START CONNECTION
+=====================================
+*/
 
 connectWS();

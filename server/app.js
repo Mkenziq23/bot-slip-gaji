@@ -26,10 +26,6 @@ const wss = new WebSocketServer({ server });
 
 const FileStore = sessionFileStore(session);
 
-// ============================
-// SESSION CONFIG
-// ============================
-
 const sessionMiddleware = session({
   secret: "slipgajiwa",
   resave: false,
@@ -50,104 +46,140 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
 
-// ============================
-// CHECK USER EXISTS IN DATABASE
-// ============================
-
 async function getUserIfExists(number) {
-  try {
-    const [rows] = await db.query("SELECT id, nomor_wa, nama FROM users WHERE nomor_wa = ?", [number]);
-    return rows.length ? rows[0] : null;
-  } catch (err) {
-    console.error("[DB ERROR] getUserIfExists:", err);
-    return null;
-  }
+  const [rows] = await db.query("SELECT id, nomor_wa, nama FROM users WHERE nomor_wa = ?", [number]);
+  return rows.length ? rows[0] : null;
 }
 
-// ============================
-// GLOBAL SESSION VALIDATION
-// ============================
+/*
+=====================================
+GLOBAL SESSION VALIDATION
+=====================================
+*/
 
 app.use(async (req, res, next) => {
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
+
     if (!user) {
-      req.session.destroy((err) => {
-        if (err) console.error("Session destroy error:", err);
+      req.session.destroy(() => {
         res.clearCookie("connect.sid");
       });
     }
   }
+
   next();
 });
 
-// ============================
-// STATIC PUBLIC FILES (HARUS DULUAN)
-// ============================
+/*
+=====================================
+LOGIN PAGE ROUTE (WAJIB ADA)
+=====================================
+*/
 
-app.use(express.static(path.join(process.cwd(), "public")));
+app.get("/login", (req, res) => {
+  res.sendFile(path.join(process.cwd(), "public/login.html"));
+});
 
-// ============================
-// ROUTES - LOGIN ROUTES HARUS PALING ATAS
-// ============================
+/*
+=====================================
+ROOT ROUTE FIX
+=====================================
+*/
 
-app.use("/", loginRoutes); // <-- INI YANG PALING PENTING
-app.use("/", dashboardDataRoutes);
-app.use("/", slipRoutes);
-app.use("/", userManagementRoutes);
-app.use("/", bonusRoutes);
-app.use("/", thrRoutes);
-app.use("/", dataKaryawanRoutes);
-app.use("/", karyawanProfileRoutes);
+app.get("/", async (req, res) => {
+  if (req.session.admin) {
+    return res.redirect("/manage-users");
+  }
+
+  if (req.session.karyawan) {
+    return res.redirect("/karyawan-profile");
+  }
+
+  if (req.session.number) {
+    const user = await getUserIfExists(req.session.number);
+
+    if (user) {
+      return res.redirect("/dashboard");
+    }
+
+    req.session.destroy(() => {
+      res.clearCookie("connect.sid");
+      return res.redirect("/login");
+    });
+
+    return;
+  }
+
+  return res.redirect("/login");
+});
+
+/*
+=====================================
+ROUTES
+=====================================
+*/
+
+app.use(loginRoutes);
+app.use(dashboardDataRoutes);
+app.use(slipRoutes);
+app.use(userManagementRoutes);
+app.use(bonusRoutes);
+app.use(thrRoutes);
+app.use(dataKaryawanRoutes);
+app.use(karyawanProfileRoutes);
 app.use("/api/lokasi-store", lokasiStoreRoutes);
-app.use("/", absensiRoutes);
+app.use(absensiRoutes);
 
-// ============================
-// QR SCAN PAGE
-// ============================
+/*
+=====================================
+SCAN PAGE
+=====================================
+*/
 
 app.get("/scan", async (req, res) => {
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
+
     if (!user) {
       req.session.destroy(() => {
         res.clearCookie("connect.sid");
         return res.sendFile(path.join(process.cwd(), "public/scan.html"));
       });
+
       return;
     }
+
     return res.redirect("/dashboard");
   }
+
   res.sendFile(path.join(process.cwd(), "public/scan.html"));
 });
 
-// ============================
-// DASHBOARD (UNTUK USER QR)
-// ============================
+/*
+=====================================
+DASHBOARD QR LOGIN
+=====================================
+*/
 
 app.get("/dashboard", async (req, res) => {
-  if (req.session.admin?.role === "admin") {
-    return res.status(404).sendFile(path.join(process.cwd(), "public/404.html"));
-  }
-
-  if (req.session.admin?.role === "superadmin") {
-    return res.redirect("/manage-users");
-  }
-
   if (!req.session.number) {
     return res.redirect("/login");
   }
 
   const user = await getUserIfExists(req.session.number);
+
   if (!user) {
     req.session.destroy(() => {
       res.clearCookie("connect.sid");
       return res.redirect("/login");
     });
+
     return;
   }
 
   const number = req.session.number;
+
   if (!getSocketByNumber(number)) {
     startBot({ number });
   }
@@ -155,205 +187,125 @@ app.get("/dashboard", async (req, res) => {
   res.sendFile(path.join(process.cwd(), "public/index.html"));
 });
 
-// ============================
-// MANAGE USERS PAGE
-// ============================
+/*
+=====================================
+MANAGE USERS
+=====================================
+*/
 
 app.get("/manage-users", (req, res) => {
-  if (req.session.number) {
-    return res.status(403).sendFile(path.join(process.cwd(), "public/404.html"));
-  }
-
   if (!req.session.admin) {
     return res.redirect("/login");
-  }
-
-  if (req.session.admin.role !== "admin" && req.session.admin.role !== "superadmin") {
-    return res.status(403).sendFile(path.join(process.cwd(), "public/404.html"));
   }
 
   res.sendFile(path.join(process.cwd(), "public/manage-users.html"));
 });
 
-// ============================
-// SAVE NUMBER AFTER QR LOGIN
-// ============================
+/*
+=====================================
+STATIC FILES
+=====================================
+*/
+
+app.use(express.static(path.join(process.cwd(), "public")));
+
+/*
+=====================================
+SAVE NUMBER AFTER QR LOGIN
+=====================================
+*/
 
 app.post("/set-number", async (req, res) => {
   const { number } = req.body;
 
   if (!number) {
-    return res.status(400).json({ success: false, message: "No number provided" });
-  }
-
-  try {
-    const user = await getUserIfExists(number);
-    if (!user) {
-      return res.status(403).json({
-        success: false,
-        message: "Nomor belum terdaftar. Hubungi admin.",
-      });
-    }
-
-    req.session.number = number;
-    req.session.user_id = user.id;
-    req.session.user_name = user.nama;
-
-    req.session.save((err) => {
-      if (err) {
-        console.error("[SET-NUMBER] Session save error:", err);
-        return res.status(500).json({ success: false, message: "Session save failed" });
-      }
-
-      res.json({
-        success: true,
-        user_id: user.id,
-        user_name: user.nama,
-      });
+    return res.status(400).json({
+      success: false,
     });
-  } catch (err) {
-    console.error("[SET-NUMBER] ERROR:", err);
-    res.status(500).json({ success: false, message: "Internal server error" });
-  }
-});
-
-// ============================
-// CHECK SESSION STATUS
-// ============================
-
-app.get("/check-session", async (req, res) => {
-  if (!req.session.number) {
-    return res.json({ loggedIn: false });
   }
 
-  const number = req.session.number;
-  const socket = getSocketByNumber(number);
-  const isConnected = socket && socket.user;
+  const user = await getUserIfExists(number);
 
-  if (!isConnected) {
-    req.session.destroy((err) => {
-      if (err) console.error("[CHECK-SESSION] Destroy error:", err);
+  if (!user) {
+    return res.status(403).json({
+      success: false,
     });
-    return res.json({ loggedIn: false, reason: "Device disconnected from WhatsApp" });
   }
 
-  res.json({ loggedIn: true });
-});
+  req.session.number = number;
 
-// ============================
-// DEBUG - FORCE CLEAR SESSION
-// ============================
-
-app.get("/clear-session", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) console.error("Destroy error:", err);
-    res.clearCookie("connect.sid", { path: "/" });
-    res.send(`
-      <html>
-        <body style="display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif;">
-          <div style="text-align:center; background:white; padding:40px; border-radius:12px;">
-            <h2>✅ Session telah dihapus!</h2>
-            <a href="/login" style="background:#6366f1; color:white; padding:10px 20px; text-decoration:none; border-radius:8px;">Ke Halaman Login</a>
-          </div>
-        </body>
-      </html>
-    `);
-  });
-});
-
-// ============================
-// WEBSOCKET BOT LOGIN SYSTEM
-// ============================
-
-let userSessions = {};
-
-function notifyForceLogout(number) {
-  if (userSessions[number]) {
-    userSessions[number].wsClients.forEach((client) => {
-      if (client && client.readyState === 1) {
-        client.send(JSON.stringify({ status: "force_logout", message: "Perangkat WhatsApp telah dihapus dari perangkat tertaut. Silakan login ulang." }));
-      }
-    });
-    delete userSessions[number];
-  }
-}
-
-wss.on("connection", async (ws, req) => {
-  const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
-  userSessions[tempId] = { wsClients: [ws], sessionId: req.sessionID };
-  let botStarted = false;
-
-  const startBotForQR = async () => {
-    if (botStarted) return;
-    botStarted = true;
-
-    try {
-      await startBot({
-        number: tempId,
-        onQR: (number, qr) => {
-          if (userSessions[tempId]?.wsClients) {
-            userSessions[tempId].wsClients.forEach((client) => {
-              if (client?.readyState === 1) client.send(JSON.stringify({ qr }));
-            });
-          }
-        },
-        onConnected: async (waNumber) => {
-          const user = await getUserIfExists(waNumber);
-          if (!user) {
-            if (userSessions[tempId]?.wsClients) {
-              userSessions[tempId].wsClients.forEach((client) => {
-                if (client?.readyState === 1) client.send(JSON.stringify({ status: "not_registered", number: waNumber, message: "Nomor WhatsApp belum terdaftar. Hubungi admin." }));
-              });
-            }
-            await logoutBot(waNumber);
-            return;
-          }
-
-          if (userSessions[tempId]) {
-            if (!userSessions[waNumber]) userSessions[waNumber] = { wsClients: [], sessionIds: [] };
-            userSessions[waNumber].wsClients.push(...userSessions[tempId].wsClients);
-            userSessions[waNumber].sessionIds.push(userSessions[tempId].sessionId);
-            delete userSessions[tempId];
-          }
-
-          if (userSessions[waNumber]) {
-            userSessions[waNumber].wsClients.forEach((client) => {
-              if (client?.readyState === 1) client.send(JSON.stringify({ status: "connected", number: waNumber, user_id: user.id, user_name: user.nama }));
-            });
-          }
-        },
-        onLogout: (number) => notifyForceLogout(number),
-      });
-    } catch (err) {
-      console.error("[WS] Failed to start bot:", err);
-    }
-  };
-
-  setTimeout(startBotForQR, 100);
-  ws.on("close", () =>
-    setTimeout(() => {
-      if (userSessions[tempId]) delete userSessions[tempId];
-    }, 5000),
+  req.session.save(() =>
+    res.json({
+      success: true,
+    }),
   );
 });
 
-// ============================
-// 404 FALLBACK ROUTE
-// ============================
+/*
+=====================================
+LOGOUT
+=====================================
+*/
 
-app.use((req, res) => {
-  res.status(404).sendFile(path.join(process.cwd(), "public/404.html"));
+app.get("/logout", async (req, res) => {
+  if (req.session.number) {
+    await logoutBot(req.session.number);
+  }
+
+  req.session.destroy(() => {
+    res.clearCookie("connect.sid");
+    res.redirect("/login");
+  });
 });
 
-// ============================
-// START SERVER
-// ============================
+/*
+=====================================
+WEBSOCKET
+=====================================
+*/
+
+wss.on("connection", async (ws) => {
+  const tempId = "temp_" + Date.now();
+
+  startBot({
+    number: tempId,
+
+    onQR: (number, qr) => {
+      ws.send(JSON.stringify({ qr }));
+    },
+
+    onConnected: async (waNumber) => {
+      const user = await getUserIfExists(waNumber);
+
+      if (!user) {
+        ws.send(
+          JSON.stringify({
+            status: "not_registered",
+          }),
+        );
+
+        await logoutBot(waNumber);
+        return;
+      }
+
+      ws.send(
+        JSON.stringify({
+          status: "connected",
+          number: waNumber,
+        }),
+      );
+    },
+  });
+});
+
+/*
+=====================================
+SERVER START
+=====================================
+*/
 
 const PORT = process.env.PORT || 3000;
+
 server.listen(PORT, () => {
-  console.log(`========================================`);
-  console.log(`🚀 Server berjalan di port ${PORT}`);
-  console.log(`📱 Akses: http://localhost:${PORT}`);
-  console.log(`========================================`);
+  console.log("Server running on port", PORT);
 });
