@@ -42,21 +42,12 @@ function getLokasiStoreTableName(company) {
 
 /**
  * ==========================
- * Halaman Root (GET /) - Redirect ke /login
+ * Halaman Root (GET /) - SELALU Redirect ke /login
  * ==========================
  */
 router.get("/", (req, res) => {
-  // Redirect jika sudah login
-  if (req.session.admin) {
-    return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
-  }
-  if (req.session.karyawan) {
-    return res.redirect("/karyawan-profile");
-  }
-  // Jika login via QR, redirect ke dashboard
-  if (req.session.number) {
-    return res.redirect("/dashboard");
-  }
+  // Selalu redirect ke halaman login
+  // User harus akses /scan untuk login via QR
   res.redirect("/login");
 });
 
@@ -66,17 +57,19 @@ router.get("/", (req, res) => {
  * ==========================
  */
 router.get("/login", (req, res) => {
-  // Redirect jika sudah login
+  // Jika sudah login sebagai admin
   if (req.session.admin) {
     return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
   }
+  // Jika sudah login sebagai karyawan
   if (req.session.karyawan) {
     return res.redirect("/karyawan-profile");
   }
-  // Jika login via QR, redirect ke dashboard
+  // Jika sudah login via QR
   if (req.session.number) {
     return res.redirect("/dashboard");
   }
+  // Tampilkan halaman login
   res.sendFile(path.join(process.cwd(), "public/login.html"));
 });
 
