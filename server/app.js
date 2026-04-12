@@ -82,7 +82,7 @@ app.use(async (req, res, next) => {
 });
 
 // ============================
-// STATIC PUBLIC FILES
+// STATIC PUBLIC FILES (HARUS DULUAN SEBELUM ROUTES)
 // ============================
 
 app.use(express.static(path.join(process.cwd(), "public")));
@@ -91,7 +91,10 @@ app.use(express.static(path.join(process.cwd(), "public")));
 // ROUTES
 // ============================
 
+// ROUTE LOGIN HARUS PALING ATAS
 app.use("/", loginRoutes);
+
+// ROUTE LAINNYA
 app.use("/", dashboardDataRoutes);
 app.use("/", slipRoutes);
 app.use("/", userManagementRoutes);
@@ -218,6 +221,12 @@ app.post("/set-number", async (req, res) => {
 });
 
 // ============================
+// LOGOUT (TIDAK ADA DUPLIKAT)
+// ============================
+
+// Route logout sudah ditangani di loginRoutes.js, jangan tambahkan di sini
+
+// ============================
 // CHECK SESSION STATUS
 // ============================
 
@@ -241,7 +250,7 @@ app.get("/check-session", async (req, res) => {
 });
 
 // ============================
-// DEBUG - CLEAR ALL SESSIONS (UNTUK TESTING)
+// DEBUG - CLEAR SESSION (UNTUK TESTING)
 // ============================
 
 app.get("/clear-session", (req, res) => {
@@ -253,47 +262,18 @@ app.get("/clear-session", (req, res) => {
       <html>
         <head>
           <style>
-            body {
-              font-family: Arial, sans-serif;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              height: 100vh;
-              margin: 0;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            }
-            .container {
-              text-align: center;
-              background: white;
-              padding: 40px;
-              border-radius: 12px;
-              box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            }
-            h2 { color: #10b981; margin-bottom: 20px; }
-            p { color: #64748b; margin-bottom: 20px; }
-            a {
-              display: inline-block;
-              background: #6366f1;
-              color: white;
-              padding: 10px 20px;
-              text-decoration: none;
-              border-radius: 8px;
-              transition: background 0.3s;
-            }
-            a:hover { background: #4f46e5; }
+            body { font-family: Arial; display: flex; justify-content: center; align-items: center; height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+            .container { text-align: center; background: white; padding: 40px; border-radius: 12px; }
+            h2 { color: #10b981; }
+            a { display: inline-block; background: #6366f1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; margin-top: 20px; }
           </style>
         </head>
         <body>
           <div class="container">
             <h2>✅ Session telah dihapus!</h2>
-            <p>Silakan menuju halaman login</p>
             <a href="/login">Ke Halaman Login</a>
           </div>
-          <script>
-            setTimeout(function() {
-              window.location.href = "/login";
-            }, 3000);
-          </script>
+          <script>setTimeout(function(){ window.location.href = "/login"; }, 2000);</script>
         </body>
       </html>
     `);

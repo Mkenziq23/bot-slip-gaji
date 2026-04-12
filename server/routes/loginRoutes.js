@@ -42,7 +42,7 @@ function getLokasiStoreTableName(company) {
 
 /**
  * ==========================
- * Halaman Root (GET /) - SELALU Redirect ke /login
+ * Halaman Root (GET /) - Redirect ke /login
  * ==========================
  */
 router.get("/", (req, res) => {
@@ -63,16 +63,19 @@ router.get("/login", (req, res) => {
     console.log("[ROUTE /login] Redirecting admin to /manage-users");
     return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
   }
+
   // Jika sudah login sebagai karyawan
   if (req.session.karyawan) {
     console.log("[ROUTE /login] Redirecting karyawan to /karyawan-profile");
     return res.redirect("/karyawan-profile");
   }
+
   // Jika sudah login via QR
   if (req.session.number) {
     console.log("[ROUTE /login] Redirecting QR user to /dashboard");
     return res.redirect("/dashboard");
   }
+
   // Tampilkan halaman login
   console.log("[ROUTE /login] Showing login page");
   res.sendFile(path.join(process.cwd(), "public/login.html"));
@@ -234,25 +237,21 @@ router.get("/karyawan-profile", requireKaryawan, async (req, res) => {
 router.get("/logout", (req, res) => {
   console.log("[ROUTE /logout] Starting logout process");
 
-  // Hapus semua session data
   req.session.destroy((err) => {
     if (err) {
       console.error("[LOGOUT] Session destroy error:", err);
     }
 
-    // Hapus cookie dengan path yang benar
     res.clearCookie("connect.sid", { path: "/" });
 
     console.log("[ROUTE /logout] Session destroyed, redirecting to /login");
-
-    // Redirect ke halaman login
     res.redirect("/login");
   });
 });
 
 /**
  * ==========================
- * Admin Logout (Legacy - redirect to unified logout)
+ * Admin Logout (Legacy)
  * ==========================
  */
 router.get("/admin-logout", (req, res) => {
@@ -261,7 +260,7 @@ router.get("/admin-logout", (req, res) => {
 
 /**
  * ==========================
- * Karyawan Logout (Legacy - redirect to unified logout)
+ * Karyawan Logout (Legacy)
  * ==========================
  */
 router.get("/karyawan-logout", (req, res) => {
