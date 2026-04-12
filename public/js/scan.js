@@ -6,6 +6,7 @@ let ws;
 let reconnectAttempts = 0;
 let maxReconnectAttempts = 5;
 
+// QR WebSocket
 function connectWS() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${location.host}`;
@@ -49,6 +50,7 @@ function connectWS() {
         statusDiv.classList.add("connected");
         statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> Login Berhasil! Mengalihkan...';
 
+        // Set session via fetch
         try {
           const res = await fetch("/set-number", {
             method: "POST",
@@ -117,4 +119,5 @@ function connectWS() {
   };
 }
 
+// Initialize WebSocket
 connectWS();

@@ -3,6 +3,7 @@ import path from "path";
 import session from "express-session";
 import http from "http";
 import { WebSocketServer } from "ws";
+import sessionFileStore from "session-file-store";
 
 import dashboardDataRoutes from "./routes/dashboardDataRoutes.js";
 import slipRoutes from "./routes/slipGajiRoutes.js";
@@ -15,7 +16,7 @@ import karyawanProfileRoutes from "./routes/karyawanProfileRoutes.js";
 import lokasiStoreRoutes from "./routes/LokasiStoreRoutes.js";
 import absensiRoutes from "./routes/absensiRoutes.js";
 
-import { startBot, getSocketByNumber, logoutBot } from "../bot/index.js";
+import { startBot, getSocketByNumber, logoutBot, logoutAllSessions } from "../bot/index.js";
 
 import db from "./db.js";
 
@@ -23,18 +24,26 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+// Session store setup
+const FileStore = sessionFileStore(session);
+
 // ============================
-// SESSION CONFIG - Memory Store
+// SESSION CONFIG
 // ============================
+
 const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET || "slipgajiwa_default_secret",
+  secret: "slipgajiwa",
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false,
+  store: new FileStore({
+    path: "./sessions",
+    ttl: 30 * 24 * 60 * 60,
+    reapInterval: 60 * 60,
+  }),
   cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 hari
+    maxAge: 30 * 24 * 60 * 60 * 1000,
     httpOnly: true,
-    secure: false, // Set false untuk Railway (biar bisa HTTP)
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
   },
 });
 
@@ -45,6 +54,7 @@ app.use(sessionMiddleware);
 // ============================
 // CHECK USER EXISTS IN DATABASE
 // ============================
+
 async function getUserIfExists(number) {
   try {
     const [rows] = await db.query("SELECT id, nomor_wa, nama FROM users WHERE nomor_wa = ?", [number]);
@@ -58,6 +68,7 @@ async function getUserIfExists(number) {
 // ============================
 // GLOBAL SESSION VALIDATION
 // ============================
+
 app.use(async (req, res, next) => {
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
@@ -72,8 +83,9 @@ app.use(async (req, res, next) => {
 });
 
 // ============================
-// ROUTES API
+// ROUTES
 // ============================
+
 app.use("/", dashboardDataRoutes);
 app.use("/", slipRoutes);
 app.use("/", loginRoutes);
@@ -86,33 +98,9 @@ app.use("/api/lokasi-store", lokasiStoreRoutes);
 app.use("/", absensiRoutes);
 
 // ============================
-// HALAMAN LOGIN (GET)
+// QR SCAN PAGE (HALAMAN SCAN UNTUK LOGIN VIA QR)
 // ============================
-app.get("/login", async (req, res) => {
-  // Jika sudah login sebagai admin
-  if (req.session.admin) {
-    return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
-  }
 
-  // Jika sudah login sebagai karyawan
-  if (req.session.karyawan) {
-    return res.redirect("/karyawan-profile");
-  }
-
-  // Jika sudah login via QR
-  if (req.session.number) {
-    const user = await getUserIfExists(req.session.number);
-    if (user) {
-      return res.redirect("/dashboard");
-    }
-  }
-
-  res.sendFile(path.join(process.cwd(), "public/login.html"));
-});
-
-// ============================
-// QR SCAN PAGE
-// ============================
 app.get("/scan", async (req, res) => {
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
@@ -129,52 +117,58 @@ app.get("/scan", async (req, res) => {
 });
 
 // ============================
-// ROOT PAGE
+// ROOT PAGE - REDIRECT KE LOGIN (BUKAN SCAN)
 // ============================
 app.get("/", async (req, res) => {
-  // Cek admin
+  // Cek apakah sudah login sebagai admin
   if (req.session.admin) {
     return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
   }
 
-  // Cek karyawan
+  // Cek apakah sudah login sebagai karyawan
   if (req.session.karyawan) {
     return res.redirect("/karyawan-profile");
   }
 
-  // Cek QR login
+  // Cek apakah sudah login via QR (WhatsApp)
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
     if (user) {
       return res.redirect("/dashboard");
     }
+    // Jika user tidak valid, destroy session
     req.session.destroy(() => {
       res.clearCookie("connect.sid");
-      return res.redirect("/login");
+      return res.redirect("/404.html");
     });
     return;
   }
 
-  res.redirect("/login");
+  // Jika belum login, redirect ke halaman login
+  res.redirect("/");
 });
 
 // ============================
-// DASHBOARD (QR Login)
+// DASHBOARD (UNTUK USER YANG LOGIN VIA QR)
 // ============================
 app.get("/dashboard", async (req, res) => {
-  if (req.session.admin) {
+  if (req.session.admin?.role === "admin") {
+    return res.status(404).sendFile(path.join(process.cwd(), "public/404.html"));
+  }
+
+  if (req.session.admin?.role === "superadmin") {
     return res.redirect("/manage-users");
   }
 
   if (!req.session.number) {
-    return res.redirect("/login");
+    return res.redirect("/");
   }
 
   const user = await getUserIfExists(req.session.number);
   if (!user) {
     req.session.destroy(() => {
       res.clearCookie("connect.sid");
-      return res.redirect("/login");
+      return res.redirect("/");
     });
     return;
   }
@@ -190,6 +184,7 @@ app.get("/dashboard", async (req, res) => {
 // ============================
 // MANAGE USERS PAGE
 // ============================
+
 app.get("/manage-users", (req, res) => {
   if (req.session.number) {
     return res.status(403).sendFile(path.join(process.cwd(), "public/404.html"));
@@ -207,35 +202,29 @@ app.get("/manage-users", (req, res) => {
 });
 
 // ============================
-// KARYAWAN PROFILE PAGE
-// ============================
-app.get("/karyawan-profile", (req, res) => {
-  if (!req.session.karyawan) {
-    return res.redirect("/login");
-  }
-  res.sendFile(path.join(process.cwd(), "public/karyawan-profile.html"));
-});
-
-// ============================
 // STATIC PUBLIC FILES
 // ============================
+
 app.use(express.static(path.join(process.cwd(), "public")));
 
 // ============================
 // SAVE NUMBER AFTER QR LOGIN
 // ============================
+
 app.post("/set-number", async (req, res) => {
   const { number } = req.body;
 
   console.log(`[SET-NUMBER] Request received for number: ${number}`);
 
   if (!number) {
+    console.log(`[SET-NUMBER] No number provided`);
     return res.status(400).json({ success: false, message: "No number provided" });
   }
 
   try {
     const user = await getUserIfExists(number);
     if (!user) {
+      console.log(`[SET-NUMBER] Number not registered: ${number}`);
       return res.status(403).json({
         success: false,
         message: "Nomor belum terdaftar. Hubungi admin.",
@@ -268,13 +257,15 @@ app.post("/set-number", async (req, res) => {
 });
 
 // ============================
-// LOGOUT
+// LOGOUT HR (DIPERBAIKI - HAPUS PERANGKAT TERTAUT)
 // ============================
+
 app.get("/logout", async (req, res) => {
   const number = req.session.number;
   console.log(`[LOGOUT] User logout: ${number}`);
 
   if (number) {
+    // Hapus session WhatsApp dan logout dari perangkat tertaut
     await logoutBot(number);
   }
 
@@ -286,8 +277,9 @@ app.get("/logout", async (req, res) => {
 });
 
 // ============================
-// CHECK SESSION STATUS
+// CHECK SESSION STATUS (UNTUK DETECT FORCE LOGOUT DARI WA)
 // ============================
+
 app.get("/check-session", async (req, res) => {
   if (!req.session.number) {
     return res.json({ loggedIn: false });
@@ -295,9 +287,12 @@ app.get("/check-session", async (req, res) => {
 
   const number = req.session.number;
   const socket = getSocketByNumber(number);
+
+  // Cek apakah socket masih ada dan terhubung
   const isConnected = socket && socket.user;
 
   if (!isConnected) {
+    // Jika socket tidak ada, hapus session
     req.session.destroy((err) => {
       if (err) console.error("[CHECK-SESSION] Destroy error:", err);
     });
@@ -308,10 +303,12 @@ app.get("/check-session", async (req, res) => {
 });
 
 // ============================
-// WEBSOCKET BOT LOGIN SYSTEM
+// WEBSOCKET BOT LOGIN SYSTEM (DIPERBAIKI UNTUK DETECT FORCE LOGOUT)
 // ============================
+
 let userSessions = {};
 
+// Function to notify force logout to all connected clients
 function notifyForceLogout(number) {
   console.log(`[WS] Notifying force logout for ${number}`);
   if (userSessions[number]) {
@@ -325,6 +322,7 @@ function notifyForceLogout(number) {
         );
       }
     });
+    // Hapus session dari memory
     delete userSessions[number];
   }
 }
@@ -340,6 +338,7 @@ wss.on("connection", async (ws, req) => {
   };
 
   let botStarted = false;
+  let currentBot = null;
 
   const startBotForQR = async () => {
     if (botStarted) return;
@@ -348,10 +347,10 @@ wss.on("connection", async (ws, req) => {
     console.log(`[WS] Starting bot for QR generation (${tempId})`);
 
     try {
-      await startBot({
+      currentBot = await startBot({
         number: tempId,
         onQR: (number, qr) => {
-          console.log(`[WS] QR generated for ${number}`);
+          console.log(`[WS] QR generated for ${number}, sending to client`);
           if (userSessions[tempId] && userSessions[tempId].wsClients) {
             userSessions[tempId].wsClients.forEach((client) => {
               if (client && client.readyState === 1) {
@@ -380,12 +379,14 @@ wss.on("connection", async (ws, req) => {
                 }
               });
             }
+            // Logout bot for unregistered number
             await logoutBot(waNumber);
             return;
           }
 
           console.log(`[WS] User registered: ${user.id} - ${user.nama}`);
 
+          // Move session from temp to permanent number
           if (userSessions[tempId]) {
             if (!userSessions[waNumber]) {
               userSessions[waNumber] = {
@@ -396,9 +397,12 @@ wss.on("connection", async (ws, req) => {
 
             userSessions[waNumber].wsClients.push(...userSessions[tempId].wsClients);
             userSessions[waNumber].sessionIds.push(userSessions[tempId].sessionId);
+
+            // Clean up temp session
             delete userSessions[tempId];
           }
 
+          // Send success to all clients
           if (userSessions[waNumber]) {
             userSessions[waNumber].wsClients.forEach((client) => {
               if (client && client.readyState === 1) {
@@ -416,7 +420,15 @@ wss.on("connection", async (ws, req) => {
         },
         onLogout: (number) => {
           console.log(`[WS] Force logout detected for: ${number}`);
+          // Notify all clients connected to this number
           notifyForceLogout(number);
+
+          // Also destroy session if exists
+          if (number && !number.startsWith("temp_")) {
+            // Find and destroy session for this number
+            const sessionFile = `./sessions/${userSessions[number]?.sessionIds?.[0] || ""}`;
+            // Session will be destroyed on next request check
+          }
         },
       });
     } catch (err) {
@@ -424,10 +436,12 @@ wss.on("connection", async (ws, req) => {
     }
   };
 
+  // Start bot after a short delay
   setTimeout(startBotForQR, 100);
 
   ws.on("close", () => {
     console.log(`[WS] Connection closed: ${tempId}`);
+    // Don't clean up immediately, give time for reconnection
     setTimeout(() => {
       if (userSessions[tempId]) {
         delete userSessions[tempId];
@@ -439,16 +453,12 @@ wss.on("connection", async (ws, req) => {
 // ============================
 // START SERVER
 // ============================
+
 const PORT = process.env.PORT || 3000;
 
-server
-  .listen(PORT, "0.0.0.0", () => {
-    console.log(`========================================`);
-    console.log(`🚀 Server berjalan di port ${PORT}`);
-    console.log(`🌍 Environment: ${process.env.RAILWAY_ENVIRONMENT === "production" ? "Railway Production" : process.env.NODE_ENV || "development"}`);
-    console.log(`========================================`);
-  })
-  .on("error", (err) => {
-    console.error("❌ Server error:", err);
-    process.exit(1);
-  });
+server.listen(PORT, () => {
+  console.log(`========================================`);
+  console.log(`🚀 Server berjalan di port ${PORT}`);
+  console.log(`📱 Akses: http://localhost:${PORT}`);
+  console.log(`========================================`);
+});

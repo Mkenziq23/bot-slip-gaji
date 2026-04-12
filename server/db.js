@@ -1,7 +1,20 @@
 // server/db.js
 import mysql from "mysql2/promise";
 
-// Konfigurasi untuk production (Railway)
+// Konfigurasi untuk development (local)
+const dbConfig = {
+  host: "localhost",
+  user: "root",
+  password: "",
+  database: "bot_slip_gaji",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
+};
+
+// Konfigurasi untuk production (hosting) - akan aktif saat ada environment variables
 const productionConfig = {
   host: process.env.MYSQLHOST,
   user: process.env.MYSQLUSER,
@@ -16,49 +29,37 @@ const productionConfig = {
   },
 };
 
-// Konfigurasi untuk development (local)
-const localConfig = {
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "bot_slip_gaji",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-};
+// Pilih konfigurasi berdasarkan environment
+const activeConfig = process.env.NODE_ENV === "production" ? productionConfig : dbConfig;
 
-// Deteksi environment Railway atau production
-const isProduction = process.env.RAILWAY_ENVIRONMENT === "production" || process.env.NODE_ENV === "production" || process.env.MYSQLHOST;
+const db = await mysql.createPool(activeConfig);
 
-console.log(`🔧 Running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
-
-// Pilih konfigurasi
-const activeConfig = isProduction ? productionConfig : localConfig;
-
-// Validasi untuk production
-if (isProduction && (!activeConfig.host || !activeConfig.user || !activeConfig.password || !activeConfig.database)) {
-  console.error("❌ Missing database environment variables!");
-  console.log("Required: MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE");
-}
-
-let db = null;
-
+// Test connection
 try {
-  db = await mysql.createPool(activeConfig);
   const connection = await db.getConnection();
-  console.log(`✅ Database connected successfully to ${isProduction ? "Railway" : "Local"}`);
+  console.log("Database connected successfully");
   connection.release();
 } catch (err) {
-  console.error("❌ Database connection failed:", err.message);
-  console.log("⚠️ Continuing without database - some features may not work");
-  // Buat pool dummy agar app tidak crash
-  db = await mysql.createPool({
-    host: "localhost",
-    user: "root",
-    password: "",
-    database: "dummy",
-    connectionLimit: 1,
-  });
+  console.error("Database connection failed:", err.message);
 }
 
 export default db;
+
+// // server/db.js
+// import mysql from "mysql2/promise";
+
+// const db = mysql.createPool({
+//   host: process.env.MYSQLHOST,
+//   user: process.env.MYSQLUSER,
+//   password: process.env.MYSQLPASSWORD,
+//   database: process.env.MYSQLDATABASE,
+//   port: Number(process.env.MYSQLPORT) || 3306,
+//   waitForConnections: true,
+//   connectionLimit: 10,
+//   queueLimit: 0,
+//   ssl: {
+//     rejectUnauthorized: false
+//   }
+// });
+
+// export default db;
