@@ -24,17 +24,17 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 // ============================
-// SESSION CONFIG
+// SESSION CONFIG - Memory Store
 // ============================
 const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET || "slipgajiwa",
+  secret: process.env.SESSION_SECRET || "slipgajiwa_default_secret",
   resave: false,
   saveUninitialized: true,
   cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 hari
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    secure: false, // Set false untuk Railway (biar bisa HTTP)
+    sameSite: "lax",
   },
 });
 
@@ -441,9 +441,14 @@ wss.on("connection", async (ws, req) => {
 // ============================
 const PORT = process.env.PORT || 3000;
 
-server.listen(PORT, () => {
-  console.log(`========================================`);
-  console.log(`🚀 Server berjalan di port ${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`========================================`);
-});
+server
+  .listen(PORT, "0.0.0.0", () => {
+    console.log(`========================================`);
+    console.log(`🚀 Server berjalan di port ${PORT}`);
+    console.log(`🌍 Environment: ${process.env.RAILWAY_ENVIRONMENT === "production" ? "Railway Production" : process.env.NODE_ENV || "development"}`);
+    console.log(`========================================`);
+  })
+  .on("error", (err) => {
+    console.error("❌ Server error:", err);
+    process.exit(1);
+  });

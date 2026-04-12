@@ -27,18 +27,38 @@ const localConfig = {
   queueLimit: 0,
 };
 
-// Pilih konfigurasi berdasarkan environment
-const activeConfig = process.env.NODE_ENV === "production" ? productionConfig : localConfig;
+// Deteksi environment Railway atau production
+const isProduction = process.env.RAILWAY_ENVIRONMENT === "production" || process.env.NODE_ENV === "production" || process.env.MYSQLHOST;
 
-const db = await mysql.createPool(activeConfig);
+console.log(`🔧 Running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
 
-// Test connection
+// Pilih konfigurasi
+const activeConfig = isProduction ? productionConfig : localConfig;
+
+// Validasi untuk production
+if (isProduction && (!activeConfig.host || !activeConfig.user || !activeConfig.password || !activeConfig.database)) {
+  console.error("❌ Missing database environment variables!");
+  console.log("Required: MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE");
+}
+
+let db = null;
+
 try {
+  db = await mysql.createPool(activeConfig);
   const connection = await db.getConnection();
-  console.log(`✅ Database connected successfully to ${process.env.NODE_ENV === "production" ? "Railway" : "Local"}`);
+  console.log(`✅ Database connected successfully to ${isProduction ? "Railway" : "Local"}`);
   connection.release();
 } catch (err) {
   console.error("❌ Database connection failed:", err.message);
+  console.log("⚠️ Continuing without database - some features may not work");
+  // Buat pool dummy agar app tidak crash
+  db = await mysql.createPool({
+    host: "localhost",
+    user: "root",
+    password: "",
+    database: "dummy",
+    connectionLimit: 1,
+  });
 }
 
 export default db;
