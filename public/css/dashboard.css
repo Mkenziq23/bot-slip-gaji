@@ -630,89 +630,6 @@ button:hover {
   border-color: var(--primary);
 }
 
-/* Filter */
-.filter-group {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-left: auto;
-}
-
-#sectionBonus .data-header-left,
-#sectionTHR .data-header-left {
-  flex-wrap: wrap;
-}
-
-#sectionBonus .data-actions,
-#sectionTHR .data-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
-/* Responsive untuk mobile */
-@media (max-width: 768px) {
-  .data-header-left {
-    flex-direction: column;
-    align-items: stretch;
-    width: 100%;
-  }
-  
-  .data-header-left h3 {
-    white-space: normal;
-  }
-  
-  .data-actions {
-    width: 100%;
-    flex-direction: column;
-  }
-  
-  .data-actions button {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .filter-group {
-    width: 100%;
-    margin-left: 0;
-    justify-content: space-between;
-  }
-  
-  .filter-wrapper {
-    flex: 1;
-  }
-}
-
-.filter-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #f8fafc;
-  padding: 4px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-}
-
-.filter-label {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.filter-select {
-  padding: 4px 8px;
-  border: none;
-  background: transparent;
-  font-size: 0.85rem;
-  cursor: pointer;
-  outline: none;
-}
-
 /* Table Container */
 .scrollable {
   overflow-x: auto;
@@ -759,7 +676,6 @@ td {
 /* Kolom yang perlu wrap */
 td:not(.money):not(.deduction):not(.total-bold) {
   white-space: normal;
-  /* word-break: break-word; */
 }
 
 /* Kolom angka tetap di kanan */
@@ -1160,10 +1076,6 @@ tr.status-cancelled {
     flex-wrap: wrap;
   }
 
-  .filter-group {
-    flex-wrap: wrap;
-  }
-
   .search-input {
     width: 220px;
   }
@@ -1238,7 +1150,6 @@ tr.status-cancelled {
     justify-content: center;
   }
 
-  /* Fallback untuk form yang belum menggunakan upload-actions */
   .upload-form button:not(.file-label) {
     margin-left: 0;
     width: 100%;
@@ -1274,16 +1185,6 @@ tr.status-cancelled {
     flex-direction: column;
   }
 
-  .filter-group {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .filter-wrapper {
-    width: 100%;
-    justify-content: space-between;
-  }
-
   .search-wrapper {
     width: 100%;
   }
@@ -1315,7 +1216,6 @@ tr.status-cancelled {
     justify-content: center;
   }
 
-  /* Table di mobile */
   .scrollable {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -1341,7 +1241,6 @@ tr.status-cancelled {
     font-size: 0.7rem;
   }
 
-  /* Modal di mobile */
   #dataModal,
   #bonusModal,
   #thrModal {
@@ -1393,18 +1292,6 @@ tr.status-cancelled {
 
   .data-actions button {
     padding: 6px 12px;
-    font-size: 0.75rem;
-  }
-
-  .filter-wrapper {
-    padding: 4px 8px;
-  }
-
-  .filter-label {
-    font-size: 0.7rem;
-  }
-
-  .filter-select {
     font-size: 0.75rem;
   }
 
@@ -1496,7 +1383,6 @@ tr.status-cancelled {
 /* BUTTON STYLES - EXPORT, DOWNLOAD, TEMPLATE, DUPLICATE, CANCEL DUPLICATE */
 /* ============================================ */
 
-/* Base button styling for data action buttons */
 .data-actions .btn-outline {
   background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
   border: 1px solid var(--border-color);
@@ -1544,7 +1430,6 @@ tr.status-cancelled {
   transform: translateY(0);
 }
 
-/* Export button */
 .data-actions .export-btn {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   border-color: #059669;
@@ -1562,7 +1447,6 @@ tr.status-cancelled {
   color: white;
 }
 
-/* Download Template button */
 .data-actions .template-btn {
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   border-color: #d97706;
@@ -1580,7 +1464,6 @@ tr.status-cancelled {
   color: white;
 }
 
-/* Duplicate Data button */
 .data-actions .duplicate-data-btn {
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   border-color: #2563eb;
@@ -1598,7 +1481,6 @@ tr.status-cancelled {
   color: white;
 }
 
-/* Cancel Duplicate button (Batal Duplikasi) */
 .data-actions .cancel-data-btn {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   border-color: #dc2626;
@@ -1617,7 +1499,6 @@ tr.status-cancelled {
   color: white;
 }
 
-/* Add Data button */
 .data-actions .add-data-btn {
   background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
   border: none;
@@ -1630,7 +1511,6 @@ tr.status-cancelled {
   transform: translateY(-2px);
 }
 
-/* Import Data button */
 .data-actions .import-btn {
   background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
   border-color: #7c3aed;
@@ -1677,9 +1557,7 @@ tr.status-cancelled {
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   z-index: 1000;
   min-width: 250px;
   padding: 12px;
@@ -1704,7 +1582,6 @@ tr.status-cancelled {
 /* FILTER STYLES - ENHANCED */
 /* ============================================ */
 
-/* Filter group container */
 .filter-group {
   display: flex;
   gap: 12px;
@@ -1716,7 +1593,6 @@ tr.status-cancelled {
   border: 1px solid var(--border-color);
 }
 
-/* Individual filter wrapper */
 .filter-wrapper {
   display: flex;
   align-items: center;
@@ -1734,7 +1610,6 @@ tr.status-cancelled {
   box-shadow: 0 2px 4px rgba(37, 99, 235, 0.1);
 }
 
-/* Filter label */
 .filter-label {
   font-size: 0.8rem;
   font-weight: 600;
@@ -1750,7 +1625,6 @@ tr.status-cancelled {
   font-size: 0.85rem;
 }
 
-/* Filter select dropdown */
 .filter-select {
   padding: 6px 10px;
   border: none;
@@ -1772,7 +1646,6 @@ tr.status-cancelled {
   background: #f1f5f9;
 }
 
-/* Year filter wrapper khusus */
 .year-filter-wrapper {
   display: flex;
   align-items: center;
@@ -1793,7 +1666,6 @@ tr.status-cancelled {
 /* PAGINATION STYLES - ENHANCED */
 /* ============================================ */
 
-/* Pagination wrapper for consistent spacing */
 .pagination-wrapper {
   padding: 0 24px 24px 24px;
   display: flex;
@@ -1801,7 +1673,6 @@ tr.status-cancelled {
   align-items: center;
 }
 
-/* Pagination container */
 .pagination {
   display: inline-flex;
   align-items: center;
@@ -1813,7 +1684,6 @@ tr.status-cancelled {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-/* Base pagination button style */
 .pagination-btn {
   padding: 8px 18px;
   background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
@@ -1836,7 +1706,6 @@ tr.status-cancelled {
   transition: transform 0.2s ease;
 }
 
-/* Hover effect for pagination buttons */
 .pagination-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   border-color: var(--primary);
@@ -1849,7 +1718,6 @@ tr.status-cancelled {
   transform: scale(1.1);
 }
 
-/* Active/disabled state for pagination buttons */
 .pagination-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -1857,7 +1725,6 @@ tr.status-cancelled {
   background: #f1f5f9;
 }
 
-/* Page info text styling */
 .page-info {
   font-size: 0.85rem;
   padding: 6px 16px;
@@ -1874,7 +1741,6 @@ tr.status-cancelled {
 /* SEARCH INPUT STYLES - ENHANCED */
 /* ============================================ */
 
-/* Search wrapper */
 .search-wrapper {
   position: relative;
   min-width: 260px;
@@ -1910,32 +1776,55 @@ tr.status-cancelled {
   color: var(--primary);
 }
 
-/* Reset button */
+/* ============================================ */
+/* RESET BUTTON - FIXED TO BE VISIBLE */
+/* ============================================ */
+
 .reset-btn {
-  background: linear-gradient(135deg, #64748b 0%, #475569 100%);
-  border: none;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 10px;
-  font-weight: 600;
-  transition: all 0.2s ease;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  border: none !important;
+  color: white !important;
+  padding: 10px 20px !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+  font-size: 0.85rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3) !important;
 }
 
 .reset-btn:hover {
-  background: linear-gradient(135deg, #475569 0%, #334155 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4) !important;
+}
+
+.reset-btn:active {
+  transform: translateY(0) !important;
 }
 
 .reset-btn i {
-  color: white;
+  color: white !important;
+  font-size: 0.9rem !important;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .reset-btn {
+    padding: 8px 16px !important;
+    font-size: 0.75rem !important;
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 /* ============================================ */
 /* RESPONSIVE ADJUSTMENTS */
 /* ============================================ */
 
-/* Tablet adjustments (max-width: 1024px) */
 @media (max-width: 1024px) {
   .data-actions {
     flex-wrap: wrap;
@@ -1981,9 +1870,7 @@ tr.status-cancelled {
   }
 }
 
-/* Mobile adjustments (max-width: 768px) */
 @media (max-width: 768px) {
-  /* Data action buttons stack vertically on mobile */
   .data-actions {
     width: 100%;
     flex-direction: column;
@@ -1996,7 +1883,6 @@ tr.status-cancelled {
     padding: 10px 16px;
   }
 
-  /* Filter styling for mobile */
   .filter-group {
     width: 100%;
     flex-direction: column;
@@ -2019,7 +1905,6 @@ tr.status-cancelled {
     text-align: right;
   }
 
-  /* Pagination styling for mobile */
   .pagination-wrapper {
     padding: 0 16px 20px 16px;
   }
@@ -2055,7 +1940,6 @@ tr.status-cancelled {
   }
 }
 
-/* Small mobile adjustments (max-width: 480px) */
 @media (max-width: 480px) {
   .data-actions .btn-outline {
     padding: 8px 12px;
@@ -2108,7 +1992,6 @@ tr.status-cancelled {
 /* ADDITIONAL BUTTON STATES & ANIMATIONS */
 /* ============================================ */
 
-/* Focus state for accessibility */
 .data-actions .btn-outline:focus-visible,
 .pagination-btn:focus-visible,
 .filter-select:focus-visible,
@@ -2118,13 +2001,11 @@ tr.status-cancelled {
   transform: none;
 }
 
-/* Active/click state */
 .data-actions .btn-outline:active,
 .pagination-btn:active {
   transform: scale(0.96);
 }
 
-/* Disabled button styling */
 .data-actions .btn-outline:disabled,
 .pagination-btn:disabled {
   opacity: 0.5;
@@ -2133,7 +2014,6 @@ tr.status-cancelled {
   pointer-events: none;
 }
 
-/* Loading state for buttons */
 .data-actions .btn-outline.loading {
   position: relative;
   color: transparent;
@@ -2182,7 +2062,6 @@ tr.status-cancelled {
   color: var(--primary);
 }
 
-/* Card header enhancements */
 .card {
   transition:
     transform 0.2s ease,
@@ -2193,13 +2072,11 @@ tr.status-cancelled {
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
 }
 
-/* Scrollable table enhancements */
 .scrollable {
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-/* Table header gradient */
 th {
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   font-weight: 700;
@@ -2292,7 +2169,6 @@ th {
   }
 }
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
   .dropdown-item {
     padding: 10px 12px 10px 40px;
@@ -2333,7 +2209,7 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
-/* Dashboard Stat Cards - Sudah ada, pastikan ini ada */
+/* Dashboard Stat Cards */
 .dashboard-stats {
   margin-bottom: 10px;
 }
@@ -2370,7 +2246,6 @@ textarea:focus {
   background: #f8fafc;
 }
 
-/* Dashboard responsive */
 @media (max-width: 768px) {
   .dashboard-stats {
     grid-template-columns: repeat(2, 1fr) !important;
@@ -2417,7 +2292,6 @@ textarea:focus {
   color: #1d4ed8;
 }
 
-/* Image preview di modal */
 .image-preview {
   border-radius: 8px;
   border: 1px solid #e2e8f0;
@@ -2540,7 +2414,6 @@ textarea:focus {
   font-family: inherit;
 }
 
-/* Responsive untuk modal karyawan */
 @media (max-width: 768px) {
   #karyawanModal .form-grid {
     grid-template-columns: 1fr;
@@ -2577,7 +2450,6 @@ textarea:focus {
   }
 }
 
-/* Style untuk input nomor HP dengan prefix */
 .phone-input-wrapper {
   display: flex;
   align-items: center;
@@ -2623,7 +2495,6 @@ textarea:focus {
 /* DASHBOARD ENHANCEMENTS - NEW FEATURES */
 /* ============================================ */
 
-/* Quick Stats Grid */
 .dashboard-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -2703,7 +2574,6 @@ textarea:focus {
   color: #ef4444;
 }
 
-/* Chart Container */
 .chart-container {
   padding: 0 24px 24px 24px;
   border-bottom: 1px solid var(--border-color);
@@ -2762,7 +2632,6 @@ textarea:focus {
   width: 100%;
 }
 
-/* Recent Activity Section */
 .recent-activity {
   padding: 0 24px 24px 24px;
 }
@@ -2881,7 +2750,6 @@ textarea:focus {
   gap: 4px;
 }
 
-/* Summary Table Enhancement */
 .summary-header {
   display: flex;
   justify-content: space-between;
@@ -2920,7 +2788,6 @@ textarea:focus {
   color: var(--primary);
 }
 
-/* Top Performers Section */
 .top-performers {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2986,7 +2853,6 @@ textarea:focus {
   color: var(--primary);
 }
 
-/* Empty State Enhancement */
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -3003,7 +2869,6 @@ textarea:focus {
   margin-bottom: 20px;
 }
 
-/* Loading State */
 .dashboard-loading {
   display: flex;
   flex-direction: column;
@@ -3028,7 +2893,6 @@ textarea:focus {
   }
 }
 
-/* Responsive Dashboard */
 @media (max-width: 1024px) {
   .dashboard-stats {
     grid-template-columns: repeat(2, 1fr);
@@ -3113,7 +2977,6 @@ textarea:focus {
 /* LOKASI STORE SPECIFIC STYLES - FULL FIXED */
 /* ============================================ */
 
-/* Map Container Styles */
 #mapContainer,
 #modalMapContainer {
   width: 100%;
@@ -3124,7 +2987,6 @@ textarea:focus {
   min-height: 400px;
 }
 
-/* Loading indicator for map */
 .map-loading {
   display: flex;
   align-items: center;
@@ -3141,7 +3003,6 @@ textarea:focus {
   font-size: 1rem;
 }
 
-/* Location Table Styles */
 #tableLokasi {
   min-width: 800px;
 }
@@ -3174,7 +3035,6 @@ textarea:focus {
 /* MODAL LOKASI STORE - COMPLETE FIXED */
 /* ============================================ */
 
-/* Modal Container */
 #lokasiModal {
   display: none;
   position: fixed;
@@ -3188,7 +3048,6 @@ textarea:focus {
   justify-content: center;
 }
 
-/* Modal Content */
 #lokasiModal .modalContent {
   background: white;
   border-radius: 16px;
@@ -3200,7 +3059,6 @@ textarea:focus {
   animation: modalFadeIn 0.2s ease;
 }
 
-/* Modal Header */
 #lokasiModal .modal-header {
   display: flex;
   justify-content: space-between;
@@ -3241,7 +3099,6 @@ textarea:focus {
   color: #ef4444;
 }
 
-/* Modal Footer */
 #lokasiModal .modal-footer {
   padding: 16px 20px;
   border-top: 1px solid #e2e8f0;
@@ -3255,7 +3112,6 @@ textarea:focus {
   z-index: 10;
 }
 
-/* Modal Form Grid */
 #lokasiModal .formGrid {
   padding: 20px;
   display: grid;
@@ -3263,7 +3119,6 @@ textarea:focus {
   gap: 20px;
 }
 
-/* Form Group */
 #lokasiModal .formGroup {
   display: flex;
   flex-direction: column;
@@ -3303,12 +3158,10 @@ textarea:focus {
   min-height: 60px;
 }
 
-/* Full width for map and search */
 #lokasiModal .formGroup[style*="grid-column: span 2"] {
   grid-column: span 2;
 }
 
-/* Modal Animation */
 @keyframes modalFadeIn {
   from {
     opacity: 0;
@@ -3418,7 +3271,6 @@ textarea:focus {
   overflow: hidden;
 }
 
-/* Small info text */
 #lokasiModal small {
   display: block;
   margin-top: 6px;
@@ -3493,7 +3345,6 @@ textarea:focus {
   }
 }
 
-/* Small mobile */
 @media (max-width: 480px) {
   #lokasiModal .formGrid {
     padding: 12px;
@@ -3517,11 +3368,11 @@ textarea:focus {
     font-size: 11px;
   }
 }
+
 /* ============================================ */
 /* SATELLITE MAP STYLES */
 /* ============================================ */
 
-/* Map container enhancement */
 #mapContainer,
 #modalMapContainer {
   border-radius: 12px;
@@ -3532,7 +3383,6 @@ textarea:focus {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-/* Map loading state */
 .map-loading {
   display: flex;
   align-items: center;
@@ -3549,12 +3399,10 @@ textarea:focus {
   color: #3b82f6;
 }
 
-/* Custom marker shadow for better visibility on satellite */
 .custom-marker {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
 
-/* Map attribution styling */
 .leaflet-control-attribution {
   background: rgba(0, 0, 0, 0.7) !important;
   color: #fff !important;
@@ -3571,7 +3419,6 @@ textarea:focus {
   color: #3b82f6 !important;
 }
 
-/* Zoom control styling */
 .leaflet-control-zoom a {
   background: rgba(0, 0, 0, 0.7) !important;
   color: white !important;
@@ -3592,7 +3439,6 @@ input[readonly] {
 /* ABSENSI STYLES
 /* ============================================ */
 
-/* Filter Container */
 .filter-container {
   background: #f8fafc;
   border-radius: 20px;
@@ -3660,7 +3506,6 @@ input[readonly] {
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-/* Stats Grid */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -3713,7 +3558,6 @@ input[readonly] {
   font-weight: 500;
 }
 
-/* Status Badge */
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -3750,7 +3594,6 @@ input[readonly] {
   color: #ea580c;
 }
 
-/* Foto link */
 .foto-link {
   color: #2563eb;
   text-decoration: none;
@@ -3766,7 +3609,6 @@ input[readonly] {
   color: #1d4ed8;
 }
 
-/* Absensi Map Section */
 .absensi-map-section {
   margin-bottom: 24px;
   padding: 20px;
@@ -3823,7 +3665,6 @@ input[readonly] {
   font-size: 14px;
 }
 
-/* Map Container */
 #absensiMapContainer {
   height: 400px;
   width: 100%;
@@ -3833,7 +3674,6 @@ input[readonly] {
   background: #f1f5f9;
 }
 
-/* Custom Map Icons */
 .custom-store-icon {
   background: transparent;
   border: none;
@@ -3850,7 +3690,6 @@ input[readonly] {
   justify-content: center;
 }
 
-/* Table Styles */
 .scrollable {
   overflow-x: auto;
   border-radius: 16px;
@@ -3891,7 +3730,6 @@ input[readonly] {
   text-align: center;
 }
 
-/* Pagination */
 .pagination-wrapper {
   display: flex;
   justify-content: space-between;
@@ -3926,7 +3764,6 @@ input[readonly] {
   font-weight: 500;
 }
 
-/* Search Wrapper */
 .search-wrapper {
   position: relative;
   display: inline-block;
@@ -3957,7 +3794,6 @@ input[readonly] {
   width: 300px;
 }
 
-/* Button Styles */
 .btn-outline {
   background: white;
   border: 1px solid #e2e8f0;
@@ -3992,10 +3828,6 @@ input[readonly] {
   transform: translateY(-2px);
   filter: brightness(1.05);
 }
-
-/* ============================================ */
-/* RESPONSIVE STYLES
-/* ============================================ */
 
 @media (max-width: 1200px) {
   .stats-grid {
@@ -4121,10 +3953,6 @@ input[readonly] {
   }
 }
 
-/* ============================================ */
-/* ANIMATIONS
-/* ============================================ */
-
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -4142,7 +3970,6 @@ input[readonly] {
   animation: fadeIn 0.3s ease-out;
 }
 
-/* Scrollbar untuk tabel */
 .scrollable::-webkit-scrollbar {
   height: 6px;
 }
@@ -4161,10 +3988,6 @@ input[readonly] {
   background: #94a3b8;
 }
 
-/* ============================================ */
-/* ACTION BUTTONS STYLES
-/* ============================================ */
-
 .data-header-right {
   display: flex;
   gap: 12px;
@@ -4172,7 +3995,6 @@ input[readonly] {
   flex-wrap: wrap;
 }
 
-/* Base button styles */
 .btn-outline {
   background: white;
   border: 1px solid #e2e8f0;
@@ -4198,7 +4020,6 @@ input[readonly] {
   transform: translateY(0);
 }
 
-/* Export Button */
 .export-btn {
   background: linear-gradient(135deg, #059669 0%, #10b981 100%);
   border: none;
@@ -4219,7 +4040,6 @@ input[readonly] {
   transform: translateY(-2px) scale(1.05);
 }
 
-/* Refresh Button */
 #refreshAbsensiBtn {
   background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
   border: none;
@@ -4240,7 +4060,6 @@ input[readonly] {
   transform: rotate(180deg);
 }
 
-/* Refresh Peta Button */
 #refreshAbsensiMapBtn {
   background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);
   border: none;
@@ -4261,7 +4080,6 @@ input[readonly] {
   transform: rotate(15deg) scale(1.05);
 }
 
-/* Responsive */
 @media (max-width: 768px) {
   .btn-outline {
     padding: 8px 14px;
@@ -4273,7 +4091,6 @@ input[readonly] {
   }
 }
 
-/* Delete Button */
 .btn-delete {
   background: none;
   border: none;
@@ -4299,14 +4116,12 @@ input[readonly] {
 /* DATA KARYAWAN TABLE - FIX OVERFLOW */
 /* ============================================ */
 
-/* Container table dengan overflow auto */
 #sectionDataKaryawan .scrollable {
   overflow-x: auto;
   max-width: 100%;
   border-radius: 12px;
 }
 
-/* Tabel Data Karyawan */
 #tableKaryawan {
   width: 100%;
   min-width: 1200px;
@@ -4321,7 +4136,6 @@ input[readonly] {
   border-bottom: 1px solid #e2e8f0;
 }
 
-/* Kolom Alamat Domisili - batasi lebar dan wrap */
 #tableKaryawan td:nth-child(6),
 #tableKaryawan th:nth-child(6) {
   max-width: 250px;
@@ -4332,7 +4146,6 @@ input[readonly] {
   line-height: 1.4;
 }
 
-/* Kolom Alamat Store (Cabang) */
 #tableKaryawan td:nth-child(12),
 #tableKaryawan th:nth-child(12) {
   max-width: 200px;
@@ -4343,20 +4156,17 @@ input[readonly] {
   font-size: 0.75rem;
 }
 
-/* Kolom lainnya tetap nowrap */
 #tableKaryawan td:not(:nth-child(6)):not(:nth-child(12)),
 #tableKaryawan th:not(:nth-child(6)):not(:nth-child(12)) {
   white-space: nowrap;
 }
 
-/* Kolom NIK, No HP, Email */
 #tableKaryawan td:nth-child(4),
 #tableKaryawan td:nth-child(7),
 #tableKaryawan td:nth-child(8) {
   white-space: nowrap;
 }
 
-/* Kolom Aksi */
 #tableKaryawan td:last-child,
 #tableKaryawan th:last-child {
   white-space: nowrap;
@@ -4364,14 +4174,12 @@ input[readonly] {
   text-align: center;
 }
 
-/* Kolom Foto */
 #tableKaryawan td:nth-child(13),
 #tableKaryawan td:nth-child(14) {
   text-align: center;
   white-space: nowrap;
 }
 
-/* Responsive */
 @media (max-width: 1200px) {
   #tableKaryawan td:nth-child(6),
   #tableKaryawan th:nth-child(6) {
@@ -4408,10 +4216,153 @@ input[readonly] {
 }
 
 /* ============================================ */
+/* KIRIM SLIP GAJI - FILTER DI SEBELAH KIRI */
+/* ============================================ */
+
+#sectionKirim .data-header {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+#sectionKirim .data-header-left {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  width: 100%;
+}
+
+#sectionKirim .data-header-left h3 {
+  margin: 0;
+  white-space: nowrap;
+}
+
+#sectionKirim .data-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+#sectionKirim .button-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+#sectionKirim .filter-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: #f8fafc;
+  padding: 6px 20px;
+  border-radius: 40px;
+  border: 1px solid #e2e8f0;
+  margin-left: 0;
+  flex-direction: row;
+}
+
+#sectionKirim .filter-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  padding: 6px 16px;
+  border-radius: 30px;
+  border: 1px solid #e2e8f0;
+}
+
+#sectionKirim .filter-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#sectionKirim .filter-select {
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #1e293b;
+  cursor: pointer;
+  outline: none;
+}
+
+#sectionKirim .data-header-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  width: 100%;
+}
+
+@media (max-width: 1024px) {
+  #sectionKirim .data-header-left {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #sectionKirim .data-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #sectionKirim .button-group {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  #sectionKirim .button-group button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  #sectionKirim .filter-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 768px) {
+  #sectionKirim .filter-group {
+    flex-direction: column;
+    align-items: stretch;
+    border-radius: 16px;
+    padding: 12px;
+  }
+
+  #sectionKirim .filter-wrapper {
+    justify-content: space-between;
+  }
+
+  #sectionKirim .data-header-right {
+    justify-content: stretch;
+    flex-direction: column;
+  }
+
+  #sectionKirim .data-header-right .search-wrapper {
+    width: 100%;
+  }
+
+  #sectionKirim .data-header-right .reset-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ============================================ */
 /* BONUS & THR SECTION - BUTTON GROUP FIX */
 /* ============================================ */
 
-/* Container untuk tombol di section Bonus dan THR */
 #sectionBonus .data-header-left,
 #sectionTHR .data-header-left {
   display: flex;
@@ -4426,7 +4377,6 @@ input[readonly] {
   margin-bottom: 0;
 }
 
-/* Data actions wrapper */
 #sectionBonus .data-actions,
 #sectionTHR .data-actions {
   display: flex;
@@ -4437,7 +4387,6 @@ input[readonly] {
   width: 100%;
 }
 
-/* Button group untuk tambah dan duplikasi */
 #sectionBonus .button-group,
 #sectionTHR .button-group {
   display: flex;
@@ -4446,7 +4395,6 @@ input[readonly] {
   gap: 12px;
 }
 
-/* Style untuk tombol Tambah Bonus */
 #sectionBonus .button-group .add-data-btn,
 #sectionTHR .button-group .add-data-btn {
   background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
@@ -4470,7 +4418,6 @@ input[readonly] {
   box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
 }
 
-/* Style untuk tombol Duplikasi Bonus Bulan Lalu */
 #sectionBonus .button-group .duplicate-data-btn,
 #sectionTHR .button-group .duplicate-data-btn {
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
@@ -4494,7 +4441,6 @@ input[readonly] {
   box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
 }
 
-/* Style untuk tombol Batal Duplikasi */
 #sectionBonus .button-group .cancel-data-btn,
 #sectionTHR .button-group .cancel-data-btn {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
@@ -4518,7 +4464,6 @@ input[readonly] {
   box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
 }
 
-/* Filter group styling */
 #sectionBonus .filter-group,
 #sectionTHR .filter-group {
   display: flex;
@@ -4529,7 +4474,8 @@ input[readonly] {
   padding: 6px 16px;
   border-radius: 40px;
   border: 1px solid #e2e8f0;
-  margin-left: auto;
+  margin-right: auto;
+  flex-direction: row;
 }
 
 #sectionBonus .filter-wrapper,
@@ -4565,16 +4511,14 @@ input[readonly] {
   outline: none;
 }
 
-/* Right side - search and reset */
 #sectionBonus .data-header-right,
 #sectionTHR .data-header-right {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 12px;
+  margin-top: auto;
 }
 
-/* Responsive */
 @media (max-width: 1024px) {
   #sectionBonus .data-actions,
   #sectionTHR .data-actions {
@@ -4647,7 +4591,6 @@ input[readonly] {
 /* THR SECTION - BUTTON GROUP FIX */
 /* ============================================ */
 
-/* Container untuk tombol di section THR */
 #sectionTHR .data-header-left {
   display: flex;
   flex-direction: column;
@@ -4660,7 +4603,6 @@ input[readonly] {
   margin-bottom: 0;
 }
 
-/* Data actions wrapper */
 #sectionTHR .data-actions {
   display: flex;
   flex-wrap: wrap;
@@ -4670,7 +4612,6 @@ input[readonly] {
   width: 100%;
 }
 
-/* Button group untuk tambah, duplikasi, dan batal */
 #sectionTHR .button-group {
   display: flex;
   flex-wrap: wrap;
@@ -4678,7 +4619,6 @@ input[readonly] {
   gap: 12px;
 }
 
-/* Style untuk tombol Tambah THR */
 #sectionTHR .button-group .add-data-btn {
   background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
   border: none;
@@ -4700,7 +4640,6 @@ input[readonly] {
   box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
 }
 
-/* Style untuk tombol Duplikasi THR Tahun Lalu */
 #sectionTHR .button-group .duplicate-data-btn {
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   border: none;
@@ -4722,7 +4661,6 @@ input[readonly] {
   box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
 }
 
-/* Style untuk tombol Batal Duplikasi THR */
 #sectionTHR .button-group .cancel-data-btn {
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   border: none;
@@ -4744,7 +4682,6 @@ input[readonly] {
   box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
 }
 
-/* Year filter wrapper */
 #sectionTHR .year-filter-wrapper {
   display: flex;
   align-items: center;
@@ -4781,15 +4718,13 @@ input[readonly] {
   background: #f1f5f9;
 }
 
-/* Right side - search and reset */
 #sectionTHR .data-header-right {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 12px;
+  margin-top: auto;
 }
 
-/* Tabel THR */
 #tableTHR {
   width: 100%;
   min-width: 900px;
@@ -4813,7 +4748,6 @@ input[readonly] {
   white-space: nowrap;
 }
 
-/* Kolom Aksi - perbaiki tombol */
 #tableTHR td:last-child {
   white-space: nowrap;
   text-align: center;
@@ -4849,7 +4783,6 @@ input[readonly] {
   background: #dc2626;
 }
 
-/* Status badge untuk THR */
 #tableTHR .status-badge {
   display: inline-flex;
   align-items: center;
@@ -4875,7 +4808,6 @@ input[readonly] {
   color: #991b1b;
 }
 
-/* Responsive */
 @media (max-width: 1024px) {
   #sectionTHR .data-actions {
     flex-direction: column;
