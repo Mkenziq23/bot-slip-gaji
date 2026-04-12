@@ -17,7 +17,6 @@ import lokasiStoreRoutes from "./routes/LokasiStoreRoutes.js";
 import absensiRoutes from "./routes/absensiRoutes.js";
 
 import { startBot, getSocketByNumber, logoutBot } from "../bot/index.js";
-
 import db from "./db.js";
 
 const app = express();
@@ -26,19 +25,32 @@ const wss = new WebSocketServer({ server });
 
 const FileStore = sessionFileStore(session);
 
+/*
+=====================================
+RAILWAY SESSION FIX
+=====================================
+*/
+
+app.set("trust proxy", 1);
+
 const sessionMiddleware = session({
   secret: "slipgajiwa",
   resave: false,
   saveUninitialized: false,
+  proxy: true,
+
   store: new FileStore({
     path: "./sessions",
     ttl: 30 * 24 * 60 * 60,
     reapInterval: 60 * 60,
   }),
+
   cookie: {
     maxAge: 30 * 24 * 60 * 60 * 1000,
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+
+    secure: true,
+    sameSite: "none",
   },
 });
 
@@ -46,8 +58,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
 
+/*
+=====================================
+HELPER CHECK USER QR LOGIN
+=====================================
+*/
+
 async function getUserIfExists(number) {
   const [rows] = await db.query("SELECT id, nomor_wa, nama FROM users WHERE nomor_wa = ?", [number]);
+
   return rows.length ? rows[0] : null;
 }
 
@@ -73,43 +92,16 @@ app.use(async (req, res, next) => {
 
 /*
 =====================================
-LOGIN PAGE ROUTE (WAJIB ADA)
-=====================================
-*/
-
-app.get("/login", (req, res) => {
-  res.sendFile(path.join(process.cwd(), "public/login.html"));
-});
-
-/*
-=====================================
-ROOT ROUTE FIX
+ROOT ROUTE SMART REDIRECT
 =====================================
 */
 
 app.get("/", async (req, res) => {
-  if (req.session.admin) {
-    return res.redirect("/manage-users");
-  }
+  if (req.session.admin) return res.redirect("/manage-users");
 
-  if (req.session.karyawan) {
-    return res.redirect("/karyawan-profile");
-  }
+  if (req.session.karyawan) return res.redirect("/karyawan-profile");
 
-  if (req.session.number) {
-    const user = await getUserIfExists(req.session.number);
-
-    if (user) {
-      return res.redirect("/dashboard");
-    }
-
-    req.session.destroy(() => {
-      res.clearCookie("connect.sid");
-      return res.redirect("/login");
-    });
-
-    return;
-  }
+  if (req.session.number) return res.redirect("/dashboard");
 
   return res.redirect("/login");
 });
@@ -121,6 +113,7 @@ ROUTES
 */
 
 app.use(loginRoutes);
+
 app.use(dashboardDataRoutes);
 app.use(slipRoutes);
 app.use(userManagementRoutes);
@@ -141,16 +134,11 @@ app.get("/scan", async (req, res) => {
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
 
-    if (!user) {
-      req.session.destroy(() => {
-        res.clearCookie("connect.sid");
-        return res.sendFile(path.join(process.cwd(), "public/scan.html"));
-      });
+    if (user) return res.redirect("/dashboard");
 
-      return;
-    }
-
-    return res.redirect("/dashboard");
+    req.session.destroy(() => {
+      res.clearCookie("connect.sid");
+    });
   }
 
   res.sendFile(path.join(process.cwd(), "public/scan.html"));
@@ -163,25 +151,22 @@ DASHBOARD QR LOGIN
 */
 
 app.get("/dashboard", async (req, res) => {
-  if (!req.session.number) {
-    return res.redirect("/login");
-  }
+  if (!req.session.number) return res.redirect("/login");
 
   const user = await getUserIfExists(req.session.number);
 
   if (!user) {
     req.session.destroy(() => {
       res.clearCookie("connect.sid");
-      return res.redirect("/login");
     });
 
-    return;
+    return res.redirect("/login");
   }
 
-  const number = req.session.number;
-
-  if (!getSocketByNumber(number)) {
-    startBot({ number });
+  if (!getSocketByNumber(req.session.number)) {
+    startBot({
+      number: req.session.number,
+    });
   }
 
   res.sendFile(path.join(process.cwd(), "public/index.html"));
@@ -189,14 +174,12 @@ app.get("/dashboard", async (req, res) => {
 
 /*
 =====================================
-MANAGE USERS
+MANAGE USERS ADMIN PAGE
 =====================================
 */
 
 app.get("/manage-users", (req, res) => {
-  if (!req.session.admin) {
-    return res.redirect("/login");
-  }
+  if (!req.session.admin) return res.redirect("/login");
 
   res.sendFile(path.join(process.cwd(), "public/manage-users.html"));
 });
@@ -218,27 +201,15 @@ SAVE NUMBER AFTER QR LOGIN
 app.post("/set-number", async (req, res) => {
   const { number } = req.body;
 
-  if (!number) {
-    return res.status(400).json({
-      success: false,
-    });
-  }
+  if (!number) return res.json({ success: false });
 
   const user = await getUserIfExists(number);
 
-  if (!user) {
-    return res.status(403).json({
-      success: false,
-    });
-  }
+  if (!user) return res.json({ success: false });
 
   req.session.number = number;
 
-  req.session.save(() =>
-    res.json({
-      success: true,
-    }),
-  );
+  req.session.save(() => res.json({ success: true }));
 });
 
 /*
@@ -248,9 +219,7 @@ LOGOUT
 */
 
 app.get("/logout", async (req, res) => {
-  if (req.session.number) {
-    await logoutBot(req.session.number);
-  }
+  if (req.session.number) await logoutBot(req.session.number);
 
   req.session.destroy(() => {
     res.clearCookie("connect.sid");
@@ -260,7 +229,7 @@ app.get("/logout", async (req, res) => {
 
 /*
 =====================================
-WEBSOCKET
+WEBSOCKET QR LOGIN
 =====================================
 */
 
@@ -285,6 +254,7 @@ wss.on("connection", async (ws) => {
         );
 
         await logoutBot(waNumber);
+
         return;
       }
 
@@ -300,7 +270,7 @@ wss.on("connection", async (ws) => {
 
 /*
 =====================================
-SERVER START
+START SERVER
 =====================================
 */
 
