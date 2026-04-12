@@ -3,7 +3,8 @@ import path from "path";
 import session from "express-session";
 import http from "http";
 import { WebSocketServer } from "ws";
-import MySQLStore from "express-mysql-session";
+// HAPUS session-file-store (tidak kompatibel dengan Railway)
+// import sessionFileStore from "session-file-store";
 
 import dashboardDataRoutes from "./routes/dashboardDataRoutes.js";
 import slipRoutes from "./routes/slipGajiRoutes.js";
@@ -25,49 +26,23 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 // ============================
-// MYSQL SESSION STORE SETUP
-// ============================
-const SessionStore = MySQLStore(session);
-const sessionStore = new SessionStore({
-  host: process.env.MYSQLHOST,
-  port: parseInt(process.env.MYSQLPORT) || 3306,
-  user: process.env.MYSQLUSER,
-  password: process.env.MYSQLPASSWORD,
-  database: process.env.MYSQLDATABASE,
-  clearExpired: true,
-  checkExpirationInterval: 900000, // 15 minutes
-  expiration: 30 * 24 * 60 * 60 * 1000, // 30 days
-  createDatabaseTable: true,
-});
-
-// ============================
-// SESSION CONFIGURATION
+// SESSION CONFIG - Memory Store (Untuk Railway)
 // ============================
 const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET || "slipgajiwa_secret_key_2026",
+  secret: process.env.SESSION_SECRET || "slipgajiwa",
   resave: false,
-  saveUninitialized: false,
-  store: sessionStore,
+  saveUninitialized: true, // Ubah ke true untuk Railway
   cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 hari
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production", // true untuk production
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   },
 });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
-
-// ============================
-// WEBSOCKET MIDDLEWARE
-// ============================
-wss.on("connection", (ws, req) => {
-  sessionMiddleware(req, {}, () => {
-    ws.req = req;
-  });
-});
 
 // ============================
 // CHECK USER EXISTS IN DATABASE
@@ -113,11 +88,6 @@ app.use("/api/lokasi-store", lokasiStoreRoutes);
 app.use("/", absensiRoutes);
 
 // ============================
-// STATIC PUBLIC FILES
-// ============================
-app.use(express.static(path.join(process.cwd(), "public")));
-
-// ============================
 // QR SCAN PAGE
 // ============================
 app.get("/scan", async (req, res) => {
@@ -139,14 +109,17 @@ app.get("/scan", async (req, res) => {
 // ROOT PAGE
 // ============================
 app.get("/", async (req, res) => {
+  // Cek admin
   if (req.session.admin) {
-    return res.redirect("/manage-users");
+    return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
   }
 
+  // Cek karyawan
   if (req.session.karyawan) {
     return res.redirect("/karyawan-profile");
   }
 
+  // Cek QR login
   if (req.session.number) {
     const user = await getUserIfExists(req.session.number);
     if (user) {
@@ -159,26 +132,31 @@ app.get("/", async (req, res) => {
     return;
   }
 
+  // Redirect ke login
   res.redirect("/login");
 });
 
 // ============================
-// DASHBOARD
+// DASHBOARD (QR Login)
 // ============================
 app.get("/dashboard", async (req, res) => {
-  if (req.session.admin) {
+  if (req.session.admin?.role === "admin") {
     return res.status(404).sendFile(path.join(process.cwd(), "public/404.html"));
   }
 
+  if (req.session.admin?.role === "superadmin") {
+    return res.redirect("/manage-users");
+  }
+
   if (!req.session.number) {
-    return res.redirect("/");
+    return res.redirect("/login");
   }
 
   const user = await getUserIfExists(req.session.number);
   if (!user) {
     req.session.destroy(() => {
       res.clearCookie("connect.sid");
-      return res.redirect("/");
+      return res.redirect("/login");
     });
     return;
   }
@@ -211,6 +189,11 @@ app.get("/manage-users", (req, res) => {
 });
 
 // ============================
+// STATIC PUBLIC FILES
+// ============================
+app.use(express.static(path.join(process.cwd(), "public")));
+
+// ============================
 // SAVE NUMBER AFTER QR LOGIN
 // ============================
 app.post("/set-number", async (req, res) => {
@@ -225,7 +208,6 @@ app.post("/set-number", async (req, res) => {
   try {
     const user = await getUserIfExists(number);
     if (!user) {
-      console.log(`[SET-NUMBER] Number not registered: ${number}`);
       return res.status(403).json({
         success: false,
         message: "Nomor belum terdaftar. Hubungi admin.",
@@ -285,7 +267,6 @@ app.get("/check-session", async (req, res) => {
 
   const number = req.session.number;
   const socket = getSocketByNumber(number);
-
   const isConnected = socket && socket.user;
 
   if (!isConnected) {
@@ -430,7 +411,7 @@ wss.on("connection", async (ws, req) => {
 // ============================
 // START SERVER
 // ============================
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
   console.log(`========================================`);

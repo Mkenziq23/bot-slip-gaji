@@ -1,7 +1,7 @@
 // server/db.js
 import mysql from "mysql2/promise";
 
-// Konfigurasi untuk production (Railway / Aiven)
+// Konfigurasi untuk production (Railway)
 const productionConfig = {
   host: process.env.MYSQLHOST,
   user: process.env.MYSQLUSER,
@@ -11,14 +11,12 @@ const productionConfig = {
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
   ssl: {
     rejectUnauthorized: false,
   },
 };
 
-// Konfigurasi untuk development local
+// Konfigurasi untuk development (local)
 const localConfig = {
   host: "localhost",
   user: "root",
@@ -37,13 +35,10 @@ const db = await mysql.createPool(activeConfig);
 // Test connection
 try {
   const connection = await db.getConnection();
-  console.log(`✅ Database connected successfully to ${process.env.NODE_ENV === "production" ? "production" : "local"}`);
+  console.log(`✅ Database connected successfully to ${process.env.NODE_ENV === "production" ? "Railway" : "Local"}`);
   connection.release();
 } catch (err) {
   console.error("❌ Database connection failed:", err.message);
-  if (process.env.NODE_ENV === "production") {
-    console.error("Please check your MYSQL environment variables");
-  }
 }
 
 export default db;
