@@ -3,8 +3,6 @@ import path from "path";
 import session from "express-session";
 import http from "http";
 import { WebSocketServer } from "ws";
-// HAPUS session-file-store (tidak kompatibel dengan Railway)
-// import sessionFileStore from "session-file-store";
 
 import dashboardDataRoutes from "./routes/dashboardDataRoutes.js";
 import slipRoutes from "./routes/slipGajiRoutes.js";
@@ -26,16 +24,16 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 // ============================
-// SESSION CONFIG - Memory Store (Untuk Railway)
+// SESSION CONFIG
 // ============================
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || "slipgajiwa",
   resave: false,
-  saveUninitialized: true, // Ubah ke true untuk Railway
+  saveUninitialized: true,
   cookie: {
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 hari
+    maxAge: 30 * 24 * 60 * 60 * 1000,
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // true untuk production
+    secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   },
 });
@@ -74,7 +72,7 @@ app.use(async (req, res, next) => {
 });
 
 // ============================
-// ROUTES
+// ROUTES API
 // ============================
 app.use("/", dashboardDataRoutes);
 app.use("/", slipRoutes);
@@ -109,9 +107,9 @@ app.get("/login", async (req, res) => {
     }
   }
 
-  // Tampilkan halaman login
   res.sendFile(path.join(process.cwd(), "public/login.html"));
 });
+
 // ============================
 // QR SCAN PAGE
 // ============================
@@ -157,7 +155,6 @@ app.get("/", async (req, res) => {
     return;
   }
 
-  // Redirect ke login
   res.redirect("/login");
 });
 
@@ -165,11 +162,7 @@ app.get("/", async (req, res) => {
 // DASHBOARD (QR Login)
 // ============================
 app.get("/dashboard", async (req, res) => {
-  if (req.session.admin?.role === "admin") {
-    return res.status(404).sendFile(path.join(process.cwd(), "public/404.html"));
-  }
-
-  if (req.session.admin?.role === "superadmin") {
+  if (req.session.admin) {
     return res.redirect("/manage-users");
   }
 
@@ -211,6 +204,16 @@ app.get("/manage-users", (req, res) => {
   }
 
   res.sendFile(path.join(process.cwd(), "public/manage-users.html"));
+});
+
+// ============================
+// KARYAWAN PROFILE PAGE
+// ============================
+app.get("/karyawan-profile", (req, res) => {
+  if (!req.session.karyawan) {
+    return res.redirect("/login");
+  }
+  res.sendFile(path.join(process.cwd(), "public/karyawan-profile.html"));
 });
 
 // ============================

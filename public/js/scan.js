@@ -44,7 +44,6 @@ function connectWS() {
         statusDiv.classList.remove("connected", "error");
       }
 
-      // Bagian redirect, pastikan menggunakan domain yang benar
       if (data.status === "connected") {
         console.log("QR Login success! Redirecting to dashboard...");
         statusDiv.classList.add("connected");
@@ -118,7 +117,4 @@ function connectWS() {
   };
 }
 
-// Initialize WebSocket when page loads
-document.addEventListener("DOMContentLoaded", () => {
-  connectWS();
-});
+connectWS();

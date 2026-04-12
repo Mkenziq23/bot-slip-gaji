@@ -75,29 +75,23 @@
     </main>
 
     <script>
-      // Konfigurasi SweetAlert Responsif - TANPA customClass yang mengganggu icon
       const showResponsiveAlert = (options) => {
         const isMobile = window.innerWidth < 768;
-        const defaultOptions = {
+        return Swal.fire({
           width: isMobile ? "90%" : "auto",
           padding: isMobile ? "1rem" : "1.5rem",
-          // HAPUS customClass karena bisa mengganggu icon bawaan SweetAlert
           backdrop: true,
           allowOutsideClick: true,
-          allowEscapeKey: true,
-        };
-
-        return Swal.fire({ ...defaultOptions, ...options });
+          ...options,
+        });
       };
 
-      // Event listener untuk resize
       window.addEventListener("resize", () => {
         if (Swal.isVisible()) {
           const isMobile = window.innerWidth < 768;
           const popup = Swal.getPopup();
           if (popup) {
             popup.style.width = isMobile ? "90%" : "auto";
-            popup.style.padding = isMobile ? "1rem" : "1.5rem";
           }
         }
       });
@@ -108,21 +102,14 @@
 
       window.onload = () => usernameInput.focus();
 
-      // FUNGSI TOGGLE MATA
       toggleBtn.addEventListener("click", function (e) {
         e.preventDefault();
         const isPassword = passwordInput.type === "password";
         passwordInput.type = isPassword ? "text" : "password";
-
         const icon = this.querySelector("i");
-        if (isPassword) {
-          icon.classList.replace("fa-eye", "fa-eye-slash");
-        } else {
-          icon.classList.replace("fa-eye-slash", "fa-eye");
-        }
+        icon.classList.replace(isPassword ? "fa-eye" : "fa-eye-slash", isPassword ? "fa-eye-slash" : "fa-eye");
       });
 
-      // LOGIN HANDLER
       document.getElementById("loginForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         const btn = document.getElementById("submitBtn");
@@ -143,6 +130,8 @@
           });
 
           const data = await res.json();
+          console.log("Login response:", data);
+
           if (data.success) {
             showResponsiveAlert({
               icon: "success",
@@ -150,9 +139,16 @@
               text: `Selamat datang kembali!`,
               timer: 1500,
               showConfirmButton: false,
-              background: "#fff",
             }).then(() => {
-              window.location.href = data.redirect || (data.type === "admin" ? "/manage-users" : "/karyawan-profile");
+              if (data.redirect) {
+                window.location.href = data.redirect;
+              } else if (data.type === "admin") {
+                window.location.href = "/manage-users";
+              } else if (data.type === "karyawan") {
+                window.location.href = "/karyawan-profile";
+              } else {
+                window.location.href = "/dashboard";
+              }
             });
           } else {
             throw new Error(data.message || "Kredensial tidak valid.");
