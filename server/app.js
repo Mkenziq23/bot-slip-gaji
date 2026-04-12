@@ -16,7 +16,7 @@ import karyawanProfileRoutes from "./routes/karyawanProfileRoutes.js";
 import lokasiStoreRoutes from "./routes/LokasiStoreRoutes.js";
 import absensiRoutes from "./routes/absensiRoutes.js";
 
-import { startBot, getSocketByNumber, logoutBot, logoutAllSessions } from "../bot/index.js";
+import { startBot, getSocketByNumber, logoutBot } from "../bot/index.js";
 
 import db from "./db.js";
 
@@ -24,7 +24,6 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// Session store setup
 const FileStore = sessionFileStore(session);
 
 // ============================
@@ -83,12 +82,18 @@ app.use(async (req, res, next) => {
 });
 
 // ============================
+// STATIC PUBLIC FILES
+// ============================
+
+app.use(express.static(path.join(process.cwd(), "public")));
+
+// ============================
 // ROUTES
 // ============================
 
+app.use("/", loginRoutes);
 app.use("/", dashboardDataRoutes);
 app.use("/", slipRoutes);
-app.use("/", loginRoutes);
 app.use("/", userManagementRoutes);
 app.use("/", bonusRoutes);
 app.use("/", thrRoutes);
@@ -98,7 +103,7 @@ app.use("/api/lokasi-store", lokasiStoreRoutes);
 app.use("/", absensiRoutes);
 
 // ============================
-// QR SCAN PAGE (HALAMAN SCAN UNTUK LOGIN VIA QR)
+// QR SCAN PAGE
 // ============================
 
 app.get("/scan", async (req, res) => {
@@ -117,40 +122,9 @@ app.get("/scan", async (req, res) => {
 });
 
 // ============================
-// ROOT PAGE - REDIRECT KE LOGIN (BUKAN SCAN)
-// ============================
-app.get("/", async (req, res) => {
-  // Cek apakah sudah login sebagai admin
-  if (req.session.admin) {
-    return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
-  }
-
-  // Cek apakah sudah login sebagai karyawan
-  if (req.session.karyawan) {
-    return res.redirect("/karyawan-profile");
-  }
-
-  // Cek apakah sudah login via QR (WhatsApp)
-  if (req.session.number) {
-    const user = await getUserIfExists(req.session.number);
-    if (user) {
-      return res.redirect("/dashboard");
-    }
-    // Jika user tidak valid, destroy session
-    req.session.destroy(() => {
-      res.clearCookie("connect.sid");
-      return res.redirect("/404.html");
-    });
-    return;
-  }
-
-  // Jika belum login, redirect ke halaman login
-  res.redirect("/");
-});
-
-// ============================
 // DASHBOARD (UNTUK USER YANG LOGIN VIA QR)
 // ============================
+
 app.get("/dashboard", async (req, res) => {
   if (req.session.admin?.role === "admin") {
     return res.status(404).sendFile(path.join(process.cwd(), "public/404.html"));
@@ -161,14 +135,14 @@ app.get("/dashboard", async (req, res) => {
   }
 
   if (!req.session.number) {
-    return res.redirect("/");
+    return res.redirect("/login");
   }
 
   const user = await getUserIfExists(req.session.number);
   if (!user) {
     req.session.destroy(() => {
       res.clearCookie("connect.sid");
-      return res.redirect("/");
+      return res.redirect("/login");
     });
     return;
   }
@@ -202,36 +176,24 @@ app.get("/manage-users", (req, res) => {
 });
 
 // ============================
-// STATIC PUBLIC FILES
-// ============================
-
-app.use(express.static(path.join(process.cwd(), "public")));
-
-// ============================
 // SAVE NUMBER AFTER QR LOGIN
 // ============================
 
 app.post("/set-number", async (req, res) => {
   const { number } = req.body;
 
-  console.log(`[SET-NUMBER] Request received for number: ${number}`);
-
   if (!number) {
-    console.log(`[SET-NUMBER] No number provided`);
     return res.status(400).json({ success: false, message: "No number provided" });
   }
 
   try {
     const user = await getUserIfExists(number);
     if (!user) {
-      console.log(`[SET-NUMBER] Number not registered: ${number}`);
       return res.status(403).json({
         success: false,
         message: "Nomor belum terdaftar. Hubungi admin.",
       });
     }
-
-    console.log(`[SET-NUMBER] User found: ${user.id} - ${user.nama}`);
 
     req.session.number = number;
     req.session.user_id = user.id;
@@ -243,7 +205,6 @@ app.post("/set-number", async (req, res) => {
         return res.status(500).json({ success: false, message: "Session save failed" });
       }
 
-      console.log(`[SET-NUMBER] Session saved successfully for ${number}`);
       res.json({
         success: true,
         user_id: user.id,
@@ -257,15 +218,13 @@ app.post("/set-number", async (req, res) => {
 });
 
 // ============================
-// LOGOUT HR (DIPERBAIKI - HAPUS PERANGKAT TERTAUT)
+// LOGOUT HR
 // ============================
 
 app.get("/logout", async (req, res) => {
   const number = req.session.number;
-  console.log(`[LOGOUT] User logout: ${number}`);
 
   if (number) {
-    // Hapus session WhatsApp dan logout dari perangkat tertaut
     await logoutBot(number);
   }
 
@@ -277,7 +236,7 @@ app.get("/logout", async (req, res) => {
 });
 
 // ============================
-// CHECK SESSION STATUS (UNTUK DETECT FORCE LOGOUT DARI WA)
+// CHECK SESSION STATUS
 // ============================
 
 app.get("/check-session", async (req, res) => {
@@ -287,12 +246,9 @@ app.get("/check-session", async (req, res) => {
 
   const number = req.session.number;
   const socket = getSocketByNumber(number);
-
-  // Cek apakah socket masih ada dan terhubung
   const isConnected = socket && socket.user;
 
   if (!isConnected) {
-    // Jika socket tidak ada, hapus session
     req.session.destroy((err) => {
       if (err) console.error("[CHECK-SESSION] Destroy error:", err);
     });
@@ -303,14 +259,12 @@ app.get("/check-session", async (req, res) => {
 });
 
 // ============================
-// WEBSOCKET BOT LOGIN SYSTEM (DIPERBAIKI UNTUK DETECT FORCE LOGOUT)
+// WEBSOCKET BOT LOGIN SYSTEM
 // ============================
 
 let userSessions = {};
 
-// Function to notify force logout to all connected clients
 function notifyForceLogout(number) {
-  console.log(`[WS] Notifying force logout for ${number}`);
   if (userSessions[number]) {
     userSessions[number].wsClients.forEach((client) => {
       if (client && client.readyState === 1) {
@@ -322,7 +276,6 @@ function notifyForceLogout(number) {
         );
       }
     });
-    // Hapus session dari memory
     delete userSessions[number];
   }
 }
@@ -330,27 +283,21 @@ function notifyForceLogout(number) {
 wss.on("connection", async (ws, req) => {
   const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-  console.log(`[WS] New connection: ${tempId}`);
-
   userSessions[tempId] = {
     wsClients: [ws],
     sessionId: req.sessionID,
   };
 
   let botStarted = false;
-  let currentBot = null;
 
   const startBotForQR = async () => {
     if (botStarted) return;
     botStarted = true;
 
-    console.log(`[WS] Starting bot for QR generation (${tempId})`);
-
     try {
-      currentBot = await startBot({
+      await startBot({
         number: tempId,
         onQR: (number, qr) => {
-          console.log(`[WS] QR generated for ${number}, sending to client`);
           if (userSessions[tempId] && userSessions[tempId].wsClients) {
             userSessions[tempId].wsClients.forEach((client) => {
               if (client && client.readyState === 1) {
@@ -360,12 +307,9 @@ wss.on("connection", async (ws, req) => {
           }
         },
         onConnected: async (waNumber) => {
-          console.log(`[WS] WhatsApp connected: ${waNumber}`);
-
           const user = await getUserIfExists(waNumber);
 
           if (!user) {
-            console.log(`[WS] Number not registered: ${waNumber}`);
             if (userSessions[tempId]) {
               userSessions[tempId].wsClients.forEach((client) => {
                 if (client && client.readyState === 1) {
@@ -379,14 +323,10 @@ wss.on("connection", async (ws, req) => {
                 }
               });
             }
-            // Logout bot for unregistered number
             await logoutBot(waNumber);
             return;
           }
 
-          console.log(`[WS] User registered: ${user.id} - ${user.nama}`);
-
-          // Move session from temp to permanent number
           if (userSessions[tempId]) {
             if (!userSessions[waNumber]) {
               userSessions[waNumber] = {
@@ -397,12 +337,9 @@ wss.on("connection", async (ws, req) => {
 
             userSessions[waNumber].wsClients.push(...userSessions[tempId].wsClients);
             userSessions[waNumber].sessionIds.push(userSessions[tempId].sessionId);
-
-            // Clean up temp session
             delete userSessions[tempId];
           }
 
-          // Send success to all clients
           if (userSessions[waNumber]) {
             userSessions[waNumber].wsClients.forEach((client) => {
               if (client && client.readyState === 1) {
@@ -419,16 +356,7 @@ wss.on("connection", async (ws, req) => {
           }
         },
         onLogout: (number) => {
-          console.log(`[WS] Force logout detected for: ${number}`);
-          // Notify all clients connected to this number
           notifyForceLogout(number);
-
-          // Also destroy session if exists
-          if (number && !number.startsWith("temp_")) {
-            // Find and destroy session for this number
-            const sessionFile = `./sessions/${userSessions[number]?.sessionIds?.[0] || ""}`;
-            // Session will be destroyed on next request check
-          }
         },
       });
     } catch (err) {
@@ -436,18 +364,23 @@ wss.on("connection", async (ws, req) => {
     }
   };
 
-  // Start bot after a short delay
   setTimeout(startBotForQR, 100);
 
   ws.on("close", () => {
-    console.log(`[WS] Connection closed: ${tempId}`);
-    // Don't clean up immediately, give time for reconnection
     setTimeout(() => {
       if (userSessions[tempId]) {
         delete userSessions[tempId];
       }
     }, 5000);
   });
+});
+
+// ============================
+// 404 FALLBACK ROUTE
+// ============================
+
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(process.cwd(), "public/404.html"));
 });
 
 // ============================

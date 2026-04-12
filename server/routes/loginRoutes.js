@@ -42,7 +42,7 @@ function getLokasiStoreTableName(company) {
 
 /**
  * ==========================
- * Halaman Login (terpadu)
+ * Halaman Root (GET /) - Redirect ke /login
  * ==========================
  */
 router.get("/", (req, res) => {
@@ -53,7 +53,27 @@ router.get("/", (req, res) => {
   if (req.session.karyawan) {
     return res.redirect("/karyawan-profile");
   }
-  // Jika login via QR, redirect ke scan
+  // Jika login via QR, redirect ke dashboard
+  if (req.session.number) {
+    return res.redirect("/dashboard");
+  }
+  res.redirect("/login");
+});
+
+/**
+ * ==========================
+ * Halaman Login (GET /login)
+ * ==========================
+ */
+router.get("/login", (req, res) => {
+  // Redirect jika sudah login
+  if (req.session.admin) {
+    return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
+  }
+  if (req.session.karyawan) {
+    return res.redirect("/karyawan-profile");
+  }
+  // Jika login via QR, redirect ke dashboard
   if (req.session.number) {
     return res.redirect("/dashboard");
   }
@@ -62,7 +82,7 @@ router.get("/", (req, res) => {
 
 /**
  * ==========================
- * Proses Login Terpadu
+ * Proses Login Terpadu (POST /login)
  * ==========================
  */
 router.post("/login", async (req, res) => {
@@ -100,7 +120,6 @@ router.post("/login", async (req, res) => {
   }
 
   // Jika bukan admin, coba login sebagai Karyawan
-  // Untuk Hisana - QUERY DIPERBAIKI (tanpa cabang dan nama_gerai)
   let [karyawanRows] = await db.query(
     `SELECT 
       id, 
@@ -117,7 +136,6 @@ router.post("/login", async (req, res) => {
     [username, username],
   );
 
-  // Jika tidak ditemukan di Hisana, coba di Enakko - QUERY DIPERBAIKI (tanpa cabang dan nama_gerai)
   if (karyawanRows.length === 0) {
     [karyawanRows] = await db.query(
       `SELECT 
@@ -136,18 +154,8 @@ router.post("/login", async (req, res) => {
     );
   }
 
-  console.log("Karyawan query result:", karyawanRows); // Debug log
-
   if (karyawanRows.length > 0) {
     const karyawan = karyawanRows[0];
-
-    console.log("Found karyawan:", {
-      id: karyawan.id,
-      nama_lengkap: karyawan.nama_lengkap,
-      company: karyawan.company,
-      lokasi_store_id: karyawan.lokasi_store_id,
-      hasPassword: !!karyawan.password,
-    });
 
     if (!karyawan.password) {
       return res.json({
@@ -159,7 +167,6 @@ router.post("/login", async (req, res) => {
     const match = await bcrypt.compare(password, karyawan.password);
 
     if (match) {
-      // Ambil informasi lokasi store jika ada
       let namaStore = null;
       let alamatStore = null;
 
@@ -176,7 +183,6 @@ router.post("/login", async (req, res) => {
         }
       }
 
-      // Simpan ke session
       req.session.karyawan = {
         id: karyawan.id,
         user_id: karyawan.user_id,
@@ -185,12 +191,10 @@ router.post("/login", async (req, res) => {
         email: karyawan.email,
         jabatan: karyawan.jabatan,
         lokasi_store_id: karyawan.lokasi_store_id,
-        nama_store: namaStore, // Nama gerai
-        alamat_store: alamatStore, // Alamat sebagai cabang
-        company: karyawan.company, // 'hisana' atau 'enakko'
+        nama_store: namaStore,
+        alamat_store: alamatStore,
+        company: karyawan.company,
       };
-
-      console.log("Session karyawan saved:", req.session.karyawan); // Debug log
 
       req.session.save((err) => {
         if (err) {
@@ -206,8 +210,6 @@ router.post("/login", async (req, res) => {
         });
       });
       return;
-    } else {
-      console.log("Password mismatch for karyawan:", karyawan.nama_lengkap);
     }
   }
 
@@ -237,7 +239,7 @@ router.get("/logout", (req, res) => {
       console.error("Logout error:", err);
     }
     res.clearCookie("connect.sid");
-    res.redirect("/");
+    res.redirect("/login");
   });
 });
 
