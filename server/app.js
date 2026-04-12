@@ -88,6 +88,31 @@ app.use("/api/lokasi-store", lokasiStoreRoutes);
 app.use("/", absensiRoutes);
 
 // ============================
+// HALAMAN LOGIN (GET)
+// ============================
+app.get("/login", async (req, res) => {
+  // Jika sudah login sebagai admin
+  if (req.session.admin) {
+    return res.redirect(req.session.admin.role === "superadmin" ? "/manage-users" : "/manage-users");
+  }
+
+  // Jika sudah login sebagai karyawan
+  if (req.session.karyawan) {
+    return res.redirect("/karyawan-profile");
+  }
+
+  // Jika sudah login via QR
+  if (req.session.number) {
+    const user = await getUserIfExists(req.session.number);
+    if (user) {
+      return res.redirect("/dashboard");
+    }
+  }
+
+  // Tampilkan halaman login
+  res.sendFile(path.join(process.cwd(), "public/login.html"));
+});
+// ============================
 // QR SCAN PAGE
 // ============================
 app.get("/scan", async (req, res) => {
